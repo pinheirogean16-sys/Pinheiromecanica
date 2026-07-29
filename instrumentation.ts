@@ -73,6 +73,9 @@ export async function register() {
       console.log(`- Usuário MySQL:  ${user}`);
       console.log('========================================================================');
 
+      let migrationsAlreadyUpToDate = false;
+      let pendingMigrationsCount = -1;
+
       // 2. Teste Avançado de Conexão usando o driver mysql2
       try {
         const mysql = await import('mysql2/promise');
@@ -96,6 +99,7 @@ export async function register() {
         // Verificar tabelas existentes antes de aplicar as migrations
         const [tables] = await connection.query('SHOW TABLES') as any[];
         console.log(`📊 Tabelas atualmente existentes no banco de dados: ${tables.length}`);
+        const tableNames = tables.map((t: any) => Object.values(t)[0].toLowerCase());
         
         if (tables.length > 0) {
           console.log('Tabelas existentes listadas:');
@@ -104,6 +108,36 @@ export async function register() {
           });
         } else {
           console.log('ℹ️ O banco de dados está vazio. Nenhuma tabela encontrada.');
+        }
+
+        // Verificar se a tabela _prisma_migrations existe e contar pendências
+        const hasMigrationsTable = tableNames.includes('_prisma_migrations');
+
+        // Ler migrations locais da pasta prisma/migrations
+        let localMigrations: string[] = [];
+        const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+        if (fs.existsSync(migrationsDir)) {
+          localMigrations = fs.readdirSync(migrationsDir).filter(f => {
+            const fullPath = path.join(migrationsDir, f);
+            return fs.statSync(fullPath).isDirectory() && fs.existsSync(path.join(fullPath, 'migration.sql'));
+          });
+        }
+
+        if (hasMigrationsTable) {
+          const [appliedRows] = await connection.query('SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL') as any[];
+          const appliedNames = appliedRows.map((r: any) => r.migration_name);
+          const pendingMigrations = localMigrations.filter(m => !appliedNames.includes(m));
+          
+          pendingMigrationsCount = pendingMigrations.length;
+          if (pendingMigrationsCount === 0) {
+            migrationsAlreadyUpToDate = true;
+            console.log('✅ Todas as migrations locais constam aplicadas na tabela _prisma_migrations.');
+          } else {
+            console.log(`ℹ️ Detectadas ${pendingMigrationsCount} migrations locais pendentes para aplicar:`, pendingMigrations);
+          }
+        } else {
+          pendingMigrationsCount = localMigrations.length;
+          console.log(`ℹ️ Tabela _prisma_migrations não encontrada. Há ${pendingMigrationsCount} migrations locais prontas para inicialização.`);
         }
 
         await connection.end();
@@ -117,47 +151,91 @@ export async function register() {
         console.error('========================================================================');
       }
 
+      // Helper para buscar o caminho exato do Prisma CLI localmente
+      function getPrismaCommand() {
+        const localPaths = [
+          path.join(process.cwd(), 'node_modules', 'prisma', 'build', 'index.js'),
+          path.join(process.cwd(), 'node_modules', '.bin', 'prisma'),
+          path.join(process.cwd(), '.next', 'standalone', 'node_modules', 'prisma', 'build', 'index.js')
+        ];
+
+        for (const p of localPaths) {
+          if (fs.existsSync(p)) {
+            console.log(`🔍 [Diagnóstico Prisma] CLI localizado localmente em: ${p}`);
+            if (p.endsWith('.js')) {
+              return `node "${p}"`;
+            }
+            return `"${p}"`;
+          }
+        }
+
+        console.log('⚠️ [Diagnóstico Prisma] CLI local não encontrado nos caminhos padrão. Tentando fallback "npx prisma"...');
+        return 'npx prisma';
+      }
+
       // 3. Execução das migrations do Prisma de forma segura e tratada
       console.log('\n==========================');
       console.log('INICIANDO PRISMA MIGRATE');
       console.log('==========================');
 
-      try {
-        console.log('Executando: "npx prisma migrate deploy"...');
-        // Usar stdio: 'pipe' para capturar o log exato de migração
-        const migrateOutput = execSync('npx prisma migrate deploy', {
-          env: process.env,
-          stdio: 'pipe',
-        }).toString();
-
-        console.log('------------------------------------------------------------------------');
-        console.log(migrateOutput.trim());
-        console.log('------------------------------------------------------------------------');
-
-        if (migrateOutput.includes('No pending migrations to apply.')) {
-          console.log('==========================');
-          console.log('NENHUMA MIGRATION PENDENTE');
-          console.log('==========================');
-        } else {
-          console.log('==========================');
-          console.log('MIGRATIONS EXECUTADAS');
-          console.log('==========================');
-        }
-
-        // Marcar que as migrações já foram tratadas nesta instância de processo
+      if (migrationsAlreadyUpToDate) {
+        console.log('==========================');
+        console.log('NENHUMA MIGRATION PENDENTE');
+        console.log('==========================');
+        console.log('ℹ️ O banco de dados já está totalmente atualizado (verificado via _prisma_migrations). Ignorando comando desnecessário.');
         process.env.MIGRATIONS_ALREADY_RUN = 'true';
-      } catch (migError: any) {
-        console.error('========================================================================');
-        console.error('❌ ERRO CRÍTICO AO EXECUTAR PRISMA MIGRATE DEPLOY:');
-        console.error(migError.message);
-        if (migError.stdout) {
-          console.error('\nStdout do comando:\n', migError.stdout.toString());
+      } else {
+        const prismaCmd = getPrismaCommand();
+        const commandToRun = `${prismaCmd} migrate deploy`;
+
+        try {
+          console.log(`Executando comando de migração: "${commandToRun}"...`);
+          // Usar stdio: 'pipe' para capturar o log exato de migração
+          const migrateOutput = execSync(commandToRun, {
+            env: process.env,
+            stdio: 'pipe',
+          }).toString();
+
+          console.log('------------------------------------------------------------------------');
+          console.log(migrateOutput.trim());
+          console.log('------------------------------------------------------------------------');
+
+          if (migrateOutput.includes('No pending migrations to apply.')) {
+            console.log('==========================');
+            console.log('NENHUMA MIGRATION PENDENTE');
+            console.log('==========================');
+          } else {
+            console.log('==========================');
+            console.log('MIGRATIONS EXECUTADAS');
+            console.log('==========================');
+          }
+
+          // Marcar que as migrações já foram tratadas nesta instância de processo
+          process.env.MIGRATIONS_ALREADY_RUN = 'true';
+        } catch (migError: any) {
+          console.error('========================================================================');
+          console.error('❌ ERRO CRÍTICO AO EXECUTAR PRISMA MIGRATE DEPLOY:');
+          console.error(`Mensagem: ${migError.message}`);
+
+          if (migError.message.includes('not found') || migError.message.includes('ENOENT') || migError.message.includes('npx')) {
+            console.error('\nDIAGNÓSTICO DA CAUSA EXATA (HOSTINGER / AMBIENTE DE PRODUÇÃO):');
+            console.error('👉 O ambiente de hospedagem compartilhada da Hostinger não disponibiliza o comando "npx" globalmente.');
+            console.error('👉 Buscamos o script executável local em node_modules, porém a execução falhou por restrição de ambiente.');
+            console.error('👉 Como ação imediata, por favor garanta que dependências estejam instaladas em produção rodando "npm install".');
+          } else {
+            console.error('\nDIAGNÓSTICO DA CAUSA EXATA:');
+            console.error('👉 Erro durante a comunicação interna do Prisma com a base MySQL ou arquivo de migration malformado.');
+          }
+
+          if (migError.stdout) {
+            console.error('\nStdout do comando:\n', migError.stdout.toString());
+          }
+          if (migError.stderr) {
+            console.error('\nStderr do comando:\n', migError.stderr.toString());
+          }
+          console.error('A aplicação prosseguirá a inicialização, mas pode encontrar instabilidades caso as tabelas estejam ausentes.');
+          console.error('========================================================================');
         }
-        if (migError.stderr) {
-          console.error('\nStderr do comando:\n', migError.stderr.toString());
-        }
-        console.error('Causa provável: Falha de conexão na execução do CLI Prisma, ou migrations corrompidas.');
-        console.error('========================================================================');
       }
 
       console.log('\n==========================');
