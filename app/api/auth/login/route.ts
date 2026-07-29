@@ -25,7 +25,39 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, password } = body;
     
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Verificar se a tabela User e as tabelas básicas existem
+    let user;
+    try {
+      user = await prisma.user.findUnique({ where: { email } });
+    } catch (dbError: any) {
+      const errorMsg = dbError.message || '';
+      const isMissingTable = dbError.code === 'P2021' || 
+                             errorMsg.includes('does not exist') || 
+                             errorMsg.includes('Table') || 
+                             errorMsg.includes('P2021');
+      if (isMissingTable) {
+        console.error('========================================================================');
+        console.error('[ERRO CRÍTICO] TABELA "User" NÃO ENCONTRADA NO BANCO DE DADOS!');
+        console.error('Causa provável: As migrations do Prisma não foram executadas no deploy.');
+        console.error('Por favor, certifique-se de executar "npx prisma migrate deploy" no ambiente de produção.');
+        console.error('Erro original:', errorMsg);
+        console.error('========================================================================');
+        
+        return NextResponse.json({ 
+          error: 'Erro de Inicialização: O banco de dados do sistema não foi devidamente configurado ou inicializado. As migrations do Prisma não foram executadas. Entre em contato com o suporte técnico.' 
+        }, { status: 503 });
+      }
+      
+      console.error('========================================================================');
+      console.error('[ERRO DE CONEXÃO AO BANCO DE DADOS] Falha ao consultar tabela User!');
+      console.error('Verifique as credenciais de DATABASE_URL na Hostinger.');
+      console.error('Erro original:', errorMsg);
+      console.error('========================================================================');
+      
+      return NextResponse.json({ 
+        error: 'Erro de Conexão: Não foi possível conectar ao banco de dados. Verifique a URL de conexão.' 
+      }, { status: 500 });
+    }
     
     if (!user) {
       const current = loginAttempts.get(ip) || { count: 0, lockUntil: 0 };
