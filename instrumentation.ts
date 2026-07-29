@@ -242,6 +242,14 @@ export async function register() {
       console.log('INICIANDO NEXT.JS');
       console.log('==========================');
 
+      // Executar o bootstrap do administrador padrão de forma segura e assíncrona
+      try {
+        const { bootstrapAdminUser } = await import('@/lib/bootstrap');
+        await bootstrapAdminUser();
+      } catch (bootstrapErr) {
+        console.error('❌ Erro ao importar/executar o bootstrap do administrador:', bootstrapErr);
+      }
+
     } catch (bootstrapErr: any) {
       console.error('========================================================================');
       console.error('❌ ERRO EXCEÇÃO NÃO TRATADA DURANTE O BOOTSTRAP INSTRUMENTATION:');
