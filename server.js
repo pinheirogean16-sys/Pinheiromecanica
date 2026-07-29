@@ -180,6 +180,7 @@ async function runAuditAndBoot() {
       console.log('==========================');
     }
     migrationsSuccess = true;
+    process.env.MIGRATIONS_ALREADY_RUN = 'true';
   } catch (migError) {
     console.error('========================================================================');
     console.error('❌ ERRO CRÍTICO NA EXECUÇÃO DO PRISMA MIGRATE DEPLOY:');
