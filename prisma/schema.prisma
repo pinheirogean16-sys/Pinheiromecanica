@@ -1,0 +1,624 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model AuditLog {
+  id           String   @id
+  modulo       String
+  acao         String
+  entidade     String
+  entidade_id  String
+  usuario      String
+  dados_antes  String?  @db.LongText
+  dados_depois String?  @db.LongText
+  ip           String?
+  created_at   DateTime @default(now())
+  empresa_id   String   @default("default")
+
+  @@index([empresa_id])
+  @@index([entidade_id])
+  @@index([modulo])
+  @@index([usuario])
+}
+
+model Checklist {
+  id                String              @id
+  nome              String
+  descricao         String?
+  categoria         String?
+  ativo             Boolean             @default(true)
+  created_at        DateTime            @default(now())
+  updated_at        DateTime
+  empresa_id        String              @default("default")
+  ChecklistExecucao ChecklistExecucao[]
+  ChecklistItem     ChecklistItem[]
+}
+
+model ChecklistExecucao {
+  id            String          @id
+  checklist_id  String
+  os_id         String?
+  veiculo_id    String?
+  executado_por String
+  data          DateTime        @default(now())
+  respostas     String          @db.LongText
+  observacoes   String?
+  created_at    DateTime        @default(now())
+  empresa_id    String          @default("default")
+  Checklist     Checklist       @relation(fields: [checklist_id], references: [id])
+  OrdemServico  OrdemServico?   @relation(fields: [os_id], references: [id])
+  Veiculo       Veiculo?        @relation(fields: [veiculo_id], references: [id])
+  ChecklistFoto ChecklistFoto[]
+
+  @@index([checklist_id], map: "ChecklistExecucao_checklist_id_fkey")
+  @@index([os_id], map: "ChecklistExecucao_os_id_fkey")
+  @@index([veiculo_id], map: "ChecklistExecucao_veiculo_id_fkey")
+}
+
+model ChecklistFoto {
+  id                String            @id
+  execucao_id       String
+  item_id           String?
+  url               String
+  legenda           String?
+  created_at        DateTime          @default(now())
+  ChecklistExecucao ChecklistExecucao @relation(fields: [execucao_id], references: [id], onDelete: Cascade)
+
+  @@index([execucao_id], map: "ChecklistFoto_execucao_id_fkey")
+}
+
+model ChecklistItem {
+  id           String    @id
+  checklist_id String
+  ordem        Int
+  descricao    String
+  obrigatorio  Boolean   @default(true)
+  tipo         String
+  created_at   DateTime  @default(now())
+  Checklist    Checklist @relation(fields: [checklist_id], references: [id], onDelete: Cascade)
+
+  @@index([checklist_id], map: "ChecklistItem_checklist_id_fkey")
+}
+
+model Cliente {
+  id                     String                   @id
+  tipo                   Cliente_tipo
+  nome                   String
+  cpf_cnpj               String                   @unique
+  telefone               String
+  email                  String?
+  endereco               String?
+  created_at             DateTime                 @default(now())
+  updated_at             DateTime
+  created_by             String?
+  updated_by             String?
+  nome_fantasia          String?
+  telefone_secundario    String?
+  ativo                  Boolean                  @default(true)
+  observacoes            String?
+  inscricao_estadual     String?
+  cep                    String?
+  numero                 String?
+  complemento            String?
+  bairro                 String?
+  cidade                 String?
+  uf                     String?
+  tipo_pessoa            String?
+  razao_social           String?
+  contato                String?
+  status                 String                   @default("ATIVO")
+  perfil                 String                   @default("CLIENTE")
+  empresa_id             String                   @default("default")
+  estado                 String?
+  EventoAgenda           EventoAgenda[]
+  MovimentacaoFinanceira MovimentacaoFinanceira[]
+  Orcamento              Orcamento[]
+  OrdemServico           OrdemServico[]
+  Veiculo                Veiculo[]
+}
+
+model ConfiguracaoEmpresa {
+  id                   String   @id @default("config_empresa")
+  nome_fantasia        String?
+  razao_social         String?
+  cnpj                 String?
+  inscricao_estadual   String?
+  inscricao_municipal  String?
+  endereco             String?
+  numero               String?
+  complemento          String?
+  bairro               String?
+  cidade               String?
+  uf                   String?
+  cep                  String?
+  telefone             String?
+  email                String?
+  logo_url             String?  @db.Text
+  rodape_personalizado String?  @db.Text
+  updated_at           DateTime
+  regime_tributario    String?
+  token_nfse           String?
+  pix                  String?
+  banco                String?
+  agencia              String?
+  conta                String?
+}
+
+model Empresa {
+  id         String   @id
+  nome       String
+  cnpj       String?  @unique
+  created_at DateTime @default(now())
+  updated_at DateTime
+  User       User[]
+}
+
+model EventoAgenda {
+  id                                  String              @id
+  titulo                              String
+  descricao                           String?             @db.Text
+  data_inicio                         DateTime
+  data_fim                            DateTime
+  tipo                                EventoAgenda_tipo
+  status                              EventoAgenda_status @default(AGENDADO)
+  cor                                 String?
+  os_id                               String?
+  cliente_id                          String?
+  veiculo_id                          String?
+  mecanico_id                         String?
+  usuario_id                          String
+  created_at                          DateTime            @default(now())
+  updated_at                          DateTime
+  empresa_id                          String              @default("default")
+  Cliente                             Cliente?            @relation(fields: [cliente_id], references: [id])
+  User_EventoAgenda_mecanico_idToUser User?               @relation("EventoAgenda_mecanico_idToUser", fields: [mecanico_id], references: [id])
+  OrdemServico                        OrdemServico?       @relation(fields: [os_id], references: [id])
+  User_EventoAgenda_usuario_idToUser  User                @relation("EventoAgenda_usuario_idToUser", fields: [usuario_id], references: [id])
+  Veiculo                             Veiculo?            @relation(fields: [veiculo_id], references: [id])
+
+  @@index([cliente_id], map: "EventoAgenda_cliente_id_fkey")
+  @@index([data_inicio])
+  @@index([empresa_id])
+  @@index([mecanico_id])
+  @@index([os_id], map: "EventoAgenda_os_id_fkey")
+  @@index([usuario_id])
+  @@index([veiculo_id], map: "EventoAgenda_veiculo_id_fkey")
+}
+
+model MovimentacaoEstoque {
+  id           String                   @id
+  peca_id      String
+  tipo         MovimentacaoEstoque_tipo
+  quantidade   Float
+  motivo       String                   @default("AJUSTE")
+  observacao   String?                  @db.Text
+  os_id        String?
+  usuario_id   String
+  empresa_id   String                   @default("default")
+  created_at   DateTime                 @default(now())
+  OrdemServico OrdemServico?            @relation(fields: [os_id], references: [id])
+  Peca         Peca                     @relation(fields: [peca_id], references: [id], onDelete: Cascade)
+
+  @@index([empresa_id])
+  @@index([os_id], map: "MovimentacaoEstoque_os_id_fkey")
+  @@index([peca_id])
+  @@index([usuario_id])
+}
+
+model MovimentacaoFinanceira {
+  id               String                      @id
+  tipo             MovimentacaoFinanceira_tipo
+  descricao        String
+  valor            Decimal                     @db.Decimal(10, 2)
+  os_id            String?
+  data             DateTime                    @default(now())
+  created_by       String
+  created_at       DateTime                    @default(now())
+  updated_by       String?
+  updated_at       DateTime
+  data_vencimento  DateTime?
+  data_pagamento   DateTime?
+  status           String                      @default("PENDENTE")
+  forma_pagamento  String?
+  categoria        String?
+  centro_custo     String?
+  numero_documento String?
+  comprovante_url  String?
+  cliente_id       String?
+  empresa_id       String                      @default("default")
+  Cliente          Cliente?                    @relation(fields: [cliente_id], references: [id])
+  OrdemServico     OrdemServico?               @relation(fields: [os_id], references: [id])
+
+  @@index([cliente_id], map: "MovimentacaoFinanceira_cliente_id_fkey")
+  @@index([os_id], map: "MovimentacaoFinanceira_os_id_fkey")
+}
+
+model Notificacao {
+  id         String   @id
+  titulo     String
+  mensagem   String   @db.Text
+  link       String?
+  lida       Boolean  @default(false)
+  usuario_id String
+  created_at DateTime @default(now())
+  empresa_id String   @default("default")
+  User       User     @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+
+  @@index([empresa_id])
+  @@index([usuario_id])
+  @@index([usuario_id, lida, created_at])
+}
+
+model Orcamento {
+  id               String             @id
+  numero           String
+  cliente_id       String
+  veiculo_id       String?
+  status           Orcamento_status   @default(RASCUNHO)
+  data_criacao     DateTime           @default(now())
+  data_validade    DateTime?
+  desconto         Decimal            @default(0.00) @db.Decimal(10, 2)
+  valor_servicos   Decimal            @default(0.00) @db.Decimal(10, 2)
+  valor_pecas      Decimal            @default(0.00) @db.Decimal(10, 2)
+  valor_total      Decimal            @default(0.00) @db.Decimal(10, 2)
+  observacoes      String?            @db.Text
+  termos_condicoes String?            @db.Text
+  created_by       String?
+  updated_by       String?
+  created_at       DateTime           @default(now())
+  updated_at       DateTime
+  empresa_id       String             @default("default")
+  Cliente          Cliente            @relation(fields: [cliente_id], references: [id])
+  Veiculo          Veiculo?           @relation(fields: [veiculo_id], references: [id])
+  OrcamentoPeca    OrcamentoPeca[]
+  OrcamentoServico OrcamentoServico[]
+  OrdemServico     OrdemServico?
+
+  @@unique([numero, empresa_id])
+  @@index([cliente_id], map: "Orcamento_cliente_id_fkey")
+  @@index([veiculo_id], map: "Orcamento_veiculo_id_fkey")
+}
+
+model OrcamentoPeca {
+  id           String    @id
+  orcamento_id String
+  peca_id      String?
+  descricao    String
+  quantidade   Float     @default(0)
+  valor_unit   Decimal   @default(0.00) @db.Decimal(10, 2)
+  valor_total  Decimal   @default(0.00) @db.Decimal(10, 2)
+  unidade      String?   @default("un")
+  Orcamento    Orcamento @relation(fields: [orcamento_id], references: [id], onDelete: Cascade)
+
+  @@index([orcamento_id], map: "OrcamentoPeca_orcamento_id_fkey")
+}
+
+model OrcamentoServico {
+  id           String    @id
+  orcamento_id String
+  descricao    String
+  horas        Float     @default(0)
+  valor_hora   Decimal   @default(0.00) @db.Decimal(10, 2)
+  valor_total  Decimal   @default(0.00) @db.Decimal(10, 2)
+  Orcamento    Orcamento @relation(fields: [orcamento_id], references: [id], onDelete: Cascade)
+
+  @@index([orcamento_id], map: "OrcamentoServico_orcamento_id_fkey")
+}
+
+model OrdemServico {
+  id                       String                   @id
+  numero                   Int                      @unique @default(autoincrement())
+  status                   OrdemServico_status      @default(ABERTA)
+  diagnostico              String?
+  cliente_id               String
+  veiculo_id               String
+  mecanico_id              String?
+  valor_servicos           Decimal                  @default(0.00) @db.Decimal(10, 2)
+  valor_pecas              Decimal                  @default(0.00) @db.Decimal(10, 2)
+  valor_total              Decimal                  @default(0.00) @db.Decimal(10, 2)
+  desconto                 Decimal                  @default(0.00) @db.Decimal(10, 2)
+  data_entrada             DateTime                 @default(now())
+  data_previsao            DateTime?
+  data_finalizada          DateTime?
+  observacoes              String?                  @db.LongText
+  created_at               DateTime                 @default(now())
+  updated_at               DateTime                 @updatedAt
+  created_by               String?
+  updated_by               String?
+  orcamento_id             String?                  @unique
+  forma_pagamento          String?
+  numero_parcelas          Int?
+  dias_entre_parcelas      Int?                     @default(28)
+  data_vencimento_primeira DateTime?
+  empresa_id               String                   @default("default")
+  despesa_alimentacao      Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesa_combustivel      Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesa_diaria_tecnica   Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesa_guincho          Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesa_hospedagem       Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesa_outros           Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesa_pedagio          Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesas_comprovantes    String?                  @db.Text
+  ferramentas_levadas      String?                  @db.Text
+  km_retorno               Float?                   @default(0)
+  km_saida                 Float?                   @default(0)
+  km_total                 Float?                   @default(0)
+  local_atendimento        String?
+  local_cidade             String?
+  local_estado             String?
+  local_gps                String?
+  mao_obra_equipe          String?                  @db.Text
+  mao_obra_externa_horas   Float?                   @default(0)
+  mao_obra_externa_total   Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  mao_obra_externa_valor   Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  timeline_viagem          String?                  @db.Text
+  tipo_atendimento         String?                  @default("OFICINA")
+  total_deslocamento       Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  valor_km                 Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  tipoOS                   String?                  @default("OFICINA")
+  assinatura_cliente       String?                  @db.Text
+  assinatura_hash          String?
+  assinatura_mecanico      String?                  @db.Text
+  assinatura_supervisor    String?                  @db.Text
+  assinatura_timestamp     DateTime?
+  centro_custo             String?                  @default("OFICINA")
+  custo_deslocamento       Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  custo_km                 Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  custo_mao_obra           Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  custo_pecas              Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  custo_real               Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  despesas_extras          Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  lucro_bruto              Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  margem_lucro             Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  total_liquido            Decimal?                 @default(0.00) @db.Decimal(10, 2)
+  ChecklistExecucao        ChecklistExecucao[]
+  EventoAgenda             EventoAgenda[]
+  MovimentacaoEstoque      MovimentacaoEstoque[]
+  MovimentacaoFinanceira   MovimentacaoFinanceira[]
+  Cliente                  Cliente                  @relation(fields: [cliente_id], references: [id])
+  User                     User?                    @relation(fields: [mecanico_id], references: [id])
+  Orcamento                Orcamento?               @relation(fields: [orcamento_id], references: [id])
+  Veiculo                  Veiculo                  @relation(fields: [veiculo_id], references: [id])
+  PecaAplicada             PecaAplicada[]
+  ServicoOS                ServicoOS[]
+
+  @@index([cliente_id], map: "OrdemServico_cliente_id_fkey")
+  @@index([mecanico_id], map: "OrdemServico_mecanico_id_fkey")
+  @@index([veiculo_id], map: "OrdemServico_veiculo_id_fkey")
+}
+
+model Peca {
+  id                  String                @id
+  codigo              String
+  descricao           String
+  fabricante          String?
+  categoria           Peca_categoria
+  quantidade          Float                 @default(0)
+  estoque_minimo      Float                 @default(5)
+  localizacao         String?
+  preco_custo         Decimal               @db.Decimal(10, 2)
+  preco_venda         Decimal               @db.Decimal(10, 2)
+  created_at          DateTime              @default(now())
+  updated_at          DateTime
+  created_by          String?
+  updated_by          String?
+  empresa_id          String                @default("default")
+  fatorConversao      Float                 @default(1)
+  permiteFracionado   Boolean               @default(false)
+  unidadeCompra       String                @default("un")
+  unidadeMedida       String                @default("un")
+  MovimentacaoEstoque MovimentacaoEstoque[]
+  PecaAplicada        PecaAplicada[]
+
+  @@unique([codigo, empresa_id])
+}
+
+model PecaAplicada {
+  id           String       @id
+  os_id        String
+  peca_id      String
+  quantidade   Float
+  valor_unit   Decimal      @db.Decimal(10, 2)
+  valor_total  Decimal      @default(0.00) @db.Decimal(10, 2)
+  unidade      String?      @default("un")
+  origem       String?      @default("OFICINA")
+  OrdemServico OrdemServico @relation(fields: [os_id], references: [id], onDelete: Cascade)
+  Peca         Peca         @relation(fields: [peca_id], references: [id])
+
+  @@index([os_id], map: "PecaAplicada_os_id_fkey")
+  @@index([peca_id], map: "PecaAplicada_peca_id_fkey")
+}
+
+model Preventiva {
+  id          String    @id
+  empresa_id  String    @default("default")
+  veiculo_id  String
+  componente  String
+  descricao   String?
+  km_limite   Int?
+  km_atual    Int?
+  data_limite DateTime?
+  status      String    @default("SAUDAVEL")
+  observacoes String?
+  notificado  Boolean   @default(false)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime
+  Veiculo     Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
+
+  @@index([veiculo_id])
+}
+
+model RefreshToken {
+  id         String   @id
+  token_hash String
+  user_id    String
+  expires_at DateTime
+  created_at DateTime @default(now())
+  User       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "RefreshToken_user_id_fkey")
+}
+
+model ServicoOS {
+  id           String       @id
+  os_id        String
+  descricao    String
+  horas        Float?
+  valor_hora   Decimal?     @default(150.00) @db.Decimal(10, 2)
+  valor_total  Decimal      @default(0.00) @db.Decimal(10, 2)
+  OrdemServico OrdemServico @relation(fields: [os_id], references: [id], onDelete: Cascade)
+
+  @@index([os_id], map: "ServicoOS_os_id_fkey")
+}
+
+model User {
+  id                                          String         @id
+  name                                        String
+  email                                       String         @unique
+  password_hash                               String
+  role                                        User_role      @default(MECANICO)
+  especialidade                               String?
+  comissao                                    Decimal        @default(0.00) @db.Decimal(10, 2)
+  created_at                                  DateTime       @default(now())
+  updated_at                                  DateTime
+  empresa_id                                  String         @default("default")
+  EventoAgenda_EventoAgenda_mecanico_idToUser EventoAgenda[] @relation("EventoAgenda_mecanico_idToUser")
+  EventoAgenda_EventoAgenda_usuario_idToUser  EventoAgenda[] @relation("EventoAgenda_usuario_idToUser")
+  Notificacao                                 Notificacao[]
+  OrdemServico                                OrdemServico[]
+  RefreshToken                                RefreshToken[]
+  Empresa                                     Empresa        @relation(fields: [empresa_id], references: [id])
+
+  @@index([empresa_id], map: "User_empresa_id_fkey")
+}
+
+model Veiculo {
+  id                String              @id
+  placa             String              @unique
+  modelo            String
+  marca             String
+  ano               Int
+  tipo              Veiculo_tipo
+  quilometragem     Int?
+  cliente_id        String
+  created_at        DateTime            @default(now())
+  updated_at        DateTime
+  created_by        String?
+  updated_by        String?
+  horimetro_atual   Float?
+  empresa_id        String              @default("default")
+  ChecklistExecucao ChecklistExecucao[]
+  EventoAgenda      EventoAgenda[]
+  Orcamento         Orcamento[]
+  OrdemServico      OrdemServico[]
+  Preventiva        Preventiva[]
+  Cliente           Cliente             @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+
+  @@index([cliente_id], map: "Veiculo_cliente_id_fkey")
+}
+
+enum Cliente_tipo {
+  PF
+  PJ
+}
+
+enum MovimentacaoFinanceira_tipo {
+  ENTRADA
+  SAIDA
+}
+
+enum MovimentacaoEstoque_tipo {
+  ENTRADA
+  SAIDA
+}
+
+enum OrdemServico_status {
+  ABERTA
+  EM_DIAGNOSTICO
+  AGUARDANDO_PECAS
+  EM_EXECUCAO
+  AGUARDANDO_APROVACAO
+  FINALIZADA
+  ENTREGUE
+  CANCELADA
+}
+
+enum Orcamento_status {
+  RASCUNHO
+  ENVIADO
+  APROVADO
+  REPROVADO
+  CONVERTIDO
+}
+
+enum User_role {
+  ADMIN
+  LIDER
+  MECANICO
+  ESTOQUISTA
+  FINANCEIRO
+}
+
+enum Peca_categoria {
+  MOTOR
+  INJECAO_ELETRONICA
+  TURBO
+  FREIOS
+  SUSPENSAO
+  TRANSMISSAO
+  FILTROS
+  OLEOS_LUBRIFICANTES
+  ARREFECIMENTO
+  ESCAPAMENTO
+  ELETRICA
+  OUTROS
+}
+
+enum EventoAgenda_tipo {
+  OS
+  REVISAO
+  MANUTENCAO_PREVENTIVA
+  VISTORIA
+  ENTREGA
+  OUTRO
+}
+
+enum Veiculo_tipo {
+  CAVALO_MECANICO
+  CARRETA
+  ONIBUS
+  UTILITARIO
+  CAMINHAO_LEVE
+  CAMINHAO_PESADO
+  CAMINHONETE
+  VAN
+  RETROESCAVADEIRA
+  ESCAVADEIRA_HIDRAULICA
+  PA_CARREGADEIRA
+  MOTONIVELADORA
+  TRATOR_ESTEIRA
+  ROLO_COMPACTADOR
+  VIBROACABADORA
+  FRESADORA
+  USINA_ASFALTO
+  EMPILHADEIRA
+  GUINDASTE
+  PERFURATRIZ
+  TRATOR_AGRICOLA
+  CAMINHAO_PIPA
+  CAMINHAO_MUNCK
+  EQUIPAMENTO_ASFALTO
+  OUTROS
+}
+
+enum EventoAgenda_status {
+  AGENDADO
+  EM_ANDAMENTO
+  CONCLUIDO
+  CANCELADO
+}
