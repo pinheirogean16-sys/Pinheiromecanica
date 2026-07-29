@@ -10,6 +10,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    console.log('🔑 [LoginPage] LOGIN PAGE INICIADA');
+    console.log('🔑 [LoginPage] AUTH PROVIDER CARREGADO');
+    console.log('🔑 [LoginPage] LOGIN FORM RENDERIZADO');
+  }, []);
+
   const [corPrincipal, setCorPrincipal] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('corPrincipal') || '#F97316';
@@ -60,9 +66,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 relative overflow-hidden">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+      <div
         className="w-full max-w-md p-6 lg:p-8 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-2xl lg:rounded-3xl shadow-2xl relative z-10"
       >
         <div className="text-center mb-8">
@@ -138,7 +142,7 @@ export default function LoginPage() {
         <p className="text-center text-zinc-600 text-xs mt-8">
           &copy; {new Date().getFullYear()} {nomeSistema}. Todos os direitos reservados.
         </p>
-      </motion.div>
+      </div>
     </div>
   );
 }
