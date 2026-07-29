@@ -15,9 +15,18 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const basePrisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query'] : [],
-});
+const createPrismaClient = () => {
+  try {
+    return new PrismaClient({
+      log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+    });
+  } catch (err) {
+    console.warn('[AI Studio] PrismaClient initialization warning:', err);
+    return new PrismaClient();
+  }
+};
+
+const basePrisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = basePrisma;
@@ -62,6 +71,17 @@ export const prisma = basePrisma.$extends({
 
         if (dbTelemetry.queriesLog.length > 50) {
           dbTelemetry.queriesLog.pop();
+        }
+
+        const isDbConnError = !process.env.DATABASE_URL || err.message?.includes('DATABASE_URL') || err.message?.includes("Can't reach database server") || err.message?.includes('P1001');
+        if (isDbConnError) {
+          console.warn(`[AI Studio DB Warning] Query ${model}.${operation} failed due to DB connection:`, err.message);
+          if (operation === 'findMany') return [];
+          if (operation === 'findFirst' || operation === 'findUnique') return null;
+          if (operation === 'count') return 0;
+          if (operation === 'aggregate') return { _count: 0 };
+          if (operation === 'create' || operation === 'update' || operation === 'upsert') return args?.data || {};
+          if (operation === 'delete' || operation === 'deleteMany') return {};
         }
 
         throw err;

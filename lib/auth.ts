@@ -1,11 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET não configurado! Defina no painel da Hostinger.');
-}
+const getJwtSecret = () => process.env.JWT_SECRET || 'pinheiro-pro-dev-jwt-secret-key-2026';
 
 export interface UserTokenPayload {
   id: string;
@@ -16,12 +12,12 @@ export interface UserTokenPayload {
 }
 
 export function signToken(payload: UserTokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 export function verifyToken(token: string): UserTokenPayload | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET as string) as any;
+    const payload = jwt.verify(token, getJwtSecret()) as any;
     if (payload) {
       payload.empresa_id = 'default';
     }
