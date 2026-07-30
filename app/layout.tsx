@@ -96,14 +96,10 @@ export default function RootLayout({
             })();
           `
         }} />
-        {(() => {
-          console.log('🖥️ [RootLayout] LAYOUT RENDERIZADO (Server-side)');
-          return null;
-        })()}
         <AppearanceManager />
         <LayoutWrapper>{children}</LayoutWrapper>
         <Toaster theme="dark" position="top-right" richColors />
-        <DiagnosticsOverlay />
+        {process.env.NODE_ENV === 'development' && <DiagnosticsOverlay />}
       </body>
     </html>
   );

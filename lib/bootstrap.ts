@@ -1,4 +1,4 @@
-import { prisma } from './prisma';
+import { basePrisma } from './prisma';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
@@ -7,13 +7,13 @@ export async function bootstrapAdminUser() {
   try {
     // 1. Garantir que a empresa padrão existe
     const empresaId = 'default';
-    let empresa = await prisma.empresa.findUnique({
+    let empresa = await basePrisma.empresa.findUnique({
       where: { id: empresaId }
     });
 
     if (!empresa) {
       console.log('🤖 [Bootstrap] Empresa padrão não encontrada. Criando...');
-      empresa = await prisma.empresa.create({
+      empresa = await basePrisma.empresa.create({
         data: {
           id: empresaId,
           nome: 'Empresa Padrão',
@@ -29,7 +29,7 @@ export async function bootstrapAdminUser() {
 
     // 2. Garantir que o usuário administrador existe
     const adminEmail = 'geanzinppsc@gmail.com';
-    const adminUser = await prisma.user.findUnique({
+    const adminUser = await basePrisma.user.findUnique({
       where: { email: adminEmail }
     });
 
@@ -38,7 +38,7 @@ export async function bootstrapAdminUser() {
       
       const hashedPassword = await bcrypt.hash('290720Be', 10);
       
-      await prisma.user.create({
+      await basePrisma.user.create({
         data: {
           id: crypto.randomUUID(),
           name: 'Administrador',

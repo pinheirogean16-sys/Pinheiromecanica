@@ -2,7 +2,17 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import { isRateLimited } from '@/lib/rate-limit';
 
-const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/register', '/api/auditoria'];
+const PUBLIC_ROUTES = [
+  '/login',
+  '/register',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/register',
+  '/api/auditoria',
+  '/favicon.ico',
+  '/manifest.json',
+  '/sw.js'
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

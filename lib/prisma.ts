@@ -26,15 +26,35 @@ const createPrismaClient = () => {
   }
 };
 
-const basePrisma = globalForPrisma.prisma ?? createPrismaClient();
+export const basePrisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = basePrisma;
 }
 
+let bootstrapPromise: Promise<void> | null = null;
+
+async function ensureBootstrap() {
+  if (typeof window !== 'undefined') return;
+  if (!bootstrapPromise) {
+    bootstrapPromise = (async () => {
+      try {
+        console.log('🤖 [Prisma Lazy Bootstrap] Verificando administrador padrão...');
+        const { bootstrapAdminUser } = await import('@/lib/bootstrap');
+        await bootstrapAdminUser();
+        console.log('✅ [Prisma Lazy Bootstrap] Verificação concluída.');
+      } catch (err) {
+        console.error('❌ [Prisma Lazy Bootstrap] Erro durante o bootstrap do administrador:', err);
+      }
+    })();
+  }
+  await bootstrapPromise;
+}
+
 export const prisma = basePrisma.$extends({
   query: {
     async $allOperations({ model, operation, args, query }: any) {
+      await ensureBootstrap();
       dbTelemetry.totalQueries++;
       const startTime = Date.now();
       try {
@@ -76,12 +96,6 @@ export const prisma = basePrisma.$extends({
         const isDbConnError = !process.env.DATABASE_URL || err.message?.includes('DATABASE_URL') || err.message?.includes("Can't reach database server") || err.message?.includes('P1001');
         if (isDbConnError) {
           console.warn(`[AI Studio DB Warning] Query ${model}.${operation} failed due to DB connection:`, err.message);
-          if (operation === 'findMany') return [];
-          if (operation === 'findFirst' || operation === 'findUnique') return null;
-          if (operation === 'count') return 0;
-          if (operation === 'aggregate') return { _count: 0 };
-          if (operation === 'create' || operation === 'update' || operation === 'upsert') return args?.data || {};
-          if (operation === 'delete' || operation === 'deleteMany') return {};
         }
 
         throw err;
