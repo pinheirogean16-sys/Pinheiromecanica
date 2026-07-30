@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { usePathname, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { Wrench } from 'lucide-react';
+import { isPublicRoute } from './LayoutWrapper';
 
 interface UserTokenPayload {
   id: string;
@@ -28,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const isLoginPage = pathname === '/login';
+  const isPublic = isPublicRoute(pathname || '');
 
   const logout = useCallback(async () => {
     try {
@@ -48,22 +49,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data && data.id) {
         setUser(data);
         localStorage.setItem('user_session', JSON.stringify(data));
+        // Redirect to dashboard if logged-in user visits a public-only entry gate like /login or /register
+        if (pathname === '/login' || pathname === '/register') {
+          router.push('/dashboard');
+        }
       } else {
-        throw new Error('Invalido');
+        throw new Error('Sessão inválida');
       }
     } catch (err) {
       setUser(null);
       localStorage.removeItem('user_session');
-      if (!isLoginPage) {
+      if (!isPublic) {
         logout();
       }
     } finally {
       setLoading(false);
     }
-  }, [isLoginPage, logout]);
+  }, [isPublic, pathname, router, logout]);
 
   useEffect(() => {
-    // Safe pre-loading of session for instant visual feedback
+    // Safe pre-loading of session for instant visual feedback on client
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('user_session');
       if (saved) {
@@ -77,8 +82,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshSession();
   }, [refreshSession]);
 
-  // If loading and not on login page, block layout rendering and show visual loader
-  if (loading && !isLoginPage) {
+  // Public route: render children immediately without blocking layout or triggering visual loaders
+  if (isPublic) {
+    return (
+      <AuthContext.Provider value={{ user, loading, logout, refreshSession }}>
+        {children}
+      </AuthContext.Provider>
+    );
+  }
+
+  // Protected route & loading: show visual loader
+  if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 font-mono">
         <div className="text-center space-y-4">
@@ -94,8 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If not authenticated and not on login page, block layout rendering and wait for router.push to trigger
-  if (!loading && !user && !isLoginPage) {
+  // Protected route & not authenticated: block layout rendering entirely and let router handle redirect
+  if (!user) {
     return null;
   }
 

@@ -407,7 +407,12 @@ class RequestManager {
           this.telemetry.rateLimitBlocks++;
         }
         if (response.status === 401 || response.status === 403) {
-          this.handleUnauthorized();
+          const isAuthPath = path.includes('/api/auth/login') || path.includes('/api/auth/session') || path.includes('/api/register');
+          const isPublicPage = typeof window !== 'undefined' && 
+            ['/login', '/register', '/cadastro', '/esqueci-senha', '/trial'].some(p => window.location.pathname === p);
+          if (!isAuthPath && !isPublicPage) {
+            this.handleUnauthorized();
+          }
         }
         throw {
           status: response.status,
@@ -432,7 +437,12 @@ class RequestManager {
       const status = err.status || 0;
 
       if (status === 401 || status === 403) {
-        this.handleUnauthorized();
+        const isAuthPath = path.includes('/api/auth/login') || path.includes('/api/auth/session') || path.includes('/api/register');
+        const isPublicPage = typeof window !== 'undefined' && 
+          ['/login', '/register', '/cadastro', '/esqueci-senha', '/trial'].some(p => window.location.pathname === p);
+        if (!isAuthPath && !isPublicPage) {
+          this.handleUnauthorized();
+        }
       }
 
       // Detect if we should retry (network dropouts or server timeouts, but do not retry 403, 401 or user cancellation)

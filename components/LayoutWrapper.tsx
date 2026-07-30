@@ -5,16 +5,23 @@ import { useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 
+export function isPublicRoute(pathname: string): boolean {
+  const publicRoutes = ['/login', '/register', '/cadastro', '/esqueci-senha', '/trial', '/offline.html'];
+  if (publicRoutes.includes(pathname)) return true;
+  if (pathname === '/' || pathname === '') return true;
+  return false;
+}
+
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLoginPage = pathname === '/login';
+  const isPublic = isPublicRoute(pathname);
 
   useEffect(() => {
-    console.log(`🌐 [LayoutWrapper] CARREGADO - Rota atual: ${pathname}`);
-  }, [pathname]);
+    console.log(`🌐 [LayoutWrapper] CARREGADO - Rota atual: ${pathname} (Pública: ${isPublic})`);
+  }, [pathname, isPublic]);
 
-  if (isLoginPage) {
-    console.log('🖥️ [LayoutWrapper] Renderizando rota pública de LOGIN sem estrutura de Dashboard');
+  if (isPublic) {
+    console.log(`🖥️ [LayoutWrapper] Renderizando rota pública (${pathname}) sem estrutura de Dashboard`);
     return <>{children}</>;
   }
 
@@ -31,3 +38,4 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     </div>
   );
 }
+
