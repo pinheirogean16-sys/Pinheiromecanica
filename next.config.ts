@@ -33,11 +33,7 @@ const nextConfig: NextConfig = {
       };
     }
     if (dev) {
-      if (nextRuntime === 'edge' || isServer) {
-        config.devtool = false; // Disable sourcemaps completely for Edge/Server to prevent eval
-      } else {
-        config.devtool = 'source-map';
-      }
+      config.devtool = false;
     } else {
       config.parallelism = 1; // Otimização para baixo consumo de memória
       config.devtool = false; // Disable sourcemaps completely to save RAM
