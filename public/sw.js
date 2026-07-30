@@ -42,11 +42,12 @@ self.addEventListener('fetch', (event) => {
       }
 
       return fetch(event.request).then((networkResponse) => {
-        // Cache static files dynamically only if response is valid (status 200 ok)
+        // Cache static files dynamically only if response is valid (status 200 ok) and NOT a Next.js chunk/asset
         const url = new URL(event.request.url);
         if (
           networkResponse &&
           networkResponse.status === 200 &&
+          !url.pathname.includes('/_next/') && // Never cache Next.js chunks or build assets dynamically
           (url.pathname.endsWith('.css') ||
            url.pathname.endsWith('.js') ||
            url.pathname.endsWith('.woff2') ||

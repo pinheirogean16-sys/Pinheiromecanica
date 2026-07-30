@@ -54,7 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.push('/dashboard');
         }
       } else {
-        throw new Error('Sessão inválida');
+        setUser(null);
+        localStorage.removeItem('user_session');
+        if (!isPublic) {
+          logout();
+        }
       }
     } catch (err) {
       setUser(null);
