@@ -1,8 +1,7 @@
-const CACHE_NAME = 'pinheiro-pro-v2';
+const CACHE_NAME = 'pinheiro-pro-v3';
 const OFFLINE_URL = '/offline.html';
 
 const ASSETS_TO_CACHE = [
-  '/',
   '/globals.css',
   '/offline.html',
   '/manifest.json'

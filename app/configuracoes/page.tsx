@@ -63,33 +63,26 @@ export default function ConfiguracoesPage() {
   const [loading, setLoading] = useState(true);
 
   // Estados de Aparência
-  const [corPrincipal, setCorPrincipal] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('corPrincipal') || '#F97316';
-    }
-    return '#F97316';
-  });
+  const [corPrincipal, setCorPrincipal] = useState('#F97316');
+  const [logoPreview, setLogoPreview] = useState('');
+  const [nomeSistema, setNomeSistema] = useState('Pinheiro Diesel Pro');
+  const [faviconPreview, setFaviconPreview] = useState('');
 
-  const [logoPreview, setLogoPreview] = useState(() => {
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('logo') || '';
-    }
-    return '';
-  });
+      const savedCor = localStorage.getItem('corPrincipal');
+      if (savedCor) setCorPrincipal(savedCor);
 
-  const [nomeSistema, setNomeSistema] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('nomeSistema') || 'Pinheiro Diesel Pro';
-    }
-    return 'Pinheiro Diesel Pro';
-  });
+      const savedLogo = localStorage.getItem('logo');
+      if (savedLogo) setLogoPreview(savedLogo);
 
-  const [faviconPreview, setFaviconPreview] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('favicon') || '';
+      const savedNome = localStorage.getItem('nomeSistema');
+      if (savedNome) setNomeSistema(savedNome);
+
+      const savedFavicon = localStorage.getItem('favicon');
+      if (savedFavicon) setFaviconPreview(savedFavicon);
     }
-    return '';
-  });
+  }, []);
 
   // Estado da Empresa
   const [companyData, setCompanyData] = useState<any>({
