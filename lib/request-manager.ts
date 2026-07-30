@@ -47,6 +47,9 @@ class RequestManager {
   // Memory Cache
   private memoryCache = new Map<string, CacheItem>();
 
+  // Session redirect lock to prevent parallel 401 redirect storms
+  private isRedirectingToLogin = false;
+
   // Telemetry indicators for enterprise HUD (CTRL + SHIFT + D)
   public telemetry = {
     totalRequests: 0,
@@ -64,6 +67,40 @@ class RequestManager {
     // Attempt local storage cleanup of expired keys in background
     if (typeof window !== 'undefined') {
       setTimeout(() => this.cleanupIndexedCache(), 1000);
+    }
+  }
+
+  /**
+   * Centralized unauthorized handler.
+   * Cancels all pending API queues, aborts ongoing network calls, clears cookies, and redirects.
+   */
+  public handleUnauthorized() {
+    if (this.isRedirectingToLogin) return;
+    this.isRedirectingToLogin = true;
+
+    console.warn('🚨 [RequestManager] 401/403 detectado. Interrompendo chamadas de API e redirecionando...');
+
+    // 1. Clear queue immediately
+    this.queue = [];
+
+    // 2. Abort active connections
+    this.abortControllers.forEach(controller => {
+      try {
+        controller.abort();
+      } catch {}
+    });
+    this.abortControllers.clear();
+    this.dedupeMap.clear();
+
+    // 3. Clear auth cookies and local user data
+    if (typeof window !== 'undefined') {
+      try {
+        document.cookie = "auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        localStorage.removeItem('user_session');
+        window.location.href = '/login';
+      } catch (e) {
+        console.error('Erro ao redirecionar após 401:', e);
+      }
     }
   }
 
@@ -214,6 +251,11 @@ class RequestManager {
    * Dispatches of queues the request to maintain a strict concurrent execution model
    */
   public async request<T = any>(path: string, config: RequestConfig = {}): Promise<T> {
+    const isAuthPath = path.includes('/api/auth/login') || path.includes('/api/auth/session');
+    if (this.isRedirectingToLogin && !isAuthPath) {
+      return Promise.reject(new Error('Sessão expirada ou não autorizada. Requisição bloqueada.'));
+    }
+
     this.telemetry.totalRequests++;
 
     const method = (config.method || 'GET').toUpperCase();
@@ -364,6 +406,9 @@ class RequestManager {
         if (response.status === 429) {
           this.telemetry.rateLimitBlocks++;
         }
+        if (response.status === 401 || response.status === 403) {
+          this.handleUnauthorized();
+        }
         throw {
           status: response.status,
           statusText: response.statusText,
@@ -385,6 +430,10 @@ class RequestManager {
 
       const isAbort = err.name === 'AbortError' || err.message === 'The user aborted a request.';
       const status = err.status || 0;
+
+      if (status === 401 || status === 403) {
+        this.handleUnauthorized();
+      }
 
       // Detect if we should retry (network dropouts or server timeouts, but do not retry 403, 401 or user cancellation)
       const shouldRetry = 

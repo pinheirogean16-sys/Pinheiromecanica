@@ -11,6 +11,62 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Detect ChunkLoadError or Loading Chunk issues
+    const errStr = (error.message || '') + ' ' + (error.stack || '');
+    const isChunkError = 
+      errStr.includes('ChunkLoadError') || 
+      errStr.includes('Loading chunk') || 
+      errStr.includes('Failed to fetch') ||
+      errStr.includes('dynamically imported module') ||
+      errStr.includes('Loading CSS chunk');
+
+    if (isChunkError) {
+      console.warn('🔄 [ErrorBoundary] Erro de carregamento de chunk detectado! Tentando autorecuperar...');
+      try {
+        if (typeof window !== 'undefined') {
+          const lastReload = sessionStorage.getItem('chunk_error_reload_time');
+          const now = Date.now();
+          
+          if (!lastReload || now - parseInt(lastReload) > 15000) {
+            sessionStorage.setItem('chunk_error_reload_time', now.toString());
+            
+            // Unregister Service Workers
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then((registrations) => {
+                for (const registration of registrations) {
+                  registration.unregister();
+                }
+              });
+            }
+            
+            // Clear Cache Storage
+            if ('caches' in window) {
+              caches.keys().then((names) => {
+                for (const name of names) {
+                  caches.delete(name);
+                }
+              });
+            }
+            
+            // Clear requestManager caches
+            for (const key of Object.keys(localStorage)) {
+              if (key.startsWith('rm_cache:')) {
+                localStorage.removeItem(key);
+              }
+            }
+            
+            console.log('🔄 [ErrorBoundary] Caches limpos. Recarregando página...');
+            setTimeout(() => {
+              window.location.reload();
+            }, 400);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Falha ao autorrecuperar no Error Boundary:', e);
+      }
+    }
+
     // Log the error to our debug log API
     try {
       fetch('/api/debug/error-log', {
