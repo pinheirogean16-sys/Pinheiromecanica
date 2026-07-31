@@ -11,31 +11,20 @@ export default function ImprimirOSPage() {
   const id = params?.id;
   const [os, setOs] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [company, setCompany] = useState<any>(null);
-  const [logo, setLogo] = useState<string>('');
-
-  useEffect(() => {
+  const [company, setCompany] = useState<any>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('companyData');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          setCompany(parsed);
-          if (parsed.logo_url) {
-            setLogo(parsed.logo_url);
-          } else {
-            const savedLogo = localStorage.getItem('logo');
-            if (savedLogo) setLogo(savedLogo);
-          }
-        } else {
-          const savedLogo = localStorage.getItem('logo');
-          if (savedLogo) setLogo(savedLogo);
-        }
+        return saved ? JSON.parse(saved) : null;
       } catch (e) {
         console.error('Erro ao carregar dados da empresa:', e);
+        return null;
       }
     }
+    return null;
+  });
 
+  useEffect(() => {
     const fetchCompany = async () => {
       try {
         const res = await fetch('/api/configuracoes/empresa');
@@ -43,9 +32,6 @@ export default function ImprimirOSPage() {
           const data = await res.json();
           if (data.id) {
             setCompany(data);
-            if (data.logo_url) {
-              setLogo(data.logo_url);
-            }
           }
         }
       } catch (err) {
@@ -97,6 +83,8 @@ export default function ImprimirOSPage() {
       </div>
     );
   }
+
+  const logo = company?.logo_url || (typeof window !== 'undefined' ? localStorage.getItem('logo') : '');
 
   return (
     <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-mono text-black">

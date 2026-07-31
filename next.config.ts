@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
     ],
   },
   output: 'standalone',
-  webpack: (config, { dev, isServer, nextRuntime }) => {
+  webpack: (config, {dev}) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.
     // Do not modify—file watching is disabled to prevent flickering during agent edits.
     if (dev && process.env.DISABLE_HMR === 'true') {
@@ -32,9 +32,7 @@ const nextConfig: NextConfig = {
         ignored: /.*/,
       };
     }
-    if (dev) {
-      config.devtool = false;
-    } else {
+    if (!dev) {
       config.parallelism = 1; // Otimização para baixo consumo de memória
       config.devtool = false; // Disable sourcemaps completely to save RAM
     }

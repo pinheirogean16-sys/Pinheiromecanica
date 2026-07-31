@@ -16,7 +16,6 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
-import { useAuth } from '@/components/AuthProvider';
 
 // Cores de status e gráficos baseadas na especificação corporativa premium
 const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#06b6d4', '#eab308'];
@@ -97,8 +96,9 @@ const LazyModule = React.memo(({ children, fallback, onVisible }: LazyModuleProp
 LazyModule.displayName = 'LazyModule';
 
 export default function DashboardPage() {
-  const { user } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   // Estados de dados corporativos unificados
   const [stats, setStats] = useState<any>(null);
@@ -159,7 +159,20 @@ export default function DashboardPage() {
     });
   }, [mounted]);
 
-  // 1. Carregar estatísticas gerais (Active OS count, Clientes ativos, etc.)
+  // 1. Carregar sessão do usuário
+  const loadUser = useCallback(async () => {
+    setLoadingUser(true);
+    try {
+      const data = await apiFetch('/api/auth/session', { priority: 'high', ttl: 60000 });
+      if (data) setUser(data);
+    } catch (err) {
+      console.error('Erro de sessão:', err);
+    } finally {
+      setLoadingUser(false);
+    }
+  }, []);
+
+  // 2. Carregar estatísticas gerais (Active OS count, Clientes ativos, etc.)
   const loadStats = useCallback(async () => {
     setLoadingStats(true);
     setStatsError(false);
@@ -300,11 +313,12 @@ export default function DashboardPage() {
   // Gatilho inicial da página no carregamento inicial
   useEffect(() => {
     setMounted(true);
+    loadUser();
     loadStats();
     loadResumoFinanceiro();
     loadVeiculoStats();
     loadAgenda();
-  }, [loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda]);
+  }, [loadUser, loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda]);
 
   // Expande de forma determinística os 30 dias de faturamento baseando-se no faturamento total do banco
   const generated30DayChartData = useMemo(() => {

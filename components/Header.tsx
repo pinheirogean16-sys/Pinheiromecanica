@@ -3,20 +3,18 @@
 import { Search, LogOut } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import SinoNotificacoes from './SinoNotificacoes';
-import { useAuth } from '@/components/AuthProvider';
-import { isPublicRoute } from '@/components/LayoutWrapper';
 
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const { logout } = useAuth();
 
-  // Garantir que não apareça em rotas públicas
-  const isPublic = isPublicRoute(pathname || '');
-  if (isPublic) return null;
+  // Garantir que não apareça na página de login
+  if (pathname === '/login') return null;
 
   const handleLogout = async () => {
-    await logout();
+    await fetch('/api/auth/logout', { method: 'POST' });
+    document.cookie = 'auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    router.push('/login');
   };
 
   return (

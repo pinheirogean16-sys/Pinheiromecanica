@@ -8,7 +8,7 @@ datasource db {
 }
 
 model AuditLog {
-  id           String   @id @default(uuid())
+  id           String   @id
   modulo       String
   acao         String
   entidade     String
@@ -27,20 +27,20 @@ model AuditLog {
 }
 
 model Checklist {
-  id                String              @id @default(uuid())
+  id                String              @id
   nome              String
   descricao         String?
   categoria         String?
   ativo             Boolean             @default(true)
   created_at        DateTime            @default(now())
-  updated_at        DateTime            @default(now()) @updatedAt
+  updated_at        DateTime
   empresa_id        String              @default("default")
   ChecklistExecucao ChecklistExecucao[]
   ChecklistItem     ChecklistItem[]
 }
 
 model ChecklistExecucao {
-  id            String          @id @default(uuid())
+  id            String          @id
   checklist_id  String
   os_id         String?
   veiculo_id    String?
@@ -61,7 +61,7 @@ model ChecklistExecucao {
 }
 
 model ChecklistFoto {
-  id                String            @id @default(uuid())
+  id                String            @id
   execucao_id       String
   item_id           String?
   url               String
@@ -73,7 +73,7 @@ model ChecklistFoto {
 }
 
 model ChecklistItem {
-  id           String    @id @default(uuid())
+  id           String    @id
   checklist_id String
   ordem        Int
   descricao    String
@@ -86,7 +86,7 @@ model ChecklistItem {
 }
 
 model Cliente {
-  id                     String                   @id @default(uuid())
+  id                     String                   @id
   tipo                   Cliente_tipo
   nome                   String
   cpf_cnpj               String                   @unique
@@ -94,7 +94,7 @@ model Cliente {
   email                  String?
   endereco               String?
   created_at             DateTime                 @default(now())
-  updated_at             DateTime                 @default(now()) @updatedAt
+  updated_at             DateTime
   created_by             String?
   updated_by             String?
   nome_fantasia          String?
@@ -140,7 +140,7 @@ model ConfiguracaoEmpresa {
   email                String?
   logo_url             String?  @db.Text
   rodape_personalizado String?  @db.Text
-  updated_at           DateTime @default(now()) @updatedAt
+  updated_at           DateTime
   regime_tributario    String?
   token_nfse           String?
   pix                  String?
@@ -150,16 +150,16 @@ model ConfiguracaoEmpresa {
 }
 
 model Empresa {
-  id         String   @id @default(uuid())
+  id         String   @id
   nome       String
   cnpj       String?  @unique
   created_at DateTime @default(now())
-  updated_at DateTime @default(now()) @updatedAt
+  updated_at DateTime
   User       User[]
 }
 
 model EventoAgenda {
-  id                                  String              @id @default(uuid())
+  id                                  String              @id
   titulo                              String
   descricao                           String?             @db.Text
   data_inicio                         DateTime
@@ -173,7 +173,7 @@ model EventoAgenda {
   mecanico_id                         String?
   usuario_id                          String
   created_at                          DateTime            @default(now())
-  updated_at                          DateTime            @default(now()) @updatedAt
+  updated_at                          DateTime
   empresa_id                          String              @default("default")
   Cliente                             Cliente?            @relation(fields: [cliente_id], references: [id])
   User_EventoAgenda_mecanico_idToUser User?               @relation("EventoAgenda_mecanico_idToUser", fields: [mecanico_id], references: [id])
@@ -191,7 +191,7 @@ model EventoAgenda {
 }
 
 model MovimentacaoEstoque {
-  id           String                   @id @default(uuid())
+  id           String                   @id
   peca_id      String
   tipo         MovimentacaoEstoque_tipo
   quantidade   Float
@@ -211,7 +211,7 @@ model MovimentacaoEstoque {
 }
 
 model MovimentacaoFinanceira {
-  id               String                      @id @default(uuid())
+  id               String                      @id
   tipo             MovimentacaoFinanceira_tipo
   descricao        String
   valor            Decimal                     @db.Decimal(10, 2)
@@ -220,7 +220,7 @@ model MovimentacaoFinanceira {
   created_by       String
   created_at       DateTime                    @default(now())
   updated_by       String?
-  updated_at       DateTime                    @default(now()) @updatedAt
+  updated_at       DateTime
   data_vencimento  DateTime?
   data_pagamento   DateTime?
   status           String                      @default("PENDENTE")
@@ -239,7 +239,7 @@ model MovimentacaoFinanceira {
 }
 
 model Notificacao {
-  id         String   @id @default(uuid())
+  id         String   @id
   titulo     String
   mensagem   String   @db.Text
   link       String?
@@ -255,7 +255,7 @@ model Notificacao {
 }
 
 model Orcamento {
-  id               String             @id @default(uuid())
+  id               String             @id
   numero           String
   cliente_id       String
   veiculo_id       String?
@@ -271,7 +271,7 @@ model Orcamento {
   created_by       String?
   updated_by       String?
   created_at       DateTime           @default(now())
-  updated_at       DateTime           @default(now()) @updatedAt
+  updated_at       DateTime
   empresa_id       String             @default("default")
   Cliente          Cliente            @relation(fields: [cliente_id], references: [id])
   Veiculo          Veiculo?           @relation(fields: [veiculo_id], references: [id])
@@ -285,7 +285,7 @@ model Orcamento {
 }
 
 model OrcamentoPeca {
-  id           String    @id @default(uuid())
+  id           String    @id
   orcamento_id String
   peca_id      String?
   descricao    String
@@ -299,7 +299,7 @@ model OrcamentoPeca {
 }
 
 model OrcamentoServico {
-  id           String    @id @default(uuid())
+  id           String    @id
   orcamento_id String
   descricao    String
   horas        Float     @default(0)
@@ -311,7 +311,7 @@ model OrcamentoServico {
 }
 
 model OrdemServico {
-  id                       String                   @id @default(uuid())
+  id                       String                   @id
   numero                   Int                      @unique @default(autoincrement())
   status                   OrdemServico_status      @default(ABERTA)
   diagnostico              String?
@@ -393,7 +393,7 @@ model OrdemServico {
 }
 
 model Peca {
-  id                  String                @id @default(uuid())
+  id                  String                @id
   codigo              String
   descricao           String
   fabricante          String?
@@ -404,7 +404,7 @@ model Peca {
   preco_custo         Decimal               @db.Decimal(10, 2)
   preco_venda         Decimal               @db.Decimal(10, 2)
   created_at          DateTime              @default(now())
-  updated_at          DateTime              @default(now()) @updatedAt
+  updated_at          DateTime
   created_by          String?
   updated_by          String?
   empresa_id          String                @default("default")
@@ -419,7 +419,7 @@ model Peca {
 }
 
 model PecaAplicada {
-  id           String       @id @default(uuid())
+  id           String       @id
   os_id        String
   peca_id      String
   quantidade   Float
@@ -435,7 +435,7 @@ model PecaAplicada {
 }
 
 model Preventiva {
-  id          String    @id @default(uuid())
+  id          String    @id
   empresa_id  String    @default("default")
   veiculo_id  String
   componente  String
@@ -447,14 +447,14 @@ model Preventiva {
   observacoes String?
   notificado  Boolean   @default(false)
   created_at  DateTime  @default(now())
-  updated_at  DateTime  @default(now()) @updatedAt
+  updated_at  DateTime
   Veiculo     Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
 
   @@index([veiculo_id])
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid())
+  id         String   @id
   token_hash String
   user_id    String
   expires_at DateTime
@@ -465,7 +465,7 @@ model RefreshToken {
 }
 
 model ServicoOS {
-  id           String       @id @default(uuid())
+  id           String       @id
   os_id        String
   descricao    String
   horas        Float?
@@ -477,7 +477,7 @@ model ServicoOS {
 }
 
 model User {
-  id                                          String         @id @default(uuid())
+  id                                          String         @id
   name                                        String
   email                                       String         @unique
   password_hash                               String
@@ -485,7 +485,7 @@ model User {
   especialidade                               String?
   comissao                                    Decimal        @default(0.00) @db.Decimal(10, 2)
   created_at                                  DateTime       @default(now())
-  updated_at                                  DateTime       @default(now()) @updatedAt
+  updated_at                                  DateTime
   empresa_id                                  String         @default("default")
   EventoAgenda_EventoAgenda_mecanico_idToUser EventoAgenda[] @relation("EventoAgenda_mecanico_idToUser")
   EventoAgenda_EventoAgenda_usuario_idToUser  EventoAgenda[] @relation("EventoAgenda_usuario_idToUser")
@@ -498,7 +498,7 @@ model User {
 }
 
 model Veiculo {
-  id                String              @id @default(uuid())
+  id                String              @id
   placa             String              @unique
   modelo            String
   marca             String
@@ -507,7 +507,7 @@ model Veiculo {
   quilometragem     Int?
   cliente_id        String
   created_at        DateTime            @default(now())
-  updated_at        DateTime            @default(now()) @updatedAt
+  updated_at        DateTime
   created_by        String?
   updated_by        String?
   horimetro_atual   Float?

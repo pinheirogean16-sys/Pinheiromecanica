@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 
 import { checkPermission } from '@/lib/rbac';
-import { useAuth } from '@/components/AuthProvider';
 
 interface MenuItem {
   href: string;
@@ -96,7 +95,7 @@ export default function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>([]);
-  const { user } = useAuth();
+  const [user, setUser] = useState<any>(null);
   const [logo, setLogo] = useState<string | null>(null);
   const [nomeSistema, setNomeSistema] = useState('Pinheiro Diesel');
   
@@ -110,6 +109,21 @@ export default function Sidebar() {
         setNomeSistema(localStorage.getItem('nomeSistema') || 'Pinheiro Diesel');
       }, 0);
     }
+  }, []);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/usuario');
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar usuário na Sidebar:', error);
+      }
+    };
+    fetchUser();
   }, []);
 
   useEffect(() => {

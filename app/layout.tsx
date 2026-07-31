@@ -4,7 +4,6 @@ import { Toaster } from 'sonner';
 import AppearanceManager from '@/components/AppearanceManager';
 import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
 import LayoutWrapper from '@/components/LayoutWrapper';
-import { AuthProvider } from '@/components/AuthProvider';
 
 export const metadata: Metadata = {
   title: 'Pinheiro Diesel Pro',
@@ -32,63 +31,9 @@ export default function RootLayout({
           __html: `
             (function() {
               try {
-                // Mechanismo automático para detectar e tratar ChunkLoadError de Next.js
-                function handleChunkLoadError(message, stack) {
-                  try {
-                    var errorStr = (message || '') + ' ' + (stack || '');
-                    var isChunkErr = 
-                      errorStr.indexOf('ChunkLoadError') !== -1 ||
-                      errorStr.indexOf('Loading chunk') !== -1 ||
-                      errorStr.indexOf('Failed to fetch dynamically imported module') !== -1 ||
-                      errorStr.indexOf('Loading CSS chunk') !== -1 ||
-                      errorStr.indexOf('Script error') !== -1;
-
-                    if (isChunkErr) {
-                      console.warn('🔄 [ChunkErrorRecovery] Erro de carregamento de chunk detectado! Limpando caches...');
-                      var lastReload = sessionStorage.getItem('chunk_error_reload_time');
-                      var now = Date.now();
-                      
-                      // Permite autorecarregar apenas uma vez a cada 15 segundos para evitar loops
-                      if (!lastReload || (now - parseInt(lastReload)) > 15000) {
-                        sessionStorage.setItem('chunk_error_reload_time', now.toString());
-                        
-                        // Limpa Service Workers
-                        if ('serviceWorker' in navigator) {
-                          navigator.serviceWorker.getRegistrations().then(function(regs) {
-                            regs.forEach(function(reg) { reg.unregister(); });
-                          });
-                        }
-                        
-                        // Limpa Cache Storage
-                        if ('caches' in window) {
-                          caches.keys().then(function(keys) {
-                            keys.forEach(function(key) { caches.delete(key); });
-                          });
-                        }
-                        
-                        // Limpa cache de requisições do request-manager
-                        for (var k in localStorage) {
-                          if (k.indexOf('rm_cache:') === 0) {
-                            localStorage.removeItem(k);
-                          }
-                        }
-                        
-                        console.log('🔄 [ChunkErrorRecovery] Caches limpos. Recarregando página...');
-                        setTimeout(function() {
-                          window.location.reload();
-                        }, 400);
-                      }
-                    }
-                  } catch(e) {
-                    console.error('Erro ao recuperar ChunkLoadError:', e);
-                  }
-                }
-
                 // Global error logger for debugging client devices
                 window.addEventListener('error', function(e) {
                   try {
-                    handleChunkLoadError(e.message, e.error ? e.error.stack : '');
-                    
                     fetch('/api/debug/error-log', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -107,10 +52,6 @@ export default function RootLayout({
 
                 window.addEventListener('unhandledrejection', function(e) {
                   try {
-                    var reasonStr = e.reason ? (e.reason.message || e.reason) : '';
-                    var stackStr = e.reason && e.reason.stack ? e.reason.stack : '';
-                    handleChunkLoadError(reasonStr, stackStr);
-
                     fetch('/api/debug/error-log', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -155,12 +96,14 @@ export default function RootLayout({
             })();
           `
         }} />
+        {(() => {
+          console.log('🖥️ [RootLayout] LAYOUT RENDERIZADO (Server-side)');
+          return null;
+        })()}
         <AppearanceManager />
-        <AuthProvider>
-          <LayoutWrapper>{children}</LayoutWrapper>
-        </AuthProvider>
+        <LayoutWrapper>{children}</LayoutWrapper>
         <Toaster theme="dark" position="top-right" richColors />
-        {process.env.NODE_ENV === 'development' && <DiagnosticsOverlay />}
+        <DiagnosticsOverlay />
       </body>
     </html>
   );

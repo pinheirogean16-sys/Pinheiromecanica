@@ -10,26 +10,32 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const [corPrincipal, setCorPrincipal] = useState('#F97316');
-  const [logo, setLogo] = useState('');
-  const [nomeSistema, setNomeSistema] = useState('Pinheiro Diesel Pro');
-
   useEffect(() => {
     console.log('🔑 [LoginPage] LOGIN PAGE INICIADA');
     console.log('🔑 [LoginPage] AUTH PROVIDER CARREGADO');
     console.log('🔑 [LoginPage] LOGIN FORM RENDERIZADO');
-
-    if (typeof window !== 'undefined') {
-      const savedCor = localStorage.getItem('corPrincipal');
-      if (savedCor) setCorPrincipal(savedCor);
-
-      const savedLogo = localStorage.getItem('logo');
-      if (savedLogo) setLogo(savedLogo);
-
-      const savedNome = localStorage.getItem('nomeSistema');
-      if (savedNome) setNomeSistema(savedNome);
-    }
   }, []);
+
+  const [corPrincipal, setCorPrincipal] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('corPrincipal') || '#F97316';
+    }
+    return '#F97316';
+  });
+
+  const [logo, setLogo] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('logo') || '';
+    }
+    return '';
+  });
+
+  const [nomeSistema, setNomeSistema] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nomeSistema') || 'Pinheiro Diesel Pro';
+    }
+    return 'Pinheiro Diesel Pro';
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
