@@ -1,13 +1,15 @@
 import { jwtVerify } from 'jose';
 
-const getSecret = () => {
-  const secretStr = process.env.JWT_SECRET || 'pinheiro-pro-dev-jwt-secret-key-2026';
-  return new TextEncoder().encode(secretStr);
-};
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET não configurado! Defina no painel da Hostinger.');
+}
+const secret = new TextEncoder().encode(JWT_SECRET);
 
 export async function verifyTokenEdge(token: string) {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, secret);
     return {
       id: payload.id as string,
       email: payload.email as string,
