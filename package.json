@@ -2,9 +2,9 @@
   "name": "pinheiro-diesel-pro",
   "version": "1.0.0",
   "scripts": {
-    "dev": "prisma generate && next build && node server.js",
+    "dev": "prisma generate && next build && cp -r public .next/standalone/ && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/ && node server.js",
     "postinstall": "prisma generate",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && next build && cp -r public .next/standalone/ && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/",
     "start": "node server.js",
     "lint": "next lint"
   },
