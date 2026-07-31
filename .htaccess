@@ -1,4 +1,14 @@
 RewriteEngine On
+
+# 1. Servir arquivos da pasta public diretamente se existirem lá
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -f
+RewriteRule ^(.*)$ public/$1 [L]
+
+# 2. Servir chunks estáticos do Next.js diretamente de .next/static/
+RewriteRule ^_next/static/(.*)$ .next/static/$1 [L]
+
+# 3. Todo o resto é enviado para o servidor Next.js na porta 3000
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
+

@@ -60,11 +60,13 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return networkResponse;
-      }).catch(() => {
+      }).catch((err) => {
         // Offline fallback for page documents
         if (event.request.headers.get('accept')?.includes('text/html')) {
           return caches.match(OFFLINE_URL);
         }
+        // Propagate actual network error so browser knows it's a connection issue instead of returning undefined (which causes a 400 Bad Request)
+        throw err;
       });
     })
   );
