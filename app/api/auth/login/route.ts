@@ -31,57 +31,32 @@ export async function POST(request: Request) {
       user = await prisma.user.findUnique({ where: { email } });
     } catch (dbError: any) {
       const errorMsg = dbError.message || '';
-      const code = dbError.code || '';
+      const isMissingTable = dbError.code === 'P2021' || 
+                             errorMsg.includes('does not exist') || 
+                             errorMsg.includes('Table') || 
+                             errorMsg.includes('P2021');
+      if (isMissingTable) {
+        console.error('========================================================================');
+        console.error('[ERRO CRÍTICO] TABELA "User" NÃO ENCONTRADA NO BANCO DE DADOS!');
+        console.error('Causa provável: As migrations do Prisma não foram executadas no deploy.');
+        console.error('Por favor, certifique-se de executar "npx prisma migrate deploy" no ambiente de produção.');
+        console.error('Erro original:', errorMsg);
+        console.error('========================================================================');
+        
+        return NextResponse.json({ 
+          error: 'Erro de Inicialização: O banco de dados do sistema não foi devidamente configurado ou inicializado. As migrations do Prisma não foram executadas. Entre em contato com o suporte técnico.' 
+        }, { status: 503 });
+      }
       
-      let errorType = 'UNKNOWN';
-      let friendlyMessage = 'Erro interno do banco de dados.';
-      let statusCode = 500;
-
-      // 1. Tabela Inexistente (P2021)
-      if (code === 'P2021' || (errorMsg.includes('does not exist') && errorMsg.toLowerCase().includes('table'))) {
-        errorType = 'TABLE_MISSING';
-        friendlyMessage = 'Erro de Inicialização: Uma tabela necessária não existe no banco de dados. As migrations do Prisma podem estar ausentes.';
-        statusCode = 503;
-      }
-      // 2. Coluna Inexistente (P2022)
-      else if (code === 'P2022' || (errorMsg.includes('does not exist') && errorMsg.toLowerCase().includes('column'))) {
-        errorType = 'COLUMN_MISSING';
-        friendlyMessage = 'Erro de Estrutura: Uma coluna esperada pelo código não existe na tabela correspondente do banco de dados. Sincronize as migrations.';
-        statusCode = 500;
-      }
-      // 3. Erro de Permissão (P1010)
-      else if (code === 'P1010' || errorMsg.toLowerCase().includes('denied') || errorMsg.toLowerCase().includes('permission') || errorMsg.toLowerCase().includes('privilege')) {
-        errorType = 'PERMISSION_DENIED';
-        friendlyMessage = 'Erro de Permissão: O usuário do banco de dados não possui as permissões necessárias para realizar esta operação.';
-        statusCode = 403;
-      }
-      // 4. Erro de Conexão (P1001, P1002, etc.)
-      else if (code.startsWith('P1') || errorMsg.toLowerCase().includes('connect') || errorMsg.toLowerCase().includes('reach') || errorMsg.toLowerCase().includes('timeout') || errorMsg.toLowerCase().includes('host')) {
-        errorType = 'CONNECTION_ERROR';
-        friendlyMessage = 'Erro de Conexão: Não foi possível estabelecer conexão com o banco de dados. Verifique a URL de conexão.';
-        statusCode = 500;
-      }
-      // 5. Outros Erros do Prisma
-      else if (code) {
-        errorType = `PRISMA_${code}`;
-        friendlyMessage = `Erro do Prisma (${code}): Houve um problema na interpretação ou execução da query no banco de dados.`;
-        statusCode = 500;
-      }
-
       console.error('========================================================================');
-      console.error(`[ERRO NO BANCO DE DADOS] Tipo: ${errorType} | Código Prisma: ${code || 'N/A'}`);
-      console.error('Mensagem Amigável:', friendlyMessage);
-      console.error('Erro original completo:', dbError);
+      console.error('[ERRO DE CONEXÃO AO BANCO DE DADOS] Falha ao consultar tabela User!');
+      console.error('Verifique as credenciais de DATABASE_URL na Hostinger.');
+      console.error('Erro original:', errorMsg);
       console.error('========================================================================');
-
+      
       return NextResponse.json({ 
-        error: friendlyMessage,
-        details: {
-          type: errorType,
-          code: code || null,
-          message: errorMsg
-        }
-      }, { status: statusCode });
+        error: 'Erro de Conexão: Não foi possível conectar ao banco de dados. Verifique a URL de conexão.' 
+      }, { status: 500 });
     }
     
     if (!user) {

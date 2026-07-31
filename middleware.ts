@@ -7,8 +7,6 @@ const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/register'
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  console.log(`🛡️ [Middleware] EXECUTADO - Rota requisitada: ${pathname}`);
-
   // 1. Lightweight Rate Limiter for APIs to protect Hostinger CPU/RAM
   if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/login') && !pathname.startsWith('/api/register')) {
     const ip = request.ip || request.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';

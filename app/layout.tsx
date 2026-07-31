@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import Sidebar from '@/components/Sidebar';
+import Header from '@/components/Header';
 import { Toaster } from 'sonner';
 import AppearanceManager from '@/components/AppearanceManager';
 import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
-import LayoutWrapper from '@/components/LayoutWrapper';
 
 export const metadata: Metadata = {
   title: 'Pinheiro Diesel Pro',
@@ -96,12 +97,16 @@ export default function RootLayout({
             })();
           `
         }} />
-        {(() => {
-          console.log('🖥️ [RootLayout] LAYOUT RENDERIZADO (Server-side)');
-          return null;
-        })()}
         <AppearanceManager />
-        <LayoutWrapper>{children}</LayoutWrapper>
+        <div className="flex w-full h-screen overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            <Header />
+            <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-6 bg-zinc-950">
+              {children}
+            </main>
+          </div>
+        </div>
         <Toaster theme="dark" position="top-right" richColors />
         <DiagnosticsOverlay />
       </body>
