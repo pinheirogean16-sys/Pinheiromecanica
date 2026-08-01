@@ -53,6 +53,7 @@ export async function POST(request: Request) {
     if (execucaoId && execucaoId !== 'temp') {
       foto = await prisma.checklistFoto.create({
         data: {
+          id: crypto.randomUUID(),
           execucao_id: execucaoId,
           item_id: itemId,
           url,

@@ -33,9 +33,9 @@ export async function GET(request: Request) {
     const preventivas = await prisma.preventiva.findMany({
       where,
       include: {
-        veiculo: {
+        Veiculo: {
           include: {
-            cliente: true
+            Cliente: true
           }
         }
       },
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     // Avaliação dinâmica de status baseada na quilometragem e data atual
     const hoje = new Date();
     for (const p of preventivas) {
-      const kmAtual = p.veiculo.quilometragem || 0;
+      const kmAtual = p.Veiculo ? (p.Veiculo.quilometragem || 0) : 0;
       let calculatedStatus = p.status || 'SAUDAVEL';
 
       let isVencido = false;
@@ -160,6 +160,7 @@ export async function POST(request: Request) {
 
     const novaPreventiva = await prisma.preventiva.create({
       data: {
+        id: crypto.randomUUID(),
         empresa_id: user?.empresa_id || 'default',
         veiculo_id: body.veiculo_id,
         componente: body.componente,
@@ -167,7 +168,8 @@ export async function POST(request: Request) {
         km_limite: body.km_limite,
         km_atual: kmAtual,
         data_limite: body.data_limite ? new Date(body.data_limite) : null,
-        status: calculatedStatus
+        status: calculatedStatus,
+        updated_at: new Date()
       }
     });
 

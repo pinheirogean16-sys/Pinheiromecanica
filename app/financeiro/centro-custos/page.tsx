@@ -259,7 +259,7 @@ export default function CentroCustosPage() {
                 <div className="w-full h-2 bg-zinc-900 border border-zinc-800 rounded-full overflow-hidden">
                   <div 
                     className={`h-full bg-gradient-to-r ${getSectorColor(setor.setor)} transition-all duration-500`}
-                    style={{ width: `${Math.max(2, sector.porcentagemRentabilidade || 0)}%` }}
+                    style={{ width: `${Math.max(2, setor.porcentagemRentabilidade || 0)}%` }}
                   />
                 </div>
               </div>

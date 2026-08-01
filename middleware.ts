@@ -2,14 +2,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import { isRateLimited } from '@/lib/rate-limit';
 
-const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/register', '/api/auditoria'];
+const PUBLIC_ROUTES = ['/login', '/register', '/api/auth/login', '/api/register'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1. Lightweight Rate Limiter for APIs to protect Hostinger CPU/RAM
   if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/login') && !pathname.startsWith('/api/register')) {
-    const ip = request.ip || request.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
+    const ip = (request as any).ip || request.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
     const { limited, count, reset } = isRateLimited(ip, 120, 60000); // 120 requests per minute
 
     if (limited) {
@@ -47,11 +47,17 @@ export async function middleware(request: NextRequest) {
           response = NextResponse.redirect(new URL('/login', request.url));
         }
       } else {
-        response = NextResponse.next();
-        response.headers.set('X-User-Id', payload.id);
-        response.headers.set('X-User-Role', payload.role);
-        response.headers.set('X-User-Name', payload.name);
-        response.headers.set('X-Empresa-Id', payload.empresa_id);
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set('X-User-Id', payload.id);
+        requestHeaders.set('X-User-Role', payload.role || '');
+        requestHeaders.set('X-User-Name', payload.name || '');
+        requestHeaders.set('X-Empresa-Id', payload.empresa_id || '');
+
+        response = NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          }
+        });
       }
     }
   }
@@ -61,6 +67,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set('X-XSS-Protection', '1; mode=block');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
+  response.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;");
 
   return response;
 }

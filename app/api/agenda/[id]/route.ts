@@ -30,24 +30,33 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    const event = await prisma.eventoAgenda.findUnique({
+    const rawEvent = await prisma.eventoAgenda.findUnique({
       where: { id: params.id },
       include: {
-        os: { select: { id: true, numero: true } },
-        cliente: { select: { id: true, nome: true } },
-        veiculo: { select: { id: true, placa: true, modelo: true } },
-        mecanico: { select: { id: true, name: true } },
+        OrdemServico: { select: { id: true, numero: true } },
+        Cliente: { select: { id: true, nome: true } },
+        Veiculo: { select: { id: true, placa: true, modelo: true } },
+        User_EventoAgenda_mecanico_idToUser: { select: { id: true, name: true } },
       },
     });
 
-    if (!event) {
+    if (!rawEvent) {
       return NextResponse.json({ error: 'Evento não encontrado' }, { status: 404 });
     }
 
     // Validar empresa
-    if (event.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
+    if (rawEvent.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
+
+    const { OrdemServico, Cliente, Veiculo, User_EventoAgenda_mecanico_idToUser, ...rest } = rawEvent;
+    const event = {
+      ...rest,
+      os: OrdemServico,
+      cliente: Cliente,
+      veiculo: Veiculo,
+      mecanico: User_EventoAgenda_mecanico_idToUser,
+    };
 
     return NextResponse.json(event);
   } catch (error) {

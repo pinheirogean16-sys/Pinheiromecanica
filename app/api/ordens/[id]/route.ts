@@ -424,9 +424,9 @@ export async function PATCH(
           if (!valorUnit) {
             if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
               const ratio = converterUnidade(1, reqUnidade, peca.unidadeMedida);
-              valorUnit = roundDecimal(peca.preco_venda * ratio);
+              valorUnit = roundDecimal(Number(peca.preco_venda) * ratio);
             } else {
-              valorUnit = roundDecimal(peca.preco_venda);
+              valorUnit = roundDecimal(Number(peca.preco_venda));
             }
           }
           const valorTotal = roundDecimal(qty * valorUnit);
@@ -552,20 +552,20 @@ export async function PATCH(
         _sum: { valor_total: true }
       });
 
-      updateData.valor_servicos = roundDecimal(servicosSummary._sum.valor_total || 0);
-      updateData.valor_pecas = roundDecimal(pecasSummary._sum.valor_total || 0);
+      updateData.valor_servicos = roundDecimal(servicosSummary._sum.valor_total ? Number(servicosSummary._sum.valor_total) : 0);
+      updateData.valor_pecas = roundDecimal(pecasSummary._sum.valor_total ? Number(pecasSummary._sum.valor_total) : 0);
       
-      const currentDesconto = body.desconto !== undefined ? body.desconto : (antes.desconto || 0);
-      const currentDeslocamento = body.total_deslocamento !== undefined ? body.total_deslocamento : (antes.total_deslocamento || 0);
-      const currentMaoObraExterna = body.mao_obra_externa_total !== undefined ? body.mao_obra_externa_total : (antes.mao_obra_externa_total || 0);
+      const currentDesconto = Number(body.desconto !== undefined ? body.desconto : (antes.desconto || 0));
+      const currentDeslocamento = Number(body.total_deslocamento !== undefined ? body.total_deslocamento : (antes.total_deslocamento || 0));
+      const currentMaoObraExterna = Number(body.mao_obra_externa_total !== undefined ? body.mao_obra_externa_total : (antes.mao_obra_externa_total || 0));
       
-      const currentPedagio = body.despesa_pedagio !== undefined ? body.despesa_pedagio : (antes.despesa_pedagio || 0);
-      const currentCombustivel = body.despesa_combustivel !== undefined ? body.despesa_combustivel : (antes.despesa_combustivel || 0);
-      const currentHospedagem = body.despesa_hospedagem !== undefined ? body.despesa_hospedagem : (antes.despesa_hospedagem || 0);
-      const currentAlimentacao = body.despesa_alimentacao !== undefined ? body.despesa_alimentacao : (antes.despesa_alimentacao || 0);
-      const currentDiariaTecnica = body.despesa_diaria_tecnica !== undefined ? body.despesa_diaria_tecnica : (antes.despesa_diaria_tecnica || 0);
-      const currentGuincho = body.despesa_guincho !== undefined ? body.despesa_guincho : (antes.despesa_guincho || 0);
-      const currentOutros = body.despesa_outros !== undefined ? body.despesa_outros : (antes.despesa_outros || 0);
+      const currentPedagio = Number(body.despesa_pedagio !== undefined ? body.despesa_pedagio : (antes.despesa_pedagio || 0));
+      const currentCombustivel = Number(body.despesa_combustivel !== undefined ? body.despesa_combustivel : (antes.despesa_combustivel || 0));
+      const currentHospedagem = Number(body.despesa_hospedagem !== undefined ? body.despesa_hospedagem : (antes.despesa_hospedagem || 0));
+      const currentAlimentacao = Number(body.despesa_alimentacao !== undefined ? body.despesa_alimentacao : (antes.despesa_alimentacao || 0));
+      const currentDiariaTecnica = Number(body.despesa_diaria_tecnica !== undefined ? body.despesa_diaria_tecnica : (antes.despesa_diaria_tecnica || 0));
+      const currentGuincho = Number(body.despesa_guincho !== undefined ? body.despesa_guincho : (antes.despesa_guincho || 0));
+      const currentOutros = Number(body.despesa_outros !== undefined ? body.despesa_outros : (antes.despesa_outros || 0));
 
       const totalDespesas = roundDecimal(
         currentPedagio + currentCombustivel + currentHospedagem + currentAlimentacao + currentDiariaTecnica + currentGuincho + currentOutros
@@ -579,7 +579,7 @@ export async function PATCH(
         where: { os_id: id },
         include: { Peca: true }
       });
-      const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo || 0)), 0));
+      const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo ? Number(p.Peca.preco_custo) : 0)), 0));
 
       // Calcular custo de comissão de mão de obra
       let mecanicoComissao = 0;
@@ -587,14 +587,14 @@ export async function PATCH(
       if (currentMecanicoId) {
         const mecanico = await tx.user.findUnique({ where: { id: currentMecanicoId } });
         if (mecanico) {
-          mecanicoComissao = mecanico.comissao || 0;
+          mecanicoComissao = mecanico.comissao ? Number(mecanico.comissao) : 0;
         }
       }
       const custo_mao_obra = roundDecimal(updateData.valor_servicos * (mecanicoComissao / 100));
 
       // Custos adicionais de deslocamento
-      const currentKMToral = updateData.km_total !== undefined ? updateData.km_total : (antes.km_total || 0);
-      const currentCustoKM = updateData.custo_km !== undefined ? updateData.custo_km : (antes.custo_km || 1.5);
+      const currentKMToral = Number(updateData.km_total !== undefined ? updateData.km_total : (antes.km_total || 0));
+      const currentCustoKM = Number(updateData.custo_km !== undefined ? updateData.custo_km : (antes.custo_km || 1.5));
       const custo_deslocamento = roundDecimal(currentKMToral * currentCustoKM);
       const despesas_extras = totalDespesas;
 
@@ -889,9 +889,9 @@ export async function PUT(
           if (!valorUnit) {
             if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
               const ratio = converterUnidade(1, reqUnidade, peca.unidadeMedida);
-              valorUnit = roundDecimal(peca.preco_venda * ratio);
+              valorUnit = roundDecimal(Number(peca.preco_venda) * ratio);
             } else {
-              valorUnit = roundDecimal(peca.preco_venda);
+              valorUnit = roundDecimal(Number(peca.preco_venda));
             }
           }
           const valorTotal = roundDecimal(qty * valorUnit);
@@ -941,8 +941,8 @@ export async function PUT(
         _sum: { valor_total: true }
       });
       
-      const valor_servicos = roundDecimal(servicosSummary._sum.valor_total || 0);
-      const valor_pecas = roundDecimal(pecasSummary._sum.valor_total || 0);
+      const valor_servicos = roundDecimal(servicosSummary._sum.valor_total ? Number(servicosSummary._sum.valor_total) : 0);
+      const valor_pecas = roundDecimal(pecasSummary._sum.valor_total ? Number(pecasSummary._sum.valor_total) : 0);
 
       const totalDeslocamento = roundDecimal(body.total_deslocamento || 0);
       const totalDespesas = roundDecimal(
@@ -964,14 +964,14 @@ export async function PUT(
         where: { os_id: id },
         include: { Peca: true }
       });
-      const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo || 0)), 0));
+      const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo ? Number(p.Peca.preco_custo) : 0)), 0));
 
       // Calcular custo de comissão de mão de obra
       let mecanicoComissao = 0;
       if (body.mecanico_id) {
         const mecanico = await tx.user.findUnique({ where: { id: body.mecanico_id } });
         if (mecanico) {
-          mecanicoComissao = mecanico.comissao || 0;
+          mecanicoComissao = mecanico.comissao ? Number(mecanico.comissao) : 0;
         }
       }
       const custo_mao_obra = roundDecimal(valor_servicos * (mecanicoComissao / 100));

@@ -218,6 +218,7 @@ export async function POST(request: Request) {
           cliente_id: orcamento.cliente_id,
           veiculo_id: orcamento.veiculo_id,
           usuario_id: user?.id || 'admin',
+          updated_at: new Date(),
         }
       });
 

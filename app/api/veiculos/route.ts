@@ -110,8 +110,10 @@ export async function POST(request: Request) {
     const veiculo = await prisma.veiculo.create({
       data: {
         ...body,
+        id: crypto.randomUUID(),
         empresa_id: user?.empresa_id || 'default',
-        created_by: user?.name || user?.email || 'Sistema'
+        created_by: user?.name || user?.email || 'Sistema',
+        updated_at: new Date()
       },
       include: {
         Cliente: true
@@ -120,7 +122,7 @@ export async function POST(request: Request) {
 
     const mappedVeiculo = {
       ...veiculo,
-      cliente: veiculo.Cliente,
+      cliente: (veiculo as any).Cliente || (veiculo as any).cliente,
     };
 
     await createAuditLog({

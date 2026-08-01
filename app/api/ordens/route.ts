@@ -364,9 +364,9 @@ export async function POST(request: Request) {
               if (!valorUnit) {
                 if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
                   const ratio = converterUnidade(1, reqUnidade, peca.unidadeMedida);
-                  valorUnit = roundDecimal(peca.preco_venda * ratio);
+                  valorUnit = roundDecimal(Number(peca.preco_venda) * ratio);
                 } else {
-                  valorUnit = roundDecimal(peca.preco_venda);
+                  valorUnit = roundDecimal(Number(peca.preco_venda));
                 }
               }
               const valorTotal = roundDecimal(qty * valorUnit);
@@ -416,8 +416,8 @@ export async function POST(request: Request) {
             _sum: { valor_total: true }
           });
           
-          const valor_servicos = roundDecimal(servicosSummary._sum.valor_total || 0);
-          const valor_pecas = roundDecimal(pecasSummary._sum.valor_total || 0);
+          const valor_servicos = roundDecimal(servicosSummary._sum.valor_total ? Number(servicosSummary._sum.valor_total) : 0);
+          const valor_pecas = roundDecimal(pecasSummary._sum.valor_total ? Number(pecasSummary._sum.valor_total) : 0);
           
           const totalDeslocamento = roundDecimal(body.total_deslocamento || 0);
           const totalDespesas = roundDecimal(
@@ -439,14 +439,14 @@ export async function POST(request: Request) {
             where: { os_id: ordem.id },
             include: { Peca: true }
           });
-          const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo || 0)), 0));
+          const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo ? Number(p.Peca.preco_custo) : 0)), 0));
 
           // Calcular custo de comissão de mão de obra
           let mecanicoComissao = 0;
           if (body.mecanico_id) {
             const mecanico = await tx.user.findUnique({ where: { id: body.mecanico_id } });
             if (mecanico) {
-              mecanicoComissao = mecanico.comissao || 0;
+              mecanicoComissao = mecanico.comissao ? Number(mecanico.comissao) : 0;
             }
           }
           const custo_mao_obra = roundDecimal(valor_servicos * (mecanicoComissao / 100));

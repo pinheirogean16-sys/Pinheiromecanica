@@ -79,7 +79,7 @@ export function parseNFeXML(xmlString: string): NFeData {
   const emit = findNestedKey(nfe, 'emit');
   const total = findNestedKey(nfe, 'ICMSTot') || findNestedKey(nfe, 'total') || {};
 
-  let det = findNestedKey(nfe, 'det');
+  const det = findNestedKey(nfe, 'det');
   if (!det) {
     throw new Error('Nenhum item de produto cadastrado foi localizado na NF-e.');
   }

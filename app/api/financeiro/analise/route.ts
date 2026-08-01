@@ -48,12 +48,13 @@ export async function GET(request: Request) {
       if (!dreCategorias[cat]) {
         dreCategorias[cat] = { receitas: 0, despesas: 0 };
       }
+      const valorNum = Number(m.valor);
       if (m.tipo === 'ENTRADA') {
-        dreCategorias[cat].receitas += m.valor;
-        totalReceitasDRE += m.valor;
+        dreCategorias[cat].receitas += valorNum;
+        totalReceitasDRE += valorNum;
       } else {
-        dreCategorias[cat].despesas += m.valor;
-        totalDespesasDRE += m.valor;
+        dreCategorias[cat].despesas += valorNum;
+        totalDespesasDRE += valorNum;
       }
     });
 
@@ -82,8 +83,8 @@ export async function GET(request: Request) {
         select: { tipo: true, valor: true }
       });
 
-      const pEntradas = roundDecimal(mPrevistas.filter(m => m.tipo === 'ENTRADA').reduce((sum, m) => sum + m.valor, 0));
-      const pSaidas = roundDecimal(mPrevistas.filter(m => m.tipo === 'SAIDA').reduce((sum, m) => sum + m.valor, 0));
+      const pEntradas = roundDecimal(mPrevistas.filter(m => m.tipo === 'ENTRADA').reduce((sum, m) => sum + Number(m.valor), 0));
+      const pSaidas = roundDecimal(mPrevistas.filter(m => m.tipo === 'SAIDA').reduce((sum, m) => sum + Number(m.valor), 0));
 
       previsaoMeses.push({
         mes: pStart.toLocaleString('pt-BR', { month: 'short' }).toUpperCase(),
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
         data_vencimento: { lt: startOfDay(new Date()) }
       },
       include: {
-        cliente: {
+        Cliente: {
           select: { nome: true, cpf_cnpj: true, telefone: true }
         }
       },
@@ -111,7 +112,7 @@ export async function GET(request: Request) {
       take: 20
     });
 
-    const totalInadimplencia = roundDecimal(inadimplentes.reduce((sum, m) => sum + m.valor, 0));
+    const totalInadimplencia = roundDecimal(inadimplentes.reduce((sum, m) => sum + Number(m.valor), 0));
 
     // 4. CENTRO DE CUSTO INVESTMENTS
     const centroCustos = await prisma.movimentacaoFinanceira.groupBy({
@@ -126,7 +127,7 @@ export async function GET(request: Request) {
 
     const centroCustosBreakdown = centroCustos.map(c => ({
       centro_custo: c.centro_custo || 'NÃO DEFINIDO',
-      total: roundDecimal(c._sum.valor || 0),
+      total: roundDecimal(c._sum.valor ? Number(c._sum.valor) : 0),
       lançamentos: c._count.id
     })).sort((a, b) => b.total - a.total);
 

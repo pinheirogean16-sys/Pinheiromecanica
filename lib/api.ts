@@ -21,7 +21,7 @@ export class ApiError extends Error {
   }
 }
 
-export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
+export interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'priority'> {
   body?: any;
   priority?: 'high' | 'normal' | 'low';
   ttl?: number;

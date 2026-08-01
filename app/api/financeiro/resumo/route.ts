@@ -33,19 +33,19 @@ export async function GET(request: Request) {
 
     const entradas = roundDecimal(movimentacoes
       .filter(m => m.tipo === 'ENTRADA' && m.status === 'PAGO')
-      .reduce((acc, m) => acc + m.valor, 0));
+      .reduce((acc, m) => acc + Number(m.valor), 0));
 
     const saidas = roundDecimal(movimentacoes
       .filter(m => m.tipo === 'SAIDA' && m.status === 'PAGO')
-      .reduce((acc, m) => acc + m.valor, 0));
+      .reduce((acc, m) => acc + Number(m.valor), 0));
 
     const previstoEntradas = roundDecimal(movimentacoes
       .filter(m => m.tipo === 'ENTRADA' && m.status !== 'PAGO' && m.status !== 'CANCELADO')
-      .reduce((acc, m) => acc + m.valor, 0));
+      .reduce((acc, m) => acc + Number(m.valor), 0));
 
     const previstoSaidas = roundDecimal(movimentacoes
       .filter(m => m.tipo === 'SAIDA' && m.status !== 'PAGO' && m.status !== 'CANCELADO')
-      .reduce((acc, m) => acc + m.valor, 0));
+      .reduce((acc, m) => acc + Number(m.valor), 0));
 
     const saldo = roundDecimal(entradas - saidas);
     const previsto = roundDecimal(previstoEntradas - previstoSaidas);
@@ -66,8 +66,8 @@ export async function GET(request: Request) {
         }
       });
 
-      const mEntradas = roundDecimal(mData.filter(m => m.tipo === 'ENTRADA').reduce((acc, m) => acc + m.valor, 0));
-      const mSaidas = roundDecimal(mData.filter(m => m.tipo === 'SAIDA').reduce((acc, m) => acc + m.valor, 0));
+      const mEntradas = roundDecimal(mData.filter(m => m.tipo === 'ENTRADA').reduce((acc, m) => acc + Number(m.valor), 0));
+      const mSaidas = roundDecimal(mData.filter(m => m.tipo === 'SAIDA').reduce((acc, m) => acc + Number(m.valor), 0));
 
       const monthName = mStart.toLocaleString('pt-BR', { month: 'short' }).toUpperCase();
       chartData.push({

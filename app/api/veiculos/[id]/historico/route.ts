@@ -19,7 +19,7 @@ export async function GET(
     const veiculo = await prisma.veiculo.findUnique({
       where: { id },
       include: {
-        cliente: true
+        Cliente: true
       }
     });
 
@@ -91,7 +91,7 @@ export async function GET(
     }
 
     // 5. Compilar lista de Peças Trocadas Historicamente
-    let pecasTrocadas: any[] = [];
+    const pecasTrocadas: any[] = [];
     ordens.forEach(os => {
       const aplicadas = os.PecaAplicada || [];
       aplicadas.forEach(p => {
@@ -135,7 +135,7 @@ export async function GET(
         kmMedioPorMes,
         totalOS: ordens.length,
         totalPecasTrocadas: pecasTrocadas.length,
-        totalInvestido: ordens.reduce((acc, os) => acc + (os.valor_total || 0), 0),
+        totalInvestido: ordens.reduce((acc, os) => acc + (os.valor_total ? Number(os.valor_total) : 0), 0),
         preventivasAtivasCount: preventivas.length,
         preventivasVencidasCount: preventivas.filter(p => p.status === 'VENCIDO').length
       },

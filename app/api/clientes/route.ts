@@ -149,6 +149,7 @@ export async function POST(request: Request) {
 
     const cliente = await prisma.cliente.create({
       data: {
+        id: crypto.randomUUID(),
         empresa_id: user?.empresa_id || 'default',
         tipo: body.tipo,
         tipo_pessoa: body.tipo_pessoa || (body.tipo === 'PF' ? 'FISICA' : 'JURIDICA'),
@@ -172,7 +173,8 @@ export async function POST(request: Request) {
         estado: body.estado || body.uf || null,
         observacoes: body.observacoes || null,
         perfil: body.perfil,
-        ativo: body.ativo
+        ativo: body.ativo,
+        updated_at: new Date()
       }
     });
 

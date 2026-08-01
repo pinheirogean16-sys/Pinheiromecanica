@@ -16,6 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const execucao = await prisma.checklistExecucao.create({
       data: {
+        id: crypto.randomUUID(),
         checklist_id: id,
         os_id: body.osId || null,
         veiculo_id: body.veiculoId || null,

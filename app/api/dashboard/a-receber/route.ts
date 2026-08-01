@@ -10,7 +10,7 @@ export async function GET() {
     const osAReceber = await prisma.ordemServico.findMany({
       where: { status: 'FINALIZADA' },
       include: {
-        cliente: true,
+        Cliente: true,
       },
       orderBy: { data_finalizada: 'asc' },
       take: 5
@@ -19,7 +19,7 @@ export async function GET() {
     const formatado = osAReceber.map(os => ({
       id: os.id,
       numero: os.numero,
-      cliente: os.cliente.nome,
+      cliente: os.Cliente?.nome || 'Cliente não encontrado',
       valor: os.valor_total,
       data: os.data_finalizada
     }));

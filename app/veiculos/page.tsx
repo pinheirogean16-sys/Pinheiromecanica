@@ -486,7 +486,7 @@ export default function VeiculosListingPage() {
                       <Pencil size={15} />
                     </Link>
                     <button 
-                      onClick={() => onDelete(veiculo.id, veiculo.modelo)}
+                      onClick={() => handleDelete(veiculo.id, veiculo.modelo)}
                       className="p-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-red-500 border border-zinc-800 rounded-xl transition shadow-sm min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
                     >
                       <Trash2 size={15} />

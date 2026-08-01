@@ -85,6 +85,7 @@ export async function POST(request: Request) {
       
       return await tx.movimentacaoEstoque.create({
         data: {
+          id: crypto.randomUUID(),
           peca_id,
           tipo,
           quantidade: qtdNum,

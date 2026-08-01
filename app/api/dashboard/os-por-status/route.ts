@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { StatusOS } from '@prisma/client';
+import { OrdemServico_status } from '@prisma/client';
 import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
@@ -23,7 +23,7 @@ export async function GET() {
     }));
 
     // Garantir que status importantes existam no gráfico
-    const labels: { [key in StatusOS]?: string } = {
+    const labels: { [key in OrdemServico_status]?: string } = {
       ABERTA: 'Abertas',
       EM_DIAGNOSTICO: 'Em Diagnóstico',
       AGUARDANDO_PECAS: 'Ag. Peças',
@@ -35,7 +35,7 @@ export async function GET() {
     };
 
     const finalData = data.map(d => ({
-      name: labels[d.name as StatusOS] || d.name,
+      name: labels[d.name as OrdemServico_status] || d.name,
       value: d.value
     }));
 

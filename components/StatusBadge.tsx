@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusOS } from '@prisma/client';
+import { OrdemServico_status as StatusOS } from '@prisma/client';
 
 interface StatusBadgeProps {
   status: StatusOS;

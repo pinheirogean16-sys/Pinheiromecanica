@@ -48,7 +48,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
     setValue,
     reset,
     formState: { errors }
-  } = useForm({
+  } = useForm<PecaFormData>({
     resolver: zodResolver(pecaSchema),
     defaultValues: {
       unidadeMedida: 'un',

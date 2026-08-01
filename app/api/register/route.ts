@@ -23,8 +23,10 @@ export async function POST(request: Request) {
       // Criar empresa
       const empresa = await tx.empresa.create({
         data: { 
+          id: crypto.randomUUID(),
           nome: empresa_nome, 
-          cnpj: cnpj || null 
+          cnpj: cnpj || null,
+          updated_at: new Date()
         }
       });
       
@@ -32,11 +34,13 @@ export async function POST(request: Request) {
       const hash = await bcrypt.hash(senha, 10);
       const user = await tx.user.create({
         data: {
+          id: crypto.randomUUID(),
           name: nome_admin,
           email,
           password_hash: hash,
           role: 'ADMIN',
-          empresa_id: empresa.id
+          empresa_id: empresa.id,
+          updated_at: new Date()
         }
       });
       

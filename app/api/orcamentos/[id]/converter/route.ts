@@ -156,6 +156,7 @@ export async function POST(
               cliente_id: os.cliente_id,
               veiculo_id: os.veiculo_id,
               usuario_id: user?.id || 'admin',
+              updated_at: new Date(),
             }
           });
 

@@ -11,7 +11,7 @@ import {
 import { StatusBadge } from '@/components/StatusBadge';
 import { StatusCard } from '@/components/StatusCard';
 import Link from 'next/link';
-import { StatusOS } from '@prisma/client';
+import { OrdemServico_status as StatusOS } from '@prisma/client';
 import { Pagination } from '@/components/Pagination';
 
 // Componente de Linha Memoizado

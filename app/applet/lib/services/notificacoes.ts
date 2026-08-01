@@ -28,6 +28,7 @@ export async function createNotification(input: CreateNotificationInput) {
 
   const currentEmpresaId = empresa_id || 'default';
   const normalizedLink = link || null;
+  const notificationId = id || crypto.randomUUID();
 
   // 1. Concurrent in-memory protection
   const signatureKey = `${currentEmpresaId}:${usuario_id}:${titulo}:${normalizedLink || ''}`;
@@ -76,7 +77,7 @@ export async function createNotification(input: CreateNotificationInput) {
       // Cria normalmente
       const created = await tx.notificacao.create({
         data: {
-          id,
+          id: notificationId,
           titulo,
           mensagem,
           link: normalizedLink,

@@ -77,7 +77,7 @@ export async function getCachedStats(empresa_id: string) {
     }
   });
 
-  const faturamentoMes = osFinalizadasEsteMes.reduce((sum, os) => sum + (os.valor_total || 0), 0);
+  const faturamentoMes = osFinalizadasEsteMes.reduce((sum, os) => sum + (os.valor_total ? Number(os.valor_total) : 0), 0);
 
   // 3. Clientes ativos
   const clientesAtivos = await prisma.cliente.count({
@@ -218,15 +218,15 @@ export async function getCachedResumoFinanceiro(empresa_id: string) {
   movimentacoes.forEach(mov => {
     if (mov.tipo === 'ENTRADA') {
       if (mov.status === 'PAGO' || mov.status === 'CONCLUIDO') {
-        receitas += mov.valor || 0;
+        receitas += mov.valor ? Number(mov.valor) : 0;
       } else if (mov.status !== 'CANCELADO') {
-        aReceber += mov.valor || 0;
+        aReceber += mov.valor ? Number(mov.valor) : 0;
       }
     } else if (mov.tipo === 'SAIDA') {
       if (mov.status === 'PAGO' || mov.status === 'CONCLUIDO') {
-        despesas += mov.valor || 0;
+        despesas += mov.valor ? Number(mov.valor) : 0;
       } else if (mov.status !== 'CANCELADO') {
-        aPagar += mov.valor || 0;
+        aPagar += mov.valor ? Number(mov.valor) : 0;
       }
     }
   });

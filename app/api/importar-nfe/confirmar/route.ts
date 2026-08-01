@@ -155,7 +155,9 @@ export async function POST(req: NextRequest) {
           if (existingPeca) {
             // Update existing piece
             // "SE a peça já existir: atualizar estoque, atualizar custo, atualizar preço se configurado, vincular pela referência/código"
-            const currentMarkup = existingPeca.preco_custo > 0 ? (existingPeca.preco_venda / existingPeca.preco_custo) : 1.5;
+            const precoCustoNum = Number(existingPeca.preco_custo);
+            const precoVendaNum = Number(existingPeca.preco_venda);
+            const currentMarkup = precoCustoNum > 0 ? (precoVendaNum / precoCustoNum) : 1.5;
             const updatedPrecoVenda = safeCusto * currentMarkup;
 
             pecaDb = await prisma.peca.update({

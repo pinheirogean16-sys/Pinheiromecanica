@@ -120,11 +120,13 @@ export async function POST(request: Request) {
 
     const event = await prisma.eventoAgenda.create({
       data: {
+        id: crypto.randomUUID(),
         ...body,
         empresa_id,
         data_inicio: new Date(body.data_inicio),
         data_fim: new Date(body.data_fim),
         usuario_id: user.id,
+        updated_at: new Date(),
       },
     });
 

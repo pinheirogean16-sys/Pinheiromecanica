@@ -23,8 +23,8 @@ export async function getMetricasEstoque(empresaId: string) {
   for (let i = 0; i < pecas.length; i++) {
     const p = pecas[i];
     const qty = p.quantidade || 0;
-    valorEstoque += qty * (p.preco_custo || 0);
-    potencialVenda += qty * (p.preco_venda || 0);
+    valorEstoque += qty * (p.preco_custo ? Number(p.preco_custo) : 0);
+    potencialVenda += qty * (p.preco_venda ? Number(p.preco_venda) : 0);
     if (qty <= (p.estoque_minimo || 0)) {
        estoqueBaixo++;
     }

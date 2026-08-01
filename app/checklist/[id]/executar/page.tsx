@@ -98,7 +98,7 @@ export default function ExecutarChecklistPage({ params }: { params: Promise<{ id
     setRespostas(prev => ({ ...prev, [itemId]: val }));
   };
 
-  const handleFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleFocus = (e: React.FocusEvent<any>) => {
     setTimeout(() => {
       e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 150);

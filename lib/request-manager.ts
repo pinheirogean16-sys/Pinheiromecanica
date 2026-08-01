@@ -7,7 +7,7 @@
 
 import { toast } from 'sonner';
 
-export interface RequestConfig extends Omit<RequestInit, 'body'> {
+export interface RequestConfig extends Omit<RequestInit, 'body' | 'priority'> {
   body?: any;
   priority?: 'high' | 'normal' | 'low';
   ttl?: number; // Time-to-live in ms for cache
@@ -336,13 +336,31 @@ class RequestManager {
     const mergedHeaders = { ...defaultHeaders, ...config.headers };
 
     try {
+      const {
+        priority,
+        ttl,
+        skipCache,
+        retries,
+        retryDelay,
+        timeout,
+        skipDeduplication,
+        silentError,
+        body,
+        headers,
+        signal,
+        ...nativeOptions
+      } = config;
+
+      const requestPriority = priority === 'high' ? 'high' : priority === 'low' ? 'low' : undefined;
+
       const response = await fetch(path, {
-        ...config,
+        ...nativeOptions,
         headers: mergedHeaders,
         body: processedBody,
         signal: controller.signal,
         credentials: config.credentials ?? 'include',
-      });
+        ...(requestPriority ? { priority: requestPriority } : {}),
+      } as any);
 
       clearTimeout(timeoutId);
       this.abortControllers.delete(key);
@@ -373,9 +391,9 @@ class RequestManager {
       }
 
       // If valid, cache it
-      const ttl = config.ttl ?? 0;
-      if (ttl > 0 && (config.method || 'GET').toUpperCase() === 'GET') {
-        this.setCacheValue(key, data, ttl);
+      const resolvedTtl = ttl ?? 0;
+      if (resolvedTtl > 0 && (config.method || 'GET').toUpperCase() === 'GET') {
+        this.setCacheValue(key, data, resolvedTtl);
       }
 
       resolve(data);

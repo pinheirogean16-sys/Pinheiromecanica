@@ -1,6 +1,6 @@
 'use client';
 
-import { StatusOS } from '@prisma/client';
+import { OrdemServico_status as StatusOS } from '@prisma/client';
 
 export const statusColors: Record<StatusOS, string> = {
   ABERTA: 'bg-blue-500/10 text-blue-500 border-blue-500/20',

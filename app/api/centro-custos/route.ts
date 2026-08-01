@@ -74,10 +74,10 @@ export async function GET(request: Request) {
       const centroRaw = (os.centro_custo || 'OFICINA').toUpperCase();
       const centro = categoriasValidas.includes(centroRaw) ? centroRaw : 'OFICINA';
 
-      const faturamentoRaw = os.valor_total || 0;
-      const custoRaw = os.custo_real || 0;
-      const lucroRaw = os.lucro_bruto || 0;
-      const liquidoRaw = os.total_liquido || 0;
+      const faturamentoRaw = Number(os.valor_total || 0);
+      const custoRaw = Number(os.custo_real || 0);
+      const lucroRaw = Number(os.lucro_bruto || 0);
+      const liquidoRaw = Number(os.total_liquido || 0);
 
       // Acumuladores gerais
       faturamentoGeral += faturamentoRaw;
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
       };
     }).sort((a, b) => a.mes.localeCompare(b.mes));
 
-    const totalLiquidoGeral = ordens.reduce((acc, current) => acc + (current.total_liquido || 0), 0);
+    const totalLiquidoGeral = ordens.reduce((acc, current) => acc + Number(current.total_liquido || 0), 0);
     const totalImpostosGeral = faturamentoGeral * 0.06; // 6% simulado
 
     const responseData = {

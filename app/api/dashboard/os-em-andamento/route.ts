@@ -14,8 +14,8 @@ export async function GET() {
         }
       },
       include: {
-        cliente: true,
-        veiculo: true
+        Cliente: true,
+        Veiculo: true
       },
       orderBy: { data_entrada: 'desc' },
       take: 10
@@ -24,8 +24,8 @@ export async function GET() {
     const formatado = osEmAndamento.map(os => ({
       id: os.id,
       numero: os.numero,
-      cliente: os.cliente.nome,
-      veiculo: `${os.veiculo.modelo} - ${os.veiculo.ano}`,
+      cliente: os.Cliente?.nome || 'Cliente não encontrado',
+      veiculo: os.Veiculo ? `${os.Veiculo.modelo} - ${os.Veiculo.ano}` : 'Veículo não cadastrado',
       servico: os.diagnostico || 'Não informado',
       inicio: os.data_entrada
     }));

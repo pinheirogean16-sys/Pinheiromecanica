@@ -160,11 +160,13 @@ export async function POST(request: Request) {
 
     const peca = await prisma.peca.create({
       data: {
+        id: crypto.randomUUID(),
         ...data,
         empresa_id: empresa_id,
         preco_custo: roundDecimal(data.preco_custo),
         preco_venda: roundDecimal(data.preco_venda),
-        created_by: user?.name || user?.email || 'Sistema'
+        created_by: user?.name || user?.email || 'Sistema',
+        updated_at: new Date()
       }
     });
 

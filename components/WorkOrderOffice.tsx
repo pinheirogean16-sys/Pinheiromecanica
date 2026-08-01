@@ -343,7 +343,7 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   const updatePeca = useCallback((pid: string, field: string, value: any) => {
     setPecas(prev => prev.map(p => {
       if (p.id === pid) {
-        let updated = { ...p, [field]: value };
+        const updated = { ...p, [field]: value };
         
         if (field === 'unidade') {
           const targetUnit = value;
@@ -877,7 +877,7 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                           className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-black transition text-right tabular-nums shadow-inner"
                           value={servico.horas}
                           onChange={(e) => {
-                            let val = e.target.value.replace(/[^0-9:]/g, '');
+                            const val = e.target.value.replace(/[^0-9:]/g, '');
                             updateServico(servico.id, 'horas', val);
                           }}
                           onBlur={(e) => {

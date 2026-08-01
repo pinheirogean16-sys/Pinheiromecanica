@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function NewOSPage() {
   const clients = await prisma.cliente.findMany({
-    include: { veiculos: true }
+    include: { Veiculo: true }
   });
 
   const mechanics = await prisma.user.findMany({
