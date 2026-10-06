@@ -11,8 +11,11 @@ export async function POST(
     if (error) return error;
 
     const { id } = await params;
-    const rawOrcamento = await prisma.orcamento.findUnique({
-      where: { id },
+    const rawOrcamento = await prisma.orcamento.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         OrcamentoServico: true,
         OrcamentoPeca: true,
@@ -41,8 +44,9 @@ export async function POST(
     }
 
     // Função para buscar o menor número de OS disponível (reutilizando lacunas de excluídos)
-    async function obterProximoNumeroOS(tx: any): Promise<number> {
+    async function obterProximoNumeroOS(tx: any, empresaId: string): Promise<number> {
       const ordens = await tx.ordemServico.findMany({
+        where: { empresa_id: empresaId },
         select: { numero: true },
         orderBy: { numero: 'asc' }
       });
@@ -66,12 +70,14 @@ export async function POST(
       try {
         attempts++;
         result = await prisma.$transaction(async (tx) => {
-          const proximoNumero = await obterProximoNumeroOS(tx);
+          const empresaId = orcamento.empresa_id || user.empresa_id;
+          const proximoNumero = await obterProximoNumeroOS(tx, empresaId);
 
           // 1. Criar a OS com número sequencial real livre de lacunas
           const os = await tx.ordemServico.create({
             data: {
               id: globalThis.crypto.randomUUID(),
+              empresa_id: empresaId,
               numero: proximoNumero,
               tipoOS: 'OFICINA',
               cliente_id: orcamento.cliente_id,

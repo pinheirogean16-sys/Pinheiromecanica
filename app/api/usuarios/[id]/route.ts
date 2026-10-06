@@ -33,18 +33,16 @@ export async function GET(
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
     
-    const user = await prisma.user.findUnique({
-      where: { id },
+    const user = await prisma.user.findFirst({
+      where: { 
+        id,
+        empresa_id: currentUser.empresa_id
+      },
       select: { id: true, name: true, email: true, role: true, empresa_id: true, especialidade: true, comissao: true, created_at: true }
     });
     
     if (!user) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
-    }
-
-    // Validar empresa
-    if (user.empresa_id !== (currentUser?.empresa_id || 'default') && !isSelf) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     return NextResponse.json(user);
@@ -71,13 +69,13 @@ export async function PUT(
     }
     
     const body = updateUserSchema.parse(await request.json());
-    const antes = await prisma.user.findUnique({ where: { id } });
+    const antes = await prisma.user.findFirst({ 
+      where: { 
+        id,
+        empresa_id: currentUser.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (currentUser?.empresa_id || 'default') && !isSelf) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     const updateData: any = { 
       name: body.name, 
@@ -140,13 +138,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Você não pode excluir seu próprio usuário' }, { status: 403 });
     }
     
-    const antes = await prisma.user.findUnique({ where: { id } });
+    const antes = await prisma.user.findFirst({ 
+      where: { 
+        id,
+        empresa_id: currentUser.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (currentUser?.empresa_id || 'default')) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     await prisma.user.delete({ where: { id } });
 

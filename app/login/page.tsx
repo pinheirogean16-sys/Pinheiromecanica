@@ -89,7 +89,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 lg:py-4 pl-10 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 text-sm lg:text-base focus:outline-none focus:ring-1 transition-all font-mono"
                 style={{ borderColor: corPrincipal + '20' }}
-                placeholder="admin@pinheiro.com"
+                placeholder="seu@email.com"
               />
             </div>
           </div>

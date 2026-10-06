@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const xmlString = await file.text();
     const nfeData = parseNFeXML(xmlString);
 
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
 
     // Verify which pieces are already registered in the database for the current empresa_id
     const codigos = nfeData.itens.map(item => item.codigo);

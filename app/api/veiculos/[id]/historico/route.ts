@@ -16,8 +16,11 @@ export async function GET(
     const searchPeca = searchParams.get('q_peca') || ''; // Para buscar rápido peças específicas trocadas
 
     // 1. Obter Veículo detalhado com Cliente
-    const veiculo = await prisma.veiculo.findUnique({
-      where: { id },
+    const veiculo = await prisma.veiculo.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         Cliente: true
       }
@@ -31,7 +34,7 @@ export async function GET(
     const ordens = await prisma.ordemServico.findMany({
       where: {
         veiculo_id: id,
-        empresa_id: user?.empresa_id || 'default'
+        empresa_id: user.empresa_id
       },
       include: {
         ServicoOS: true,
@@ -56,7 +59,8 @@ export async function GET(
     // 3. Obter Preventivas Ativas
     const preventivas = await prisma.preventiva.findMany({
       where: {
-        veiculo_id: id
+        veiculo_id: id,
+        empresa_id: user.empresa_id
       },
       orderBy: {
         created_at: 'desc'

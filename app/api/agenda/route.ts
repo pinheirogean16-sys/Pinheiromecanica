@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const mecanico_id = searchParams.get('mecanico_id');
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (start && end) {
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
 
     const body = eventoSchema.parse(await request.json());
     
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
 
     const event = await prisma.eventoAgenda.create({
       data: {

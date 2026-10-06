@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get('q') || '';
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
     if (q) {
       where.OR = [
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     const newUser = await prisma.user.create({
       data: {
         id: crypto.randomUUID(),
-        empresa_id: currentUser?.empresa_id || 'default',
+        empresa_id: currentUser.empresa_id,
         name: body.name,
         email: body.email,
         password_hash: hashedPassword,

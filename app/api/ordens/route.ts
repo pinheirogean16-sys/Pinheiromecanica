@@ -113,7 +113,7 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '10');
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (tipoOS) {
@@ -189,8 +189,9 @@ export async function POST(request: Request) {
     const body = osSchema.parse(normalizedBody);
     
     // Função para buscar o menor número de OS disponível (reutilizando lacunas de excluídos)
-    async function obterProximoNumeroOS(tx: any): Promise<number> {
+    async function obterProximoNumeroOS(tx: any, targetEmpresaId: string): Promise<number> {
       const ordens = await tx.ordemServico.findMany({
+        where: { empresa_id: targetEmpresaId },
         select: { numero: true },
         orderBy: { numero: 'asc' }
       });
@@ -206,6 +207,22 @@ export async function POST(request: Request) {
       return nextNumber;
     }
 
+    const empresaId = user.empresa_id;
+
+    const clienteExistente = await prisma.cliente.findFirst({
+      where: { id: body.cliente_id, empresa_id: empresaId }
+    });
+    if (!clienteExistente) {
+      return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    const veiculoExistente = await prisma.veiculo.findFirst({
+      where: { id: body.veiculo_id, empresa_id: empresaId }
+    });
+    if (!veiculoExistente) {
+      return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+    }
+
     let attempts = 0;
     const maxAttempts = 3;
     let result: any;
@@ -214,7 +231,7 @@ export async function POST(request: Request) {
       try {
         attempts++;
         result = await prisma.$transaction(async (tx) => {
-          const proximoNumero = await obterProximoNumeroOS(tx);
+          const proximoNumero = await obterProximoNumeroOS(tx, empresaId);
 
           console.error('CRIANDO OS');
           console.error('PAYLOAD COMPLETO', JSON.stringify(body, null, 2));
@@ -224,7 +241,7 @@ export async function POST(request: Request) {
             data: {
               id: crypto.randomUUID(),
               numero: proximoNumero,
-              empresa_id: user?.empresa_id || 'default',
+              empresa_id: empresaId,
               tipoOS: body.tipoOS || 'OFICINA',
               cliente_id: body.cliente_id,
               veiculo_id: body.veiculo_id,
@@ -309,7 +326,7 @@ export async function POST(request: Request) {
               const qty = p.quantidade || 1;
               const reqUnidade = p.unidade || 'un';
 
-              const peca = await tx.peca.findUnique({ where: { id: pecaId } });
+              const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: empresaId } });
               if (!peca) throw new Error(`Peça ${pecaId} não encontrada`);
 
               let convertedQty = qty;
@@ -327,7 +344,7 @@ export async function POST(request: Request) {
             // Validar se o total somado ultrapassa o estoque disponível
             for (const pecaId in pecaTotaisSolicitados) {
               const totalReq = pecaTotaisSolicitados[pecaId];
-              const peca = await tx.peca.findUnique({ where: { id: pecaId } });
+              const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: empresaId } });
               if (!peca) throw new Error(`Peça ${pecaId} não encontrada`);
               if (peca.quantidade < totalReq) {
                 const dispUnStr = peca.unidadeMedida || 'un';
@@ -341,7 +358,7 @@ export async function POST(request: Request) {
               const reqUnidade = p.unidade || 'un';
               if (!pecaId) throw new Error('ID da peça é obrigatório');
 
-              const peca = await tx.peca.findUnique({ where: { id: pecaId } });
+              const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: empresaId } });
               if (!peca) throw new Error(`Peça ${pecaId} não encontrada`);
 
               // Autoconverte para unidade de estoque
@@ -399,7 +416,7 @@ export async function POST(request: Request) {
                   motivo: 'OS',
                   os_id: ordem.id,
                   usuario_id: user.id || 'system',
-                  empresa_id: user?.empresa_id || 'default'
+                  empresa_id: empresaId
                 }
               });
             }

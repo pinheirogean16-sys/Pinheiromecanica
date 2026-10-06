@@ -18,7 +18,7 @@ model AuditLog {
   dados_depois String?  @db.LongText
   ip           String?
   created_at   DateTime @default(now())
-  empresa_id   String   @default("default")
+  empresa_id   String
 
   @@index([empresa_id])
   @@index([entidade_id])
@@ -34,7 +34,7 @@ model Checklist {
   ativo             Boolean             @default(true)
   created_at        DateTime            @default(now())
   updated_at        DateTime
-  empresa_id        String              @default("default")
+  empresa_id        String
   ChecklistExecucao ChecklistExecucao[]
   ChecklistItem     ChecklistItem[]
 }
@@ -49,7 +49,7 @@ model ChecklistExecucao {
   respostas     String          @db.LongText
   observacoes   String?
   created_at    DateTime        @default(now())
-  empresa_id    String          @default("default")
+  empresa_id    String
   Checklist     Checklist       @relation(fields: [checklist_id], references: [id])
   OrdemServico  OrdemServico?   @relation(fields: [os_id], references: [id])
   Veiculo       Veiculo?        @relation(fields: [veiculo_id], references: [id])
@@ -89,12 +89,12 @@ model Cliente {
   id                     String                   @id
   tipo                   Cliente_tipo
   nome                   String
-  cpf_cnpj               String                   @unique
+  cpf_cnpj               String
   telefone               String
   email                  String?
   endereco               String?
   created_at             DateTime                 @default(now())
-  updated_at             DateTime
+  updated_at             DateTime                 @updatedAt
   created_by             String?
   updated_by             String?
   nome_fantasia          String?
@@ -113,13 +113,15 @@ model Cliente {
   contato                String?
   status                 String                   @default("ATIVO")
   perfil                 String                   @default("CLIENTE")
-  empresa_id             String                   @default("default")
+  empresa_id             String
   estado                 String?
   EventoAgenda           EventoAgenda[]
   MovimentacaoFinanceira MovimentacaoFinanceira[]
   Orcamento              Orcamento[]
   OrdemServico           OrdemServico[]
   Veiculo                Veiculo[]
+
+  @@unique([cpf_cnpj, empresa_id])
 }
 
 model ConfiguracaoEmpresa {
@@ -174,7 +176,7 @@ model EventoAgenda {
   usuario_id                          String
   created_at                          DateTime            @default(now())
   updated_at                          DateTime
-  empresa_id                          String              @default("default")
+  empresa_id                          String
   Cliente                             Cliente?            @relation(fields: [cliente_id], references: [id])
   User_EventoAgenda_mecanico_idToUser User?               @relation("EventoAgenda_mecanico_idToUser", fields: [mecanico_id], references: [id])
   OrdemServico                        OrdemServico?       @relation(fields: [os_id], references: [id])
@@ -199,10 +201,10 @@ model MovimentacaoEstoque {
   observacao   String?                  @db.Text
   os_id        String?
   usuario_id   String
-  empresa_id   String                   @default("default")
+  empresa_id   String
   created_at   DateTime                 @default(now())
   OrdemServico OrdemServico?            @relation(fields: [os_id], references: [id])
-  Peca         Peca                     @relation(fields: [peca_id], references: [id], onDelete: Cascade)
+  Peca         Peca                     @relation(fields: [peca_id], references: [id], onDelete: Restrict)
 
   @@index([empresa_id])
   @@index([os_id], map: "MovimentacaoEstoque_os_id_fkey")
@@ -230,7 +232,7 @@ model MovimentacaoFinanceira {
   numero_documento String?
   comprovante_url  String?
   cliente_id       String?
-  empresa_id       String                      @default("default")
+  empresa_id       String
   Cliente          Cliente?                    @relation(fields: [cliente_id], references: [id])
   OrdemServico     OrdemServico?               @relation(fields: [os_id], references: [id])
 
@@ -246,7 +248,7 @@ model Notificacao {
   lida       Boolean  @default(false)
   usuario_id String
   created_at DateTime @default(now())
-  empresa_id String   @default("default")
+  empresa_id String
   User       User     @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
 
   @@index([empresa_id])
@@ -272,7 +274,7 @@ model Orcamento {
   updated_by       String?
   created_at       DateTime           @default(now())
   updated_at       DateTime
-  empresa_id       String             @default("default")
+  empresa_id       String
   Cliente          Cliente            @relation(fields: [cliente_id], references: [id])
   Veiculo          Veiculo?           @relation(fields: [veiculo_id], references: [id])
   OrcamentoPeca    OrcamentoPeca[]
@@ -312,7 +314,7 @@ model OrcamentoServico {
 
 model OrdemServico {
   id                       String                   @id
-  numero                   Int                      @unique @default(autoincrement())
+  numero                   Int                      @default(autoincrement())
   status                   OrdemServico_status      @default(ABERTA)
   diagnostico              String?
   cliente_id               String
@@ -335,7 +337,7 @@ model OrdemServico {
   numero_parcelas          Int?
   dias_entre_parcelas      Int?                     @default(28)
   data_vencimento_primeira DateTime?
-  empresa_id               String                   @default("default")
+  empresa_id               String
   despesa_alimentacao      Decimal?                 @default(0.00) @db.Decimal(10, 2)
   despesa_combustivel      Decimal?                 @default(0.00) @db.Decimal(10, 2)
   despesa_diaria_tecnica   Decimal?                 @default(0.00) @db.Decimal(10, 2)
@@ -387,6 +389,7 @@ model OrdemServico {
   PecaAplicada             PecaAplicada[]
   ServicoOS                ServicoOS[]
 
+  @@unique([numero, empresa_id])
   @@index([cliente_id], map: "OrdemServico_cliente_id_fkey")
   @@index([mecanico_id], map: "OrdemServico_mecanico_id_fkey")
   @@index([veiculo_id], map: "OrdemServico_veiculo_id_fkey")
@@ -407,7 +410,7 @@ model Peca {
   updated_at          DateTime
   created_by          String?
   updated_by          String?
-  empresa_id          String                @default("default")
+  empresa_id          String
   fatorConversao      Float                 @default(1)
   permiteFracionado   Boolean               @default(false)
   unidadeCompra       String                @default("un")
@@ -436,7 +439,7 @@ model PecaAplicada {
 
 model Preventiva {
   id          String    @id
-  empresa_id  String    @default("default")
+  empresa_id  String
   veiculo_id  String
   componente  String
   descricao   String?
@@ -486,7 +489,7 @@ model User {
   comissao                                    Decimal        @default(0.00) @db.Decimal(10, 2)
   created_at                                  DateTime       @default(now())
   updated_at                                  DateTime
-  empresa_id                                  String         @default("default")
+  empresa_id                                  String
   EventoAgenda_EventoAgenda_mecanico_idToUser EventoAgenda[] @relation("EventoAgenda_mecanico_idToUser")
   EventoAgenda_EventoAgenda_usuario_idToUser  EventoAgenda[] @relation("EventoAgenda_usuario_idToUser")
   Notificacao                                 Notificacao[]
@@ -499,7 +502,7 @@ model User {
 
 model Veiculo {
   id                String              @id
-  placa             String              @unique
+  placa             String
   modelo            String
   marca             String
   ano               Int
@@ -507,18 +510,19 @@ model Veiculo {
   quilometragem     Int?
   cliente_id        String
   created_at        DateTime            @default(now())
-  updated_at        DateTime
+  updated_at        DateTime            @updatedAt
   created_by        String?
   updated_by        String?
   horimetro_atual   Float?
-  empresa_id        String              @default("default")
+  empresa_id        String
   ChecklistExecucao ChecklistExecucao[]
   EventoAgenda      EventoAgenda[]
   Orcamento         Orcamento[]
   OrdemServico      OrdemServico[]
   Preventiva        Preventiva[]
-  Cliente           Cliente             @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  Cliente           Cliente             @relation(fields: [cliente_id], references: [id], onDelete: Restrict)
 
+  @@unique([placa, empresa_id])
   @@index([cliente_id], map: "Veiculo_cliente_id_fkey")
 }
 

@@ -45,8 +45,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const rawCliente = await prisma.cliente.findUnique({
-      where: { id },
+    const rawCliente = await prisma.cliente.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         Veiculo: true,
         OrdemServico: {
@@ -105,24 +108,25 @@ export async function PUT(
     const { id } = await params;
     const body = updateClienteSchema.parse(await request.json());
 
-    const antes = await prisma.cliente.findUnique({ where: { id } });
+    const antes = await prisma.cliente.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     if (body.cpf_cnpj) {
       const existing = await prisma.cliente.findFirst({
         where: {
           cpf_cnpj: body.cpf_cnpj,
+          empresa_id: user.empresa_id,
           id: { not: id }
         }
       });
 
       if (existing) {
-        return NextResponse.json({ error: 'CPF/CNPJ já cadastrado em outro cliente' }, { status: 400 });
+        return NextResponse.json({ error: 'CPF/CNPJ já cadastrado em outro cliente nesta empresa' }, { status: 400 });
       }
     }
 
@@ -191,7 +195,15 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.cliente.findUnique({ where: { id } });
+    const antes = await prisma.cliente.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
+    if (!antes) {
+      return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
+    }
     
     await prisma.cliente.delete({
       where: { id }

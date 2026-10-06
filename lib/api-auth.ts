@@ -13,8 +13,8 @@ export async function requireAuth() {
   }
   
   const payload = verifyToken(token);
-  if (!payload) {
-    return { error: NextResponse.json({ error: 'Token inválido' }, { status: 401 }), user: null };
+  if (!payload || !payload.empresa_id || payload.empresa_id === 'default') {
+    return { error: NextResponse.json({ error: 'Token inválido ou sem identificação de empresa' }, { status: 401 }), user: null };
   }
   
   return { error: null, user: payload };

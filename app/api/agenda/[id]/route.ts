@@ -30,8 +30,11 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    const rawEvent = await prisma.eventoAgenda.findUnique({
-      where: { id: params.id },
+    const rawEvent = await prisma.eventoAgenda.findFirst({
+      where: { 
+        id: params.id,
+        empresa_id: user.empresa_id
+      },
       include: {
         OrdemServico: { select: { id: true, numero: true } },
         Cliente: { select: { id: true, nome: true } },
@@ -42,11 +45,6 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
 
     if (!rawEvent) {
       return NextResponse.json({ error: 'Evento não encontrado' }, { status: 404 });
-    }
-
-    // Validar empresa
-    if (rawEvent.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     const { OrdemServico, Cliente, Veiculo, User_EventoAgenda_mecanico_idToUser, ...rest } = rawEvent;
@@ -78,13 +76,13 @@ export async function PUT(request: Request, props: { params: Promise<{ id: strin
     const { id } = params;
     const body = eventoSchema.parse(await request.json());
 
-    const antes = await prisma.eventoAgenda.findUnique({ where: { id } });
+    const antes = await prisma.eventoAgenda.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     const event = await prisma.eventoAgenda.update({
       where: { id },
@@ -128,13 +126,13 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
     }
 
     const { id } = params;
-    const antes = await prisma.eventoAgenda.findUnique({ where: { id } });
+    const antes = await prisma.eventoAgenda.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     await prisma.eventoAgenda.delete({
       where: { id },

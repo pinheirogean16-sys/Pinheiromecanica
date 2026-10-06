@@ -14,15 +14,15 @@ export async function POST(
     if (error) return error;
 
     const { id } = await params;
-    const antes = await prisma.movimentacaoFinanceira.findUnique({ where: { id } });
+    const antes = await prisma.movimentacaoFinanceira.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     
     if (!antes) {
       return NextResponse.json({ error: 'Movimentação não encontrada' }, { status: 404 });
-    }
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     const movimentacao = await prisma.movimentacaoFinanceira.update({

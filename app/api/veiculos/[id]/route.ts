@@ -31,8 +31,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const rawVeiculo = await prisma.veiculo.findUnique({
-      where: { id },
+    const rawVeiculo = await prisma.veiculo.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         Cliente: true,
         OrdemServico: {
@@ -75,24 +78,34 @@ export async function PUT(
     const { id } = await params;
     const body = updateVeiculoSchema.parse(await request.json());
 
-    const antes = await prisma.veiculo.findUnique({ where: { id } });
+    const antes = await prisma.veiculo.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
 
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
+    if (body.cliente_id) {
+      const clienteExistente = await prisma.cliente.findFirst({
+        where: { id: body.cliente_id, empresa_id: user.empresa_id }
+      });
+      if (!clienteExistente) {
+        return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+      }
     }
 
     if (body.placa) {
       const existing = await prisma.veiculo.findFirst({
         where: {
           placa: body.placa,
+          empresa_id: user.empresa_id,
           id: { not: id }
         }
       });
 
       if (existing) {
-        return NextResponse.json({ error: 'Placa já cadastrada em outro veículo' }, { status: 400 });
+        return NextResponse.json({ error: 'Placa já cadastrada em outro veículo nesta empresa' }, { status: 400 });
       }
     }
 
@@ -139,7 +152,15 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.veiculo.findUnique({ where: { id } });
+    const antes = await prisma.veiculo.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
+    if (!antes) {
+      return NextResponse.json({ error: 'Veículo não encontrado' }, { status: 404 });
+    }
     
     await prisma.veiculo.delete({
       where: { id }

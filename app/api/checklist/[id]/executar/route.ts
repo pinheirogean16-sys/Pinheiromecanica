@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const { id } = await params;
@@ -17,11 +17,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const execucao = await prisma.checklistExecucao.create({
       data: {
         id: crypto.randomUUID(),
+        empresa_id: user.empresa_id,
         checklist_id: id,
         os_id: body.osId || null,
         veiculo_id: body.veiculoId || null,
-        executado_por: body.executadoPor || 'Sistema',
-        respostas: body.respostas,
+        executado_por: body.executadoPor || user.name || 'Sistema',
+        respostas: typeof body.respostas === 'string' ? body.respostas : JSON.stringify(body.respostas),
         observacoes: body.observacoes
       }
     });

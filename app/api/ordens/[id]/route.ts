@@ -59,6 +59,11 @@ export function serializeDecimals(obj: any): any {
  * Função utilitária para gerar movimentação financeira ao finalizar uma OS
  */
 async function gerarMovimentacaoFinanceira(tx: any, os: any, userId: string) {
+  const empresaId = os.empresa_id;
+  if (!empresaId) {
+    throw new Error('Ordem de serviço sem empresa_id definida');
+  }
+
   // Verificar se já existe movimentação de entrada para esta OS
   const existeEntrada = await tx.movimentacaoFinanceira.findFirst({
     where: { os_id: os.id, tipo: 'ENTRADA' }
@@ -83,6 +88,7 @@ async function gerarMovimentacaoFinanceira(tx: any, os: any, userId: string) {
       const mov = await tx.movimentacaoFinanceira.create({
         data: {
           id: globalThis.crypto.randomUUID(),
+          empresa_id: empresaId,
           tipo: 'ENTRADA',
           descricao: `OS #${os.numero} - ${os.cliente?.nome} - Parcela ${i + 1}/${numParcelas}`,
           valor: valorParcela,
@@ -103,6 +109,7 @@ async function gerarMovimentacaoFinanceira(tx: any, os: any, userId: string) {
         acao: 'CRIAR_AUTO',
         entidade: 'MovimentacaoFinanceira',
         entidade_id: mov.id,
+        empresa_id: empresaId,
         usuario: 'SISTEMA',
         dados_depois: mov
       });
@@ -117,6 +124,7 @@ async function gerarMovimentacaoFinanceira(tx: any, os: any, userId: string) {
     const mov = await tx.movimentacaoFinanceira.create({
       data: {
         id: globalThis.crypto.randomUUID(),
+        empresa_id: empresaId,
         tipo: 'ENTRADA',
         descricao: `Recebimento OS #${os.numero} - ${os.cliente?.nome || 'Cliente'}`,
         valor: roundDecimal(os.valor_total || 0),
@@ -137,6 +145,7 @@ async function gerarMovimentacaoFinanceira(tx: any, os: any, userId: string) {
       acao: 'CRIAR_AUTO',
       entidade: 'MovimentacaoFinanceira',
       entidade_id: mov.id,
+      empresa_id: empresaId,
       usuario: 'SISTEMA',
       dados_depois: mov
     });
@@ -311,8 +320,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const rawOrdem = await prisma.ordemServico.findUnique({
-      where: { id },
+    const rawOrdem = await prisma.ordemServico.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         Cliente: true,
         Veiculo: true,
@@ -374,13 +386,13 @@ export async function PATCH(
     const id = (await params).id;
     const body = updateOsSchema.parse(await request.json());
     
-    const antes = await prisma.ordemServico.findUnique({ where: { id } });
+    const antes = await prisma.ordemServico.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     // Permissão: ADMIN ou Criador
     if (user.role !== 'ADMIN' && antes.created_by !== user.name && antes.created_by !== user.email) {
@@ -393,8 +405,8 @@ export async function PATCH(
         for (const p of body.pecas) {
           const actualPecaId = p.peca_id || (p as any).pecaId;
           
-          const peca = await tx.peca.findUnique({ where: { id: actualPecaId } });
-          if (!peca) throw new Error(`Peça ${actualPecaId} não encontrada`);
+          const peca = await tx.peca.findFirst({ where: { id: actualPecaId, empresa_id: user.empresa_id } });
+          if (!peca) throw new Error(`Peça ${actualPecaId} não encontrada nesta empresa`);
           
           const qty = p.quantidade || 1;
           const reqUnidade = p.unidade || 'un';
@@ -458,7 +470,7 @@ export async function PATCH(
               motivo: 'OS',
               os_id: id,
               usuario_id: user.id || 'system',
-              empresa_id: user?.empresa_id || 'default'
+              empresa_id: antes.empresa_id || user?.empresa_id
             }
           });
         }
@@ -702,18 +714,37 @@ export async function PUT(
     body = putOsSchema.parse(await request.json());
     
     console.log('[PUT OS] PASSO 3 - Busca da OS existente');
-    const antes = await prisma.ordemServico.findUnique({ where: { id }, include: { ServicoOS: true, PecaAplicada: true } });
+    const antes = await prisma.ordemServico.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      }, 
+      include: { ServicoOS: true, PecaAplicada: true } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     // Permissão: ADMIN ou Criador
     if (user.role !== 'ADMIN' && antes.created_by !== user.name && antes.created_by !== user.email) {
       log('WARN', 'OS', 'Tentativa de edição (PUT) de OS de outro usuário negada', { id, userId: user?.id, owner: antes.created_by }, user?.name);
       return NextResponse.json({ error: 'Você só pode editar suas próprias OS' }, { status: 403 });
+    }
+
+    if (body.cliente_id) {
+      const clienteOk = await prisma.cliente.findFirst({
+        where: { id: body.cliente_id, empresa_id: user.empresa_id }
+      });
+      if (!clienteOk) {
+        return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+      }
+    }
+
+    if (body.veiculo_id) {
+      const veiculoOk = await prisma.veiculo.findFirst({
+        where: { id: body.veiculo_id, empresa_id: user.empresa_id }
+      });
+      if (!veiculoOk) {
+        return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -831,8 +862,8 @@ export async function PUT(
           const reqUnidade = p.unidade || 'un';
           if (!actualPecaId) throw new Error('ID da peça é obrigatório');
 
-          const peca = await tx.peca.findUnique({ where: { id: actualPecaId } });
-          if (!peca) throw new Error(`Peça ${actualPecaId} não encontrada`);
+          const peca = await tx.peca.findFirst({ where: { id: actualPecaId, empresa_id: user.empresa_id } });
+          if (!peca) throw new Error(`Peça ${actualPecaId} não encontrada nesta empresa`);
 
           let convertedQty = qty;
           if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
@@ -849,8 +880,8 @@ export async function PUT(
         // Validar se o total somado ultrapassa o estoque disponível (visto que as antigas já foram estornadas anteriormente)
         for (const pecaId in pecaTotaisSolicitados) {
           const totalReq = pecaTotaisSolicitados[pecaId];
-          const peca = await tx.peca.findUnique({ where: { id: pecaId } });
-          if (!peca) throw new Error(`Peça ${pecaId} não encontrada`);
+          const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: user.empresa_id } });
+          if (!peca) throw new Error(`Peça ${pecaId} não encontrada nesta empresa`);
           if (peca.quantidade < totalReq) {
             const dispUnStr = peca.unidadeMedida || 'un';
             throw new Error(`Estoque insuficiente total para a peça: ${peca.descricao}. Disponível: ${peca.quantidade} ${dispUnStr}, Solicitado total na OS: ${totalReq} ${dispUnStr}`);
@@ -861,8 +892,8 @@ export async function PUT(
           const actualPecaId = p.peca_id || (p as any).pecaId;
           const qty = p.quantidade || 1;
           const reqUnidade = p.unidade || 'un';
-          const peca = await tx.peca.findUnique({ where: { id: actualPecaId } });
-          if (!peca) throw new Error(`Peça ${actualPecaId} não encontrada`);
+          const peca = await tx.peca.findFirst({ where: { id: actualPecaId, empresa_id: user.empresa_id } });
+          if (!peca) throw new Error(`Peça ${actualPecaId} não encontrada nesta empresa`);
 
           // Autoconverte para a unidade principal do estoque
           let convertedQty = qty;
@@ -924,7 +955,7 @@ export async function PUT(
               motivo: 'OS',
               os_id: id,
               usuario_id: user.id || 'system',
-              empresa_id: user?.empresa_id || 'default'
+              empresa_id: antes.empresa_id || user?.empresa_id
             }
           });
         }
@@ -1113,7 +1144,12 @@ export async function DELETE(
     }
 
     const id = (await params).id;
-    const antes = await prisma.ordemServico.findUnique({ where: { id } });
+    const antes = await prisma.ordemServico.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 

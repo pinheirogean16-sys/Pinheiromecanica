@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!session || !session.empresa_id) {
+      return NextResponse.json({ error: 'Não autorizado ou empresa não identificada' }, { status: 401 });
     }
 
     const body = await req.json();
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    const empresa_id = session?.empresa_id || 'default';
+    const empresa_id = session.empresa_id;
 
     // 1. Fornecedor
     let actualFornecedorId = fornecedorId || null;
@@ -56,7 +56,12 @@ export async function POST(req: NextRequest) {
           const fornecedor = f;
           console.log('[CRIAR FORNECEDOR]', fornecedor);
 
-          const existing = await prisma.cliente.findUnique({ where: { cpf_cnpj: cnpjStr } });
+          const existing = await prisma.cliente.findFirst({ 
+            where: { 
+              cpf_cnpj: cnpjStr, 
+              empresa_id 
+            } 
+          });
           const newPerfil = existing ? (existing.perfil === 'CLIENTE' ? 'AMBOS' : existing.perfil) : 'FORNECEDOR';
 
           const supplierUpdatePayload = {
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest) {
  
           const supplierCreatePayload = {
             id: globalThis.crypto.randomUUID(),
+            empresa_id,
             cpf_cnpj: cnpjStr,
             nome: f.razaoSocial,
             razao_social: f.razaoSocial,
@@ -97,7 +103,12 @@ export async function POST(req: NextRequest) {
           console.log('[FORNECEDOR CREATE]', JSON.stringify(supplierCreatePayload, null, 2));
 
           const fornecedorDb = await prisma.cliente.upsert({
-            where: { cpf_cnpj: cnpjStr },
+            where: {
+              cpf_cnpj_empresa_id: {
+                cpf_cnpj: cnpjStr,
+                empresa_id
+              }
+            },
             update: supplierUpdatePayload,
             create: supplierCreatePayload
           });
@@ -247,6 +258,7 @@ export async function POST(req: NextRequest) {
             const mov = await prisma.movimentacaoFinanceira.create({
               data: {
                 id: globalThis.crypto.randomUUID(),
+                empresa_id,
                 tipo: 'SAIDA',
                 descricao: `${descricaoBase} - Parcela ${i + 1}/${numParcelas}`,
                 valor: valorParcela,
@@ -257,7 +269,7 @@ export async function POST(req: NextRequest) {
                 numero_documento: nfeData.numero,
                 forma_pagamento: formaPagamento,
                 cliente_id: actualFornecedorId,
-                created_by: 'Sistema (NF-e)',
+                created_by: session.name || session.email || 'Sistema (NF-e)',
                 updated_at: new Date()
               }
             });
@@ -267,6 +279,7 @@ export async function POST(req: NextRequest) {
           const mov = await prisma.movimentacaoFinanceira.create({
             data: {
               id: globalThis.crypto.randomUUID(),
+              empresa_id,
               tipo: 'SAIDA',
               descricao: descricaoBase,
               valor: valorTotal,
@@ -279,7 +292,7 @@ export async function POST(req: NextRequest) {
               numero_documento: nfeData.numero,
               forma_pagamento: formaPagamento || 'BOLETO À VISTA',
               cliente_id: actualFornecedorId,
-              created_by: 'Sistema (NF-e)',
+              created_by: session.name || session.email || 'Sistema (NF-e)',
               updated_at: new Date()
             }
           });

@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     }
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (q) {
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
 
     const data = pecaSchema.parse(await request.json());
     
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
 
     const existing = await prisma.peca.findUnique({
       where: { 

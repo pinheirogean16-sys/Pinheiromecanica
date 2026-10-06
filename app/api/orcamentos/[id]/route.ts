@@ -46,8 +46,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const rawOrcamento = await prisma.orcamento.findUnique({
-      where: { id },
+    const rawOrcamento = await prisma.orcamento.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         Cliente: true,
         Veiculo: true,
@@ -58,11 +61,6 @@ export async function GET(
 
     if (!rawOrcamento) {
       return NextResponse.json({ error: 'Orçamento não encontrado' }, { status: 404 });
-    }
-
-    // Validar empresa
-    if (rawOrcamento.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     const { Cliente, Veiculo, OrcamentoServico, OrcamentoPeca, ...rest } = rawOrcamento;
@@ -96,8 +94,11 @@ export async function PUT(
     const { id } = await params;
     const body = orcamentoSchema.parse(await request.json());
 
-    const rawAntes = await prisma.orcamento.findUnique({
-      where: { id },
+    const rawAntes = await prisma.orcamento.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: { OrcamentoServico: true, OrcamentoPeca: true }
     });
     if (!rawAntes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
@@ -109,9 +110,22 @@ export async function PUT(
       pecas: OrcamentoPeca
     };
 
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
+    if (body.cliente_id) {
+      const clienteOk = await prisma.cliente.findFirst({
+        where: { id: body.cliente_id, empresa_id: user.empresa_id }
+      });
+      if (!clienteOk) {
+        return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+      }
+    }
+
+    if (body.veiculo_id) {
+      const veiculoOk = await prisma.veiculo.findFirst({
+        where: { id: body.veiculo_id, empresa_id: user.empresa_id }
+      });
+      if (!veiculoOk) {
+        return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -214,13 +228,13 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.orcamento.findUnique({ where: { id } });
+    const antes = await prisma.orcamento.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     await prisma.orcamento.delete({
       where: { id }

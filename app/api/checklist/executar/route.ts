@@ -31,16 +31,25 @@ export async function POST(request: Request) {
 
     const body = execucaoSchema.parse(await request.json());
 
-    // Se houver OS_ID, buscamos o veiculo_id vinculado à OS
+    // Validar se checklist pertence à empresa
+    const chk = await prisma.checklist.findFirst({
+      where: { id: body.checklist_id, empresa_id: user.empresa_id }
+    });
+    if (!chk) {
+      return NextResponse.json({ error: 'Checklist não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    // Se houver OS_ID, buscamos o veiculo_id vinculado à OS pertencente à empresa
     let veiculo_id = null;
     if (body.os_id) {
-      const os = await prisma.ordemServico.findUnique({
-        where: { id: body.os_id },
+      const os = await prisma.ordemServico.findFirst({
+        where: { id: body.os_id, empresa_id: user.empresa_id },
         select: { veiculo_id: true }
       });
-      if (os) {
-        veiculo_id = os.veiculo_id;
+      if (!os) {
+        return NextResponse.json({ error: 'OS não encontrada nesta empresa' }, { status: 400 });
       }
+      veiculo_id = os.veiculo_id;
     }
 
     const execucaoId = globalThis.crypto.randomUUID();
@@ -57,7 +66,7 @@ export async function POST(request: Request) {
           respostas: JSON.stringify(body.respostas), // Database schema expects String
           observacoes: body.observacoes,
           data: new Date(),
-          empresa_id: user?.empresa_id || 'default'
+          empresa_id: user.empresa_id
         }
       });
 

@@ -30,8 +30,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const checklist = await prisma.checklist.findUnique({
-      where: { id },
+    const checklist = await prisma.checklist.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         ChecklistItem: {
           orderBy: { ordem: 'asc' }
@@ -44,11 +47,6 @@ export async function GET(
 
     if (!checklist) {
       return NextResponse.json({ error: 'Checklist não encontrado' }, { status: 404 });
-    }
-
-    // Validar empresa
-    if (checklist.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
     }
 
     const mappedChecklist = {
@@ -83,16 +81,14 @@ export async function PUT(
     const { id } = await params;
     const body = updateChecklistSchema.parse(await request.json());
 
-    const antesDb = await prisma.checklist.findUnique({ 
-      where: { id },
+    const antesDb = await prisma.checklist.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: { ChecklistItem: { orderBy: { ordem: 'asc' } } }
     });
     if (!antesDb) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antesDb.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     const antesMapped = {
       ...antesDb,
@@ -180,13 +176,13 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const antes = await prisma.checklist.findUnique({ where: { id } });
+    const antes = await prisma.checklist.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     const execucoesCount = await prisma.checklistExecucao.count({
       where: { checklist_id: id }

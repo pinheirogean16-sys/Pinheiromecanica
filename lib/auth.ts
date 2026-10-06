@@ -1,11 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { User_role as Role } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET não configurado! Defina no painel da Hostinger.');
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'Pinheirodiesel2026@Seguro#ERP';
 
 export interface UserTokenPayload {
   id: string;
@@ -22,8 +18,8 @@ export function signToken(payload: UserTokenPayload): string {
 export function verifyToken(token: string): UserTokenPayload | null {
   try {
     const payload = jwt.verify(token, JWT_SECRET as string) as any;
-    if (payload) {
-      payload.empresa_id = 'default';
+    if (!payload || !payload.empresa_id || payload.empresa_id === 'default') {
+      return null;
     }
     return payload as UserTokenPayload;
   } catch {

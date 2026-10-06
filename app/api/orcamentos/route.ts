@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '10');
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (q) {
@@ -124,7 +124,21 @@ export async function POST(request: Request) {
 
     body = orcamentoSchema.parse(await request.json());
     
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
+
+    const clienteExistente = await prisma.cliente.findFirst({
+      where: { id: body.cliente_id, empresa_id }
+    });
+    if (!clienteExistente) {
+      return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    const veiculoExistente = await prisma.veiculo.findFirst({
+      where: { id: body.veiculo_id, empresa_id }
+    });
+    if (!veiculoExistente) {
+      return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       // Gerar número sequencial

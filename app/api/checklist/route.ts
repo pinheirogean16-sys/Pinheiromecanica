@@ -1,10 +1,17 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 import * as crypto from "crypto";
 
 export async function GET(req: NextRequest) {
   try {
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
     const checklists = await prisma.checklist.findMany({
+      where: {
+        empresa_id: user.empresa_id
+      },
       include: {
         ChecklistItem: {
           orderBy: {
@@ -29,10 +36,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
     const body = await req.json();
     console.log("[CHECKLIST CREATE INPUT]", JSON.stringify(body, null, 2));
 
-    const { nome, descricao, categoria, ativo, itens, empresa_id } = body;
+    const { nome, descricao, categoria, ativo, itens } = body;
 
     if (!nome) {
       return NextResponse.json(
@@ -67,7 +77,7 @@ export async function POST(req: NextRequest) {
         descricao: descricao || null,
         categoria: categoria || null,
         ativo: typeof ativo === "boolean" ? ativo : true,
-        empresa_id: empresa_id || "default",
+        empresa_id: user.empresa_id,
         updated_at,
         ChecklistItem: {
           create: checklistItemsData,

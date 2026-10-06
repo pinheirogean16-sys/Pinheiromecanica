@@ -5,15 +5,27 @@ export async function createNotification(
   titulo: string, 
   mensagem: string, 
   usuario_id: string, 
-  link?: string
+  link?: string,
+  empresa_id?: string
 ) {
   try {
+    let resolvedEmpresaId = empresa_id;
+    if (!resolvedEmpresaId) {
+      const u = await prisma.user.findUnique({ where: { id: usuario_id }, select: { empresa_id: true } });
+      resolvedEmpresaId = u?.empresa_id;
+    }
+
+    if (!resolvedEmpresaId || resolvedEmpresaId === 'default') {
+      return null;
+    }
+
     return await prisma.notificacao.create({
       data: {
         id: randomUUID(),
         titulo,
         mensagem,
         usuario_id,
+        empresa_id: resolvedEmpresaId,
         link
       }
     });
@@ -23,11 +35,17 @@ export async function createNotification(
   }
 }
 
-export async function notifyAdmins(titulo: string, mensagem: string, link?: string) {
+export async function notifyAdmins(titulo: string, mensagem: string, link?: string, empresa_id?: string) {
   try {
+    if (!empresa_id || empresa_id === 'default') {
+      return null;
+    }
+
+    const where: any = { role: 'ADMIN', empresa_id };
+
     const admins = await prisma.user.findMany({
-      where: { role: 'ADMIN' },
-      select: { id: true }
+      where,
+      select: { id: true, empresa_id: true }
     });
 
     const createPromises = admins.map(admin => 
@@ -37,6 +55,7 @@ export async function notifyAdmins(titulo: string, mensagem: string, link?: stri
           titulo,
           mensagem,
           usuario_id: admin.id,
+          empresa_id: admin.empresa_id,
           link
         }
       })
@@ -49,13 +68,20 @@ export async function notifyAdmins(titulo: string, mensagem: string, link?: stri
   }
 }
 
-export async function notifyAdminsAndLeaders(titulo: string, mensagem: string, link?: string) {
+export async function notifyAdminsAndLeaders(titulo: string, mensagem: string, link?: string, empresa_id?: string) {
   try {
+    if (!empresa_id || empresa_id === 'default') {
+      return null;
+    }
+
+    const where: any = { 
+      role: { in: ['ADMIN', 'LIDER'] },
+      empresa_id
+    };
+
     const users = await prisma.user.findMany({
-      where: { 
-        role: { in: ['ADMIN', 'LIDER'] }
-      },
-      select: { id: true }
+      where,
+      select: { id: true, empresa_id: true }
     });
 
     const createPromises = users.map(user => 
@@ -65,6 +91,7 @@ export async function notifyAdminsAndLeaders(titulo: string, mensagem: string, l
           titulo,
           mensagem,
           usuario_id: user.id,
+          empresa_id: user.empresa_id,
           link
         }
       })
@@ -87,7 +114,8 @@ export async function notificarNovaOS(os: any) {
     return await notifyAdminsAndLeaders(
       'Nova Ordem de Serviço',
       `A OS #${osPopulated?.numero} foi aberta para o cliente ${osPopulated?.Cliente?.nome || 'Não Identificado'}.`,
-      `/os/${os.id}`
+      `/os/${os.id}`,
+      osPopulated?.empresa_id
     );
   } catch (error) {
     console.error('Error in notificarNovaOS:', error);
@@ -101,18 +129,20 @@ export async function notificarOSFinalizada(os: any) {
       include: { Cliente: { select: { nome: true } } }
     });
 
-    // Notificar admins
+    // Notificar admins da empresa da OS
     await notifyAdmins(
       'OS Finalizada',
       `A OS #${osPopulated?.numero} do cliente ${osPopulated?.Cliente?.nome || 'Não Identificado'} foi finalizada.`,
-      `/os/${os.id}`
+      `/os/${os.id}`,
+      osPopulated?.empresa_id
     );
 
     // Notificar sobre movimentação financeira
     await notifyAdmins(
       'Nova Movimentação Financeira',
       `Entrada gerada automaticamente pela finalização da OS #${osPopulated?.numero}. Valor: R$ ${osPopulated?.valor_total.toFixed(2)}`,
-      `/financeiro`
+      `/financeiro`,
+      osPopulated?.empresa_id
     );
   } catch (error) {
     console.error('Error in notificarOSFinalizada:', error);
@@ -129,7 +159,8 @@ export async function notificarChecklistExecutado(execucao: any) {
     return await notifyAdmins(
       'Checklist Executado',
       `O checklist "${checklist?.nome}" foi executado por ${execucao.executado_por}.`,
-      `/checklist/resultado/${execucao.id}`
+      `/checklist/resultado/${execucao.id}`,
+      execucao.empresa_id
     );
   } catch (error) {
     console.error('Error in notificarChecklistExecutado:', error);
@@ -140,9 +171,10 @@ export async function notificarEstoqueBaixo(peca: any) {
   try {
     const targetUsers = await prisma.user.findMany({
       where: { 
-        role: { in: ['ADMIN', 'LIDER', 'ESTOQUISTA'] }
+        role: { in: ['ADMIN', 'LIDER', 'ESTOQUISTA'] },
+        empresa_id: peca.empresa_id
       },
-      select: { id: true }
+      select: { id: true, empresa_id: true }
     });
 
     const createPromises = targetUsers.map(user => 
@@ -152,6 +184,7 @@ export async function notificarEstoqueBaixo(peca: any) {
           titulo: 'Estoque Baixo',
           mensagem: `O item ${peca.descricao} atingiu o nível crítico (${peca.quantidade} un).`,
           usuario_id: user.id,
+          empresa_id: user.empresa_id,
           link: `/estoque/${peca.id}/editar`
         }
       })
@@ -168,6 +201,7 @@ export async function notificarMovimentacaoFinanceira(mov: any) {
   return await notifyAdmins(
     'Nova Movimentação Financeira',
     `${mov.tipo === 'ENTRADA' ? 'Entrada' : 'Saída'} de R$ ${mov.valor.toFixed(2)} registrada: ${mov.descricao}`,
-    `/financeiro`
+    `/financeiro`,
+    mov.empresa_id
   );
 }

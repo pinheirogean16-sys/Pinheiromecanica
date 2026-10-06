@@ -1,11 +1,18 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 import * as crypto from "crypto";
 
 export async function GET(req: NextRequest) {
   try {
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
     // Fetch executions, utilizing exact model casing for relations from the introspected schema
     const execucoes = await prisma.checklistExecucao.findMany({
+      where: {
+        empresa_id: user.empresa_id
+      },
       include: {
         Checklist: true,
         OrdemServico: {
@@ -36,8 +43,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
     const body = await req.json();
-    const { checklist_id, os_id, veiculo_id, executado_por, respostas, observacoes, empresa_id } = body;
+    const { checklist_id, os_id, veiculo_id, executado_por, respostas, observacoes } = body;
 
     if (!checklist_id || !executado_por || !respostas) {
       return NextResponse.json(
@@ -57,7 +67,7 @@ export async function POST(req: NextRequest) {
         executado_por,
         respostas: typeof respostas === "string" ? respostas : JSON.stringify(respostas),
         observacoes: observacoes || null,
-        empresa_id: empresa_id || "default",
+        empresa_id: user.empresa_id,
       },
       include: {
         Checklist: true,

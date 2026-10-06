@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     const ano = searchParams.get('ano');
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (q) {
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
 
     const body = financeiroSchema.parse(await request.json());
     
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
     const valorArredondado = roundDecimal(body.valor);
     const results = [];
     const numParcelas = body.numero_parcelas || 1;

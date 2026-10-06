@@ -38,8 +38,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const rawPeca = await prisma.peca.findUnique({
-      where: { id },
+    const rawPeca = await prisma.peca.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         PecaAplicada: {
           include: {
@@ -103,15 +106,15 @@ export async function PUT(
     const { id } = await params;
     const data = updatePecaSchema.parse(await request.json());
     
-    const antes = await prisma.peca.findUnique({ where: { id } });
+    const antes = await prisma.peca.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
 
-    const empresa_id = user?.empresa_id || 'default';
-
-    // Validar empresa
-    if (antes.empresa_id !== empresa_id && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
+    const empresa_id = user.empresa_id;
 
     if (data.codigo) {
       const existing = await prisma.peca.findFirst({
@@ -185,13 +188,13 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.peca.findUnique({ where: { id } });
+    const antes = await prisma.peca.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
     
     await prisma.peca.delete({
       where: { id }

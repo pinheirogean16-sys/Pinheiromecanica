@@ -9,8 +9,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { error } = await requireRole(['ADMIN']);
+    const { error, user } = await requireRole(['ADMIN']);
     if (error) return error;
+
+    const targetUser = await prisma.user.findFirst({
+      where: { id, empresa_id: user.empresa_id }
+    });
+    if (!targetUser) {
+      return NextResponse.json({ error: 'Usuário não encontrado nesta empresa' }, { status: 404 });
+    }
     
     const tempPassword = Math.random().toString(36).slice(-8);
     const password_hash = await bcrypt.hash(tempPassword, 10);

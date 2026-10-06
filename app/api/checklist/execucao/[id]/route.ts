@@ -19,9 +19,12 @@ export async function GET(
 
     const { id } = await params;
     console.error('GET EXECUCAO ID', id);
-    console.error('[GET EXECUCAO] PASSO 1 - Antes do findUnique');
-    const execucao = await prisma.checklistExecucao.findUnique({
-      where: { id },
+    console.error('[GET EXECUCAO] PASSO 1 - Antes do findFirst');
+    const execucao = await prisma.checklistExecucao.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         Checklist: {
           include: {
@@ -93,7 +96,15 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.checklistExecucao.findUnique({ where: { id } });
+    const antes = await prisma.checklistExecucao.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
+    if (!antes) {
+      return NextResponse.json({ error: 'Execução não encontrada' }, { status: 404 });
+    }
 
     await prisma.checklistExecucao.delete({
       where: { id }

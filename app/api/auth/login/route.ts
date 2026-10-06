@@ -44,19 +44,23 @@ export async function POST(request: Request) {
     // Se sucesso, resetar tentativas
     loginAttempts.delete(ip);
 
+    if (!user.empresa_id || user.empresa_id === 'default') {
+      return NextResponse.json({ error: 'Usuário sem empresa válida vinculada' }, { status: 403 });
+    }
+
     const token = signToken({ 
       id: user.id, 
       email: user.email, 
       name: user.name, 
       role: user.role,
-      empresa_id: user.empresa_id || 'default'
+      empresa_id: user.empresa_id
     });
     
     // Criar resposta E setar cookie
     const response = NextResponse.json({ 
       success: true, 
       redirect: '/dashboard',
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, empresa_id: user.empresa_id || 'default' }
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, empresa_id: user.empresa_id }
     });
     
     // Cookie com opções robustas e seguras

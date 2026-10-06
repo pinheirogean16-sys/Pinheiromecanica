@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     const skip = (page - 1) * limit;
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (q) {
@@ -98,20 +98,30 @@ export async function POST(request: Request) {
     }
 
     const body = veiculoSchema.parse(await request.json());
+
+    const clienteExistente = await prisma.cliente.findFirst({
+      where: { id: body.cliente_id, empresa_id: user.empresa_id }
+    });
+    if (!clienteExistente) {
+      return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+    }
     
-    const existing = await prisma.veiculo.findUnique({
-      where: { placa: body.placa }
+    const existing = await prisma.veiculo.findFirst({
+      where: { 
+        placa: body.placa,
+        empresa_id: user.empresa_id
+      }
     });
 
     if (existing) {
-      return NextResponse.json({ error: 'Placa já cadastrada' }, { status: 400 });
+      return NextResponse.json({ error: 'Placa já cadastrada nesta empresa' }, { status: 400 });
     }
 
     const veiculo = await prisma.veiculo.create({
       data: {
         ...body,
         id: crypto.randomUUID(),
-        empresa_id: user?.empresa_id || 'default',
+        empresa_id: user.empresa_id,
         created_by: user?.name || user?.email || 'Sistema',
         updated_at: new Date()
       },

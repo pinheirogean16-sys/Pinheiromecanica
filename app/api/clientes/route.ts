@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     const perfil = searchParams.get('perfil') || '';
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (status) {
@@ -139,18 +139,21 @@ export async function POST(request: Request) {
 
     const body = clienteSchema.parse(await request.json());
     
-    const existing = await prisma.cliente.findUnique({
-      where: { cpf_cnpj: body.cpf_cnpj }
+    const existing = await prisma.cliente.findFirst({
+      where: {
+        cpf_cnpj: body.cpf_cnpj,
+        empresa_id: user.empresa_id
+      }
     });
 
     if (existing) {
-      return NextResponse.json({ error: 'CPF/CNPJ já cadastrado' }, { status: 400 });
+      return NextResponse.json({ error: 'CPF/CNPJ já cadastrado nesta empresa' }, { status: 400 });
     }
 
     const cliente = await prisma.cliente.create({
       data: {
         id: crypto.randomUUID(),
-        empresa_id: user?.empresa_id || 'default',
+        empresa_id: user.empresa_id,
         tipo: body.tipo,
         tipo_pessoa: body.tipo_pessoa || (body.tipo === 'PF' ? 'FISICA' : 'JURIDICA'),
         nome: body.nome,

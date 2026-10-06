@@ -37,8 +37,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const movimentacaoRaw = await prisma.movimentacaoFinanceira.findUnique({
-      where: { id },
+    const movimentacaoRaw = await prisma.movimentacaoFinanceira.findFirst({
+      where: { 
+        id,
+        empresa_id: user.empresa_id
+      },
       include: {
         OrdemServico: {
           select: { id: true, numero: true, Cliente: { select: { nome: true } } }
@@ -64,11 +67,6 @@ export async function GET(
       OrdemServico: undefined,
       Cliente: undefined
     };
-
-    // Validar empresa
-    if (movimentacao.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
 
     return NextResponse.json(movimentacao);
   } catch (error) {
@@ -103,13 +101,13 @@ export async function PUT(
 
     const body = updateFinanceiroSchema.parse(rawBody);
 
-    const antes = await prisma.movimentacaoFinanceira.findUnique({ where: { id } });
+    const antes = await prisma.movimentacaoFinanceira.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
     
     const movimentacao = await prisma.movimentacaoFinanceira.update({
       where: { id },
@@ -172,13 +170,13 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.movimentacaoFinanceira.findUnique({ where: { id } });
+    const antes = await prisma.movimentacaoFinanceira.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-
-    // Validar empresa
-    if (antes.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
     
     await prisma.movimentacaoFinanceira.delete({
       where: { id }

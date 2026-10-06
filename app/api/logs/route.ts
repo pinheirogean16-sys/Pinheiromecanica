@@ -22,7 +22,9 @@ export async function GET(req: Request) {
     const modulo = searchParams.get('modulo');
     const skip_pagination = searchParams.get('skip_pagination') === 'true';
 
-    const where: any = {};
+    const where: any = {
+      empresa_id: session.empresa_id
+    };
     if (modulo && modulo !== 'TODOS') {
       where.modulo = modulo;
     }
