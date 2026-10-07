@@ -8,7 +8,7 @@ export async function GET() {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    const empresaId = user?.empresa_id || 'default';
+    const empresaId = user.empresa_id;
     const metrics = await getMetricasEstoque(empresaId);
 
     return NextResponse.json(metrics);

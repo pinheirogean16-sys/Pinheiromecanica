@@ -11,7 +11,7 @@ export async function GET() {
       by: ['descricao'],
       where: {
         OrdemServico: {
-          empresa_id: user?.empresa_id || 'default'
+          empresa_id: user.empresa_id
         }
       },
       _count: { id: true },

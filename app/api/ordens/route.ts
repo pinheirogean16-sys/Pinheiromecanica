@@ -209,6 +209,9 @@ export async function POST(request: Request) {
 
     const empresaId = user.empresa_id;
 
+    if (!body.cliente_id || typeof body.cliente_id !== 'string' || body.cliente_id.trim() === '') {
+      return NextResponse.json({ error: 'cliente_id é obrigatório e deve ser válido' }, { status: 400 });
+    }
     const clienteExistente = await prisma.cliente.findFirst({
       where: { id: body.cliente_id, empresa_id: empresaId }
     });
@@ -216,6 +219,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
     }
 
+    if (!body.veiculo_id || typeof body.veiculo_id !== 'string' || body.veiculo_id.trim() === '') {
+      return NextResponse.json({ error: 'veiculo_id é obrigatório e deve ser válido' }, { status: 400 });
+    }
     const veiculoExistente = await prisma.veiculo.findFirst({
       where: { id: body.veiculo_id, empresa_id: empresaId }
     });
@@ -535,9 +541,11 @@ export async function POST(request: Request) {
       if (body.pecas && body.pecas.length > 0) {
         for (const p of (body.pecas as any[])) {
           const pecaId = p.pecaId;
-          const peca = await prisma.peca.findUnique({ where: { id: pecaId } });
-          if (peca && peca.quantidade <= peca.estoque_minimo) {
-            await notificarEstoqueBaixo(peca);
+          if (pecaId) {
+            const peca = await prisma.peca.findFirst({ where: { id: pecaId, empresa_id: user.empresa_id } });
+            if (peca && peca.quantidade <= peca.estoque_minimo) {
+              await notificarEstoqueBaixo(peca);
+            }
           }
         }
       }
@@ -554,6 +562,12 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error: any) {
     log('ERROR', 'OS', 'Erro ao criar OS', { error }, 'sistema');
+    if (error instanceof z.ZodError || error.name === 'ZodError') {
+      return NextResponse.json({ error: error.issues ? error.issues[0]?.message : 'Dados inválidos' }, { status: 400 });
+    }
+    if (error.message && (error.message.includes('não encontrada') || error.message.includes('obrigatório') || error.message.includes('inválid') || error.message.includes('insuficiente'))) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message || 'Erro ao criar ordem de serviço' }, { status: 500 });
   }
 }

@@ -9,7 +9,7 @@ export async function GET() {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
     const today = new Date();
     const days = [];
 

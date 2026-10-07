@@ -63,11 +63,6 @@ export async function GET(
       return NextResponse.json({ error: 'Peça não encontrada' }, { status: 404 });
     }
 
-    // Validar empresa
-    if (rawPeca.empresa_id !== (user?.empresa_id || 'default') && user?.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
-    }
-
     const { PecaAplicada, ...rest } = rawPeca;
     const peca = {
       ...rest,

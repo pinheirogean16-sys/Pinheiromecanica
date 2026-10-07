@@ -26,16 +26,19 @@ export async function limparNotificacoesConta(contaId: string) {
   }
 }
 
-export async function verificarContasAtrasadas() {
+export async function verificarContasAtrasadas(empresa_id?: string) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
+  const where: any = {
+    status: { in: ['PENDENTE', 'ATRASADO'] },
+    data_vencimento: { lt: hoje }
+  };
+  if (empresa_id) where.empresa_id = empresa_id;
+
   // Buscar contas pendentes com vencimento menor que hoje
   const contasVencidas = await prisma.movimentacaoFinanceira.findMany({
-    where: {
-      status: { in: ['PENDENTE', 'ATRASADO'] },
-      data_vencimento: { lt: hoje }
-    },
+    where,
     select: { 
       id: true, 
       descricao: true, 
@@ -65,7 +68,8 @@ export async function verificarContasAtrasadas() {
       await notifyAdmins(
         '⚠️ Conta em Atraso',
         `A conta "${conta.descricao}" venceu em ${conta.data_vencimento ? new Date(conta.data_vencimento).toLocaleDateString() : 'sem data'}. Valor: ${Number(conta.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. [ID: ${conta.id}]`,
-        '/financeiro/alertas'
+        '/financeiro/alertas',
+        conta.empresa_id
       );
       notificacoesCriadas++;
     }
@@ -77,7 +81,7 @@ export async function verificarContasAtrasadas() {
   };
 }
 
-export async function verificarContasAVencer(diasAntes: number = 3) {
+export async function verificarContasAVencer(diasAntes: number = 3, empresa_id?: string) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   
@@ -85,19 +89,23 @@ export async function verificarContasAVencer(diasAntes: number = 3) {
   limite.setDate(hoje.getDate() + diasAntes);
   limite.setHours(23, 59, 59, 999);
   
+  const where: any = {
+    status: 'PENDENTE',
+    data_vencimento: { 
+      gte: hoje, 
+      lte: limite 
+    }
+  };
+  if (empresa_id) where.empresa_id = empresa_id;
+
   const contasProximas = await prisma.movimentacaoFinanceira.findMany({
-    where: {
-      status: 'PENDENTE',
-      data_vencimento: { 
-        gte: hoje, 
-        lte: limite 
-      }
-    },
+    where,
     select: {
       id: true,
       descricao: true,
       valor: true,
       data_vencimento: true,
+      empresa_id: true,
       tipo: true
     }
   });
@@ -111,7 +119,8 @@ export async function verificarContasAVencer(diasAntes: number = 3) {
       await notifyAdmins(
         '⏳ Conta a Vencer',
         `A conta "${conta.descricao}" vence em ${conta.data_vencimento ? new Date(conta.data_vencimento).toLocaleDateString() : 'sem data'}. Valor: ${Number(conta.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. [ID: ${conta.id}]`,
-        '/financeiro/alertas'
+        '/financeiro/alertas',
+        conta.empresa_id
       );
       notificacoesCriadas++;
     }

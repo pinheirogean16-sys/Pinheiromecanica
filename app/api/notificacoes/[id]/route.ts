@@ -16,7 +16,7 @@ export async function PATCH(
       where: { 
         id,
         usuario_id: user.id,
-        empresa_id: user.empresa_id || 'default'
+        empresa_id: user.empresa_id
       },
       data: { lida: true }
     });
@@ -40,7 +40,7 @@ export async function DELETE(
       where: { 
         id,
         usuario_id: user.id,
-        empresa_id: user.empresa_id || 'default'
+        empresa_id: user.empresa_id
       }
     });
     return NextResponse.json({ success: true });

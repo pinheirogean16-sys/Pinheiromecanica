@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
     const movimentacoes = await prisma.movimentacaoFinanceira.findMany({
       where: {
-        empresa_id: user?.empresa_id || 'default',
+        empresa_id: user.empresa_id,
         data: {
           gte: start,
           lte: end
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 
       const mData = await prisma.movimentacaoFinanceira.findMany({
         where: {
-          empresa_id: user?.empresa_id || 'default',
+          empresa_id: user.empresa_id,
           data: { gte: mStart, lte: mEnd },
           status: 'PAGO'
         }

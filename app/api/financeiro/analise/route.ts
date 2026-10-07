@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const ano = parseInt(searchParams.get('ano') || new Date().getFullYear().toString());
 
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
 
     // 1. DRE SIMPLIFICADO GERAL DO ANO SELECIONADO
     const startOfYear = new Date(ano, 0, 1);

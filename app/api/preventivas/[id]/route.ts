@@ -22,7 +22,12 @@ export async function PUT(
     if (error) return error;
 
     const id = (await params).id;
-    const beforeObj = await prisma.preventiva.findUnique({ where: { id } });
+    const beforeObj = await prisma.preventiva.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!beforeObj) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 
     const body = editPreventivaSchema.parse(await request.json());
@@ -70,7 +75,12 @@ export async function DELETE(
     if (error) return error;
 
     const id = (await params).id;
-    const beforeObj = await prisma.preventiva.findUnique({ where: { id } });
+    const beforeObj = await prisma.preventiva.findFirst({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      } 
+    });
     if (!beforeObj) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 
     await prisma.preventiva.delete({ where: { id } });

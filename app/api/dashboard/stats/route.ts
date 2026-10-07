@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
     const stats = await getCachedStats(empresa_id);
 
     return NextResponse.json(stats);

@@ -1,0 +1,688 @@
+[
+  {
+    "modulo": "AUTENTICAÇÃO",
+    "teste": "Login Admin A com credenciais válidas",
+    "resultado": "Sucesso (HTTP 200 + cookie emitido)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "AUTENTICAÇÃO",
+    "teste": "Login Admin B com credenciais válidas",
+    "resultado": "Sucesso (HTTP 200 + cookie emitido)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "AUTENTICAÇÃO",
+    "teste": "Consulta de sessão Admin A (id, role, empresa_id)",
+    "resultado": "Inconsistência nos dados de sessão",
+    "erro": "{\"id\":\"test_user_admin_a\",\"name\":\"Admin Alfa\",\"email\":\"admin.alfa@teste.com\",\"ro",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "AUTENTICAÇÃO",
+    "teste": "Consulta de sessão Admin B",
+    "resultado": "Inconsistência na sessão B",
+    "erro": "{\"id\":\"test_user_admin_b\",\"name\":\"Admin Beta\",\"email\":\"admin.beta@teste.com\",\"ro",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "AUTENTICAÇÃO",
+    "teste": "Rejeição de token com fallback \"default\"",
+    "resultado": "Rejeitado com HTTP 401 como esperado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "AUTENTICAÇÃO",
+    "teste": "Rejeição de requisição sem token",
+    "resultado": "Rejeitado com HTTP 401",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CLIENTES",
+    "teste": "Criar cliente na Empresa A",
+    "resultado": "Sucesso ID 68613dee-9f99-4412-9a7c-51b820ab3db9",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CLIENTES",
+    "teste": "Consultar cliente por ID na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CLIENTES",
+    "teste": "Editar cliente na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CLIENTES",
+    "teste": "Mesmo CPF/CNPJ na Empresa B",
+    "resultado": "HTTP 500",
+    "erro": "{\"error\":\"Erro ao criar cliente\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "CLIENTES",
+    "teste": "Duplicidade de CPF/CNPJ na mesma empresa (Empresa A)",
+    "resultado": "Bloqueado HTTP 400 com sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CLIENTES",
+    "teste": "Excluir cliente sem vínculos na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "VEÍCULOS",
+    "teste": "Criar veículo associado ao cliente na Empresa A",
+    "resultado": "HTTP 400",
+    "erro": "{\"error\":\"Invalid enum value. Expected 'CAVALO_MECANICO' | 'CARRETA' | 'ONIBUS' ",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "VEÍCULOS",
+    "teste": "Consultar veículo por ID na Empresa A",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Veículo não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "VEÍCULOS",
+    "teste": "Editar veículo na Empresa A",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "VEÍCULOS",
+    "teste": "Histórico do veículo na Empresa A",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Veículo não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "VEÍCULOS",
+    "teste": "Mesma placa na Empresa B",
+    "resultado": "HTTP 400",
+    "erro": "{\"error\":\"Invalid enum value. Expected 'CAVALO_MECANICO' | 'CARRETA' | 'ONIBUS' ",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ESTOQUE",
+    "teste": "Criar peça na Empresa A",
+    "resultado": "Sucesso ID 1c83f89b-eb13-43ca-a5ea-ff865fef77f3",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "ESTOQUE",
+    "teste": "Pesquisar peça na Empresa A",
+    "resultado": "Retornou 1 itens",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "ESTOQUE",
+    "teste": "Movimentação de entrada de estoque na Empresa A (+5)",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "ESTOQUE",
+    "teste": "Mesmo código de peça na Empresa B (Multi-tenant isolado)",
+    "resultado": "Permitido ID 7d274bff-1d39-441f-8170-7162d9581ec5",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "ESTOQUE",
+    "teste": "Empresa A movimentar estoque de peça da Empresa B",
+    "resultado": "Bloqueado com sucesso (HTTP 400)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "ORÇAMENTOS",
+    "teste": "Criar orçamento na Empresa A",
+    "resultado": "HTTP 500",
+    "erro": "{\"error\":\"\\nInvalid `prisma.veiculo.findFirst()` invocation:\\n\\n{\\n  where: {\\n ",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORÇAMENTOS",
+    "teste": "Consultar orçamento por ID na Empresa A",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Orçamento não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORÇAMENTOS",
+    "teste": "Editar orçamento na Empresa A",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORÇAMENTOS",
+    "teste": "Converter orçamento em OS na Empresa A",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Orçamento não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORÇAMENTOS",
+    "teste": "Criar orçamento com veículo de outro tenant",
+    "resultado": "Vulnerabilidade: aceitou HTTP 500",
+    "erro": "{\"error\":\"\\nInvalid `prisma.veiculo.findFirst()` invocation:\\n\\n{\\n  where: {\\n ",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORDENS",
+    "teste": "Criar Ordem de Serviço na Empresa B",
+    "resultado": "HTTP 500",
+    "erro": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORDENS",
+    "teste": "Consultar OS por ID na Empresa B",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"OS não encontrada\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORDENS",
+    "teste": "Editar OS na Empresa B",
+    "resultado": "HTTP 400",
+    "erro": "{\"error\":\"Expected string, received null\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORDENS",
+    "teste": "Finalizar OS na Empresa B",
+    "resultado": "HTTP 400",
+    "erro": "{\"error\":\"Expected string, received null\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORDENS",
+    "teste": "Criar OS na Empresa A com veículo da Empresa B",
+    "resultado": "Vulnerabilidade: aceitou HTTP 500",
+    "erro": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "ORDENS",
+    "teste": "Usar peça da Empresa A em OS da Empresa B",
+    "resultado": "Rejeitado com sucesso (HTTP 500)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Criar movimentação financeira na Empresa A",
+    "resultado": "Sucesso ID 66c7de46-5f9d-43a3-922b-9e707913ff44",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Listar movimentações na Empresa A",
+    "resultado": "Retornou 1 itens",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Consultar movimentação por ID na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Pagar movimentação financeira na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Resumo financeiro na Empresa A",
+    "resultado": "Entradas: 1500",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Alertas financeiros na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "FINANCEIRO",
+    "teste": "Análise financeira (DRE) na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CHECKLIST",
+    "teste": "Criar modelo de checklist na Empresa A",
+    "resultado": "Sucesso ID bc3fdcf1-7e0d-4640-9fc1-7a94e1ea590e",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CHECKLIST",
+    "teste": "Listar checklists na Empresa A",
+    "resultado": "Retornou 1 modelos",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CHECKLIST",
+    "teste": "Executar checklist na Empresa A",
+    "resultado": "Sucesso Execução ID 28dd7292-3524-4a77-850d-ac9c9d61ab54",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CHECKLIST",
+    "teste": "Consultar execução de checklist por ID na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "AGENDA",
+    "teste": "Criar evento de agenda na Empresa A",
+    "resultado": "HTTP 400",
+    "erro": "{\"error\":\"Invalid enum value. Expected 'OS' | 'REVISAO' | 'MANUTENCAO_PREVENTIVA",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "AGENDA",
+    "teste": "Editar evento de agenda",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Não encontrado\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "PREVENTIVAS",
+    "teste": "Criar manutenção preventiva na Empresa A",
+    "resultado": "HTTP 400",
+    "erro": "{\"error\":\"Expected string, received null\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "PREVENTIVAS",
+    "teste": "Editar preventiva",
+    "resultado": "HTTP 404",
+    "erro": "{\"error\":\"Não encontrada\"}",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "USUÁRIOS",
+    "teste": "Listar usuários da própria empresa (Empresa A)",
+    "resultado": "Retornou 2 usuários sem vazar outros tenants",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "USUÁRIOS",
+    "teste": "Consultar usuário por ID dentro do próprio tenant",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "USUÁRIOS",
+    "teste": "Resetar senha de usuário da mesma empresa",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "USUÁRIOS",
+    "teste": "Empresa A consultar usuário da Empresa B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "USUÁRIOS",
+    "teste": "Empresa A resetar senha de usuário da Empresa B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "AUDITORIA",
+    "teste": "Consulta /api/logs Admin A (isolamento estrito)",
+    "resultado": "Retornou 8 logs exclusivos do Tenant A",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota Stats Gerais (/api/dashboard/stats)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota Atividades Recentes (/api/dashboard/atividades)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota OS por Status (/api/dashboard/os-por-status)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota Faturamento Mensal (/api/dashboard/faturamento-mensal)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota Entradas da Semana (/api/dashboard/entradas-semana)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota Serviços Mais Realizados (/api/dashboard/servicos-mais-realizados)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DASHBOARD",
+    "teste": "Rota Resumo Financeiro (/api/dashboard/resumo-financeiro)",
+    "resultado": "HTTP 200 isolado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A consultar Cliente de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A editar Cliente de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A excluir Cliente de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A consultar Veículo de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A editar Veículo de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A excluir Veículo de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A consultar Histórico de Veículo de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A consultar Peça de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A editar Peça de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A excluir Peça de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A consultar OS de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A editar OS de B",
+    "resultado": "Bloqueado com sucesso (HTTP 400)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin A excluir OS de B",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Cliente de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B editar Cliente de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B excluir Cliente de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Veículo de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B editar Veículo de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B excluir Veículo de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Peça de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Orçamento de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B editar Orçamento de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B converter Orçamento de A em OS",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Financeiro de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B pagar Financeiro de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Checklist de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Execução Checklist de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Preventiva de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "CROSS-TENANT",
+    "teste": "Admin B consultar Evento Agenda de A",
+    "resultado": "Bloqueado com sucesso (HTTP 404)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Contagem de modelos e tabelas (23 tabelas / 23 models)",
+    "resultado": "100% Sincronizado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Cliente @@unique([cpf_cnpj, empresa_id])",
+    "resultado": "Presente em SQL e Prisma",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Veiculo @@unique([placa, empresa_id])",
+    "resultado": "Presente em SQL e Prisma",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Orcamento @@unique([numero, empresa_id])",
+    "resultado": "Presente em SQL e Prisma",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "OrdemServico @@unique([numero, empresa_id])",
+    "resultado": "Presente em SQL e Prisma",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Peca @@unique([codigo, empresa_id])",
+    "resultado": "Presente em SQL e Prisma",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Ausência de DEFAULT \"default\" em colunas empresa_id",
+    "resultado": "Nenhum DEFAULT default encontrado",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Ausência de usuário admin pré-configurado em database.sql",
+    "resultado": "Seguro (sem usuário hardcoded)",
+    "erro": "-",
+    "status": "PASSOU"
+  }
+]

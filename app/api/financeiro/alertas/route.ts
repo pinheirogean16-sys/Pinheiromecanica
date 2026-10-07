@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
 
     // Trigger verification if requested (ideally by a cron job)
     if (verify && (session.role === 'ADMIN' || session.role === 'FINANCEIRO')) {
-      await verificarContasAtrasadas();
-      await verificarContasAVencer(3);
+      await verificarContasAtrasadas(session.empresa_id);
+      await verificarContasAVencer(3, session.empresa_id);
     }
 
     const hoje = new Date();
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     const atrasadasRaw = await prisma.movimentacaoFinanceira.findMany({
       where: {
         status: 'ATRASADO',
-        empresa_id: session.empresa_id || 'default'
+        empresa_id: session.empresa_id
       },
       include: {
         Cliente: { select: { nome: true } },
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
           gte: hoje,
           lte: proximoLimite
         },
-        empresa_id: session.empresa_id || 'default'
+        empresa_id: session.empresa_id
       },
       include: {
         Cliente: { select: { nome: true } },

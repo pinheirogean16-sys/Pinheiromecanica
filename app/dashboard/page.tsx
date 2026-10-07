@@ -164,7 +164,7 @@ export default function DashboardPage() {
     setLoadingUser(true);
     try {
       const data = await apiFetch('/api/auth/session', { priority: 'high', ttl: 60000 });
-      if (data) setUser(data);
+      if (data) setUser(data.user || data);
     } catch (err) {
       console.error('Erro de sessão:', err);
     } finally {

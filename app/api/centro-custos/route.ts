@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    const empresaId = user?.empresa_id || 'default';
+    const empresaId = user.empresa_id;
     const cacheKey = `centro_custos_${empresaId}`;
 
     // SWR / Cache RAM check

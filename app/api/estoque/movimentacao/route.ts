@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   
   const { searchParams } = new URL(request.url);
-  const where: any = { empresa_id: session.empresa_id || 'default' };
+  const where: any = { empresa_id: session.empresa_id };
   
   if (searchParams.get('peca_id')) where.peca_id = searchParams.get('peca_id');
   if (searchParams.get('tipo')) where.tipo = searchParams.get('tipo');
@@ -65,12 +65,11 @@ export async function POST(request: Request) {
   
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const peca = await tx.peca.findUnique({ 
-        where: { id: peca_id } 
+      const peca = await tx.peca.findFirst({ 
+        where: { id: peca_id, empresa_id: session.empresa_id } 
       });
       
       if (!peca) throw new Error('Peça não encontrada');
-      if (peca.empresa_id !== session.empresa_id) throw new Error('Acesso negado à peça');
       
       const novaQtd = tipo === 'ENTRADA' ? peca.quantidade + qtdNum : peca.quantidade - qtdNum;
       
@@ -93,7 +92,7 @@ export async function POST(request: Request) {
           observacao,
           os_id: os_id || null,
           usuario_id: session.id,
-          empresa_id: session.empresa_id || 'default'
+          empresa_id: session.empresa_id
         }
       });
     });

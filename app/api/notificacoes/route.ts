@@ -25,8 +25,8 @@ export async function GET(request: Request) {
     // Trigger financial check for admin/financial roles if requested
     if (triggerCheck && (user.role === 'ADMIN' || user.role === 'FINANCEIRO')) {
       // Essas funções já criam notificações no banco para os admins
-      await verificarContasAtrasadas();
-      await verificarContasAVencer(3);
+      await verificarContasAtrasadas(user.empresa_id);
+      await verificarContasAVencer(3, user.empresa_id);
     }
 
     const page = parseInt(searchParams.get('page') || '1');
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
     const where = { 
       usuario_id: user.id,
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     const [items, total] = await Promise.all([
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     const body = notificacaoSchema.parse(await request.json());
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
 
     const notificacao = await prisma.notificacao.create({
       data: {
@@ -111,7 +111,7 @@ export async function DELETE(request: Request) {
       await prisma.notificacao.deleteMany({
         where: { 
           usuario_id: user.id,
-          empresa_id: user?.empresa_id || 'default'
+          empresa_id: user.empresa_id
         }
       });
       return NextResponse.json({ success: true });

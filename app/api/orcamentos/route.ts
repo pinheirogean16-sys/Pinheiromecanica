@@ -126,6 +126,9 @@ export async function POST(request: Request) {
     
     const empresa_id = user.empresa_id;
 
+    if (!body.cliente_id || typeof body.cliente_id !== 'string' || body.cliente_id.trim() === '') {
+      return NextResponse.json({ error: 'cliente_id é obrigatório e deve ser válido' }, { status: 400 });
+    }
     const clienteExistente = await prisma.cliente.findFirst({
       where: { id: body.cliente_id, empresa_id }
     });
@@ -133,6 +136,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
     }
 
+    if (!body.veiculo_id || typeof body.veiculo_id !== 'string' || body.veiculo_id.trim() === '') {
+      return NextResponse.json({ error: 'veiculo_id é obrigatório e deve ser válido' }, { status: 400 });
+    }
     const veiculoExistente = await prisma.veiculo.findFirst({
       where: { id: body.veiculo_id, empresa_id }
     });

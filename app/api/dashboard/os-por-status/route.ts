@@ -11,7 +11,7 @@ export async function GET() {
     const stats = await prisma.ordemServico.groupBy({
       by: ['status'],
       where: {
-        empresa_id: user?.empresa_id || 'default'
+        empresa_id: user.empresa_id
       },
       _count: { id: true }
     });

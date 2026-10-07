@@ -7,7 +7,7 @@ export async function GET() {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    const empresa_id = user?.empresa_id || 'default';
+    const empresa_id = user.empresa_id;
     const atividades = await getCachedAtividades(empresa_id);
 
     return NextResponse.json(atividades);

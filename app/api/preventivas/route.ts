@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const statusParam = searchParams.get('status');
 
     const where: any = {
-      empresa_id: user?.empresa_id || 'default'
+      empresa_id: user.empresa_id
     };
 
     if (veiculoId) {
@@ -117,12 +117,15 @@ export async function POST(request: Request) {
 
     const body = preventivaSchema.parse(await request.json());
 
-    const veiculo = await prisma.veiculo.findUnique({
-      where: { id: body.veiculo_id }
+    const veiculo = await prisma.veiculo.findFirst({
+      where: { 
+        id: body.veiculo_id,
+        empresa_id: user.empresa_id
+      }
     });
 
     if (!veiculo) {
-      return NextResponse.json({ error: 'Veículo não encontrado' }, { status: 404 });
+      return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 404 });
     }
 
     const kmAtual = veiculo.quilometragem || 0;
@@ -144,7 +147,6 @@ export async function POST(request: Request) {
       const limite = new Date(body.data_limite);
       const diffTime = limite.getTime() - hoje.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
       if (diffDays <= 0) {
         isVencido = true;
       } else if (diffDays <= 15) {
@@ -161,7 +163,7 @@ export async function POST(request: Request) {
     const novaPreventiva = await prisma.preventiva.create({
       data: {
         id: crypto.randomUUID(),
-        empresa_id: user?.empresa_id || 'default',
+        empresa_id: user.empresa_id,
         veiculo_id: body.veiculo_id,
         componente: body.componente,
         descricao: body.descricao || '',
