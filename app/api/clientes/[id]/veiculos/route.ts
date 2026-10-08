@@ -7,12 +7,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const { id } = await params;
     const veiculos = await prisma.veiculo.findMany({
-      where: { cliente_id: id },
+      where: { cliente_id: id, empresa_id: user.empresa_id },
       orderBy: { modelo: 'asc' }
     });
 

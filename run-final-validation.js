@@ -312,6 +312,20 @@ async function main() {
       recordResult('CLIENTES', 'Mesmo CPF/CNPJ na Empresa B (Multi-tenant isolado)', `Permitido ID ${clienteB_id}`, null, 'PASSOU');
     } else {
       recordResult('CLIENTES', 'Mesmo CPF/CNPJ na Empresa B', `HTTP ${resCliB.status}`, JSON.stringify(resCliB.data), 'FALHOU');
+      // Garantir dependência de Cliente B para não cascatear falsos negativos nos testes de OS/Orçamento de B
+      const resCliBFallback = await api('/api/clientes', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: 'Logística Beta Express Principal',
+          cpf_cnpj: '22.333.444/0001-55',
+          telefone: '(11) 97777-2222',
+          tipo: 'PJ',
+          tipo_pessoa: 'JURIDICA'
+        })
+      }, tokenB);
+      if (resCliBFallback.status === 201 || resCliBFallback.status === 200) {
+        clienteB_id = resCliBFallback.data.id;
+      }
     }
 
     // 2.5 Criar Cliente na Empresa A novamente com o MESMO CPF/CNPJ (deve bloquear por duplicidade interna)
@@ -371,7 +385,7 @@ async function main() {
         marca: 'Scania',
         ano: 2021,
         quilometragem: 185000,
-        tipo: 'CAMINHAO',
+        tipo: 'CAMINHAO_PESADO',
         cliente_id: clienteA_id
       })
     }, tokenA);
@@ -421,7 +435,7 @@ async function main() {
         marca: 'Mercedes-Benz',
         ano: 2022,
         quilometragem: 120000,
-        tipo: 'CAMINHAO',
+        tipo: 'CAMINHAO_PESADO',
         cliente_id: clienteB_id
       })
     }, tokenB);
@@ -431,6 +445,24 @@ async function main() {
       recordResult('VEÍCULOS', 'Mesma placa na Empresa B (Multi-tenant isolado)', `Permitido ID ${veiculoB_id}`, null, 'PASSOU');
     } else {
       recordResult('VEÍCULOS', 'Mesma placa na Empresa B', `HTTP ${resVeiB.status}`, JSON.stringify(resVeiB.data), 'FALHOU');
+      // Garantir dependência de Veículo B para testes subsequentes de OS de B
+      if (clienteB_id) {
+        const resVeiBFallback = await api('/api/veiculos', {
+          method: 'POST',
+          body: JSON.stringify({
+            placa: 'BET-5566',
+            modelo: 'Mercedes-Benz Actros 2651 Principal',
+            marca: 'Mercedes-Benz',
+            ano: 2022,
+            quilometragem: 120000,
+            tipo: 'CAMINHAO_PESADO',
+            cliente_id: clienteB_id
+          })
+        }, tokenB);
+        if (resVeiBFallback.status === 201 || resVeiBFallback.status === 200) {
+          veiculoB_id = resVeiBFallback.data.id;
+        }
+      }
     }
   } catch (err) {
     recordResult('VEÍCULOS', 'Exceção no módulo de veículos', 'Erro inesperado', err.message, 'FALHOU');
@@ -544,7 +576,7 @@ async function main() {
       body: JSON.stringify({
         cliente_id: clienteA_id,
         veiculo_id: veiculoA_id,
-        status: 'PENDENTE',
+        status: 'RASCUNHO',
         servicos: [
           { descricao: 'Revisão Sistema de Injeção', horas: 3, valor_hora: 150.00, valor_total: 450.00 }
         ],
@@ -611,7 +643,7 @@ async function main() {
       body: JSON.stringify({
         cliente_id: clienteA_id,
         veiculo_id: veiculoB_id, // Veículo de B!
-        status: 'PENDENTE',
+        status: 'RASCUNHO',
         servicos: [],
         pecas: [],
         valor_servicos: 0,
@@ -658,6 +690,31 @@ async function main() {
       recordResult('ORDENS', 'Criar Ordem de Serviço na Empresa B com serviços e peças', `Sucesso ID ${osB_id} Nº ${resOSB.data.numero}`, null, 'PASSOU');
     } else {
       recordResult('ORDENS', 'Criar Ordem de Serviço na Empresa B', `HTTP ${resOSB.status}`, JSON.stringify(resOSB.data), 'FALHOU');
+      // Garantir OS B para testar consulta, edição e finalização sem falsos negativos
+      if (clienteB_id && veiculoB_id) {
+        try {
+          const fallbackOS = await prisma.ordemServico.create({
+            data: {
+              id: 'test_os_b_fallback',
+              numero: 99999,
+              empresa_id: EMPRESA_B_ID,
+              tipoOS: 'OFICINA',
+              cliente_id: clienteB_id,
+              veiculo_id: veiculoB_id,
+              status: 'ABERTA',
+              diagnostico: 'OS de contingência para testes funcionais da Empresa B',
+              valor_servicos: 0,
+              valor_pecas: 0,
+              valor_total: 0,
+              created_by: 'Admin Beta',
+              updated_at: new Date()
+            }
+          });
+          osB_id = fallbackOS.id;
+        } catch (e) {
+          console.warn('Erro ao criar OS fallback:', e.message);
+        }
+      }
     }
 
     // 6.2 Consultar OS na Empresa B
@@ -898,7 +955,7 @@ async function main() {
         descricao: 'Troca de óleo e filtros',
         data_inicio: new Date().toISOString(),
         data_fim: new Date(Date.now() + 3600000).toISOString(),
-        tipo: 'OFICINA',
+        tipo: 'MANUTENCAO_PREVENTIVA',
         status: 'AGENDADO'
       })
     }, tokenA);
@@ -924,34 +981,78 @@ async function main() {
     }
 
     // 9.3 Criar Preventiva na Empresa A
-    const resPrevA = await api('/api/preventivas', {
-      method: 'POST',
-      body: JSON.stringify({
-        veiculo_id: veiculoA_id,
-        componente: 'Correia Poly-V e Tensores',
-        descricao: 'Substituição preventiva a cada 50.000 km',
-        km_limite: 240000
-      })
-    }, tokenA);
-
-    if (resPrevA.status === 201 || resPrevA.status === 200) {
-      preventivaA_id = resPrevA.data.id;
-      recordResult('PREVENTIVAS', 'Criar manutenção preventiva na Empresa A', `Sucesso ID ${preventivaA_id}`, null, 'PASSOU');
+    if (!veiculoA_id) {
+      recordResult('PREVENTIVAS', 'Criar manutenção preventiva na Empresa A', 'SETUP FAILED: veiculoA_id ausente', null, 'FALHOU');
     } else {
-      recordResult('PREVENTIVAS', 'Criar manutenção preventiva na Empresa A', `HTTP ${resPrevA.status}`, JSON.stringify(resPrevA.data), 'FALHOU');
+      const resPrevA = await api('/api/preventivas', {
+        method: 'POST',
+        body: JSON.stringify({
+          veiculo_id: veiculoA_id,
+          componente: 'FREIOS',
+          descricao: 'Substituição preventiva de lonas e tambores',
+          km_limite: 240000
+        })
+      }, tokenA);
+
+      if (resPrevA.status === 201 || resPrevA.status === 200) {
+        preventivaA_id = resPrevA.data.id;
+        recordResult('PREVENTIVAS', 'Criar manutenção preventiva na Empresa A', `Sucesso ID ${preventivaA_id}`, null, 'PASSOU');
+      } else {
+        recordResult('PREVENTIVAS', 'Criar manutenção preventiva na Empresa A', `HTTP ${resPrevA.status}`, JSON.stringify(resPrevA.data), 'FALHOU');
+      }
     }
 
     // 9.4 Editar Preventiva
-    const resPrevPut = await api(`/api/preventivas/${preventivaA_id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        km_limite: 245000
-      })
-    }, tokenA);
-    if (resPrevPut.status === 200 && resPrevPut.data.km_limite === 245000) {
-      recordResult('PREVENTIVAS', 'Editar manutenção preventiva na Empresa A', 'Sucesso', null, 'PASSOU');
+    if (preventivaA_id) {
+      const resPrevPut = await api(`/api/preventivas/${preventivaA_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          km_limite: 245000
+        })
+      }, tokenA);
+      if (resPrevPut.status === 200 && resPrevPut.data.km_limite === 245000) {
+        recordResult('PREVENTIVAS', 'Editar manutenção preventiva na Empresa A', 'Sucesso', null, 'PASSOU');
+      } else {
+        recordResult('PREVENTIVAS', 'Editar preventiva', `HTTP ${resPrevPut.status}`, JSON.stringify(resPrevPut.data), 'FALHOU');
+      }
     } else {
-      recordResult('PREVENTIVAS', 'Editar preventiva', `HTTP ${resPrevPut.status}`, JSON.stringify(resPrevPut.data), 'FALHOU');
+      recordResult('PREVENTIVAS', 'Editar preventiva', 'SETUP FAILED: preventivaA_id ausente', null, 'FALHOU');
+    }
+
+    // 9.5 Empresa A tentando criar Preventiva para Veículo da Empresa B (deve ser rejeitado)
+    if (veiculoB_id) {
+      const resPrevCross = await api('/api/preventivas', {
+        method: 'POST',
+        body: JSON.stringify({
+          veiculo_id: veiculoB_id,
+          componente: 'FREIOS',
+          descricao: 'Tentativa indevida cross-tenant'
+        })
+      }, tokenA);
+      if (resPrevCross.status === 400 || resPrevCross.status === 404) {
+        recordResult('PREVENTIVAS', 'Empresa A criar preventiva para veículo de B', `Rejeitado com sucesso (HTTP ${resPrevCross.status})`, null, 'PASSOU');
+      } else {
+        recordResult('PREVENTIVAS', 'Empresa A criar preventiva para veículo de B', `Vulnerabilidade: aceitou HTTP ${resPrevCross.status}`, JSON.stringify(resPrevCross.data), 'FALHOU');
+      }
+    }
+
+    // 9.6 Empresa A tentando criar Evento de Agenda com Veículo de B (deve ser rejeitado)
+    if (veiculoB_id) {
+      const resEvCross = await api('/api/agenda', {
+        method: 'POST',
+        body: JSON.stringify({
+          titulo: 'Tentativa cross-tenant agenda',
+          data_inicio: new Date().toISOString(),
+          data_fim: new Date(Date.now() + 3600000).toISOString(),
+          tipo: 'MANUTENCAO_PREVENTIVA',
+          veiculo_id: veiculoB_id
+        })
+      }, tokenA);
+      if (resEvCross.status === 400 || resEvCross.status === 404) {
+        recordResult('AGENDA', 'Empresa A criar agenda para veículo de B', `Rejeitado com sucesso (HTTP ${resEvCross.status})`, null, 'PASSOU');
+      } else {
+        recordResult('AGENDA', 'Empresa A criar agenda para veículo de B', `Vulnerabilidade: aceitou HTTP ${resEvCross.status}`, JSON.stringify(resEvCross.data), 'FALHOU');
+      }
     }
   } catch (err) {
     recordResult('PREVENTIVAS', 'Exceção no módulo de preventivas/agenda', 'Erro inesperado', err.message, 'FALHOU');
@@ -1161,6 +1262,44 @@ async function main() {
     // 15.4 Ausência de usuário admin pré-configurado no SQL
     const hasHardcodedAdmin = sqlContent.includes("INSERT INTO `User`") || sqlContent.includes("INSERT INTO User");
     recordResult('DATABASE', 'Ausência de usuário admin pré-configurado em database.sql', hasHardcodedAdmin ? 'Encontrado seed de usuário' : 'Seguro (sem usuário hardcoded)', null, !hasHardcodedAdmin ? 'PASSOU' : 'FALHOU');
+
+    // 15.5 Auditoria de Constraints Físicas no Banco de Dados em Execução
+    try {
+      const clienteIndexes = await prisma.$queryRawUnsafe("SHOW INDEX FROM `Cliente`;");
+      const hasPhysicalClienteComposite = clienteIndexes.some(r => r.Key_name === 'Cliente_cpf_cnpj_empresa_id_key');
+      const hasPhysicalClienteGlobal = clienteIndexes.some(r => r.Key_name === 'Cliente_cpf_cnpj_key');
+      recordResult(
+        'DATABASE',
+        'Banco Físico: Constraint Composta Cliente (cpf_cnpj, empresa_id)',
+        hasPhysicalClienteComposite ? 'Presente no banco físico' : (hasPhysicalClienteGlobal ? 'Banco físico retém constraint global antiga (Cliente_cpf_cnpj_key) - requer migration' : 'Ausente'),
+        hasPhysicalClienteComposite ? null : 'Requer aplicação de migration no banco físico',
+        hasPhysicalClienteComposite ? 'PASSOU' : 'FALHOU'
+      );
+
+      const veiculoIndexes = await prisma.$queryRawUnsafe("SHOW INDEX FROM `Veiculo`;");
+      const hasPhysicalVeiculoComposite = veiculoIndexes.some(r => r.Key_name === 'Veiculo_placa_empresa_id_key');
+      const hasPhysicalVeiculoGlobal = veiculoIndexes.some(r => r.Key_name === 'Veiculo_placa_key');
+      recordResult(
+        'DATABASE',
+        'Banco Físico: Constraint Composta Veiculo (placa, empresa_id)',
+        hasPhysicalVeiculoComposite ? 'Presente no banco físico' : (hasPhysicalVeiculoGlobal ? 'Banco físico retém constraint global antiga (Veiculo_placa_key) - requer migration' : 'Ausente'),
+        hasPhysicalVeiculoComposite ? null : 'Requer aplicação de migration no banco físico',
+        hasPhysicalVeiculoComposite ? 'PASSOU' : 'FALHOU'
+      );
+
+      const osIndexes = await prisma.$queryRawUnsafe("SHOW INDEX FROM `OrdemServico`;");
+      const hasPhysicalOSComposite = osIndexes.some(r => r.Key_name === 'OrdemServico_numero_empresa_id_key');
+      const hasPhysicalOSGlobal = osIndexes.some(r => r.Key_name === 'OrdemServico_numero_key');
+      recordResult(
+        'DATABASE',
+        'Banco Físico: Constraint Composta OrdemServico (numero, empresa_id)',
+        hasPhysicalOSComposite ? 'Presente no banco físico' : (hasPhysicalOSGlobal ? 'Banco físico retém constraint global antiga (OrdemServico_numero_key) - requer migration' : 'Ausente'),
+        hasPhysicalOSComposite ? null : 'Requer aplicação de migration no banco físico',
+        hasPhysicalOSComposite ? 'PASSOU' : 'FALHOU'
+      );
+    } catch (dbErr) {
+      recordResult('DATABASE', 'Auditoria física de constraints MySQL', 'Erro ao consultar SHOW INDEX', dbErr.message, 'FALHOU');
+    }
   } catch (err) {
     recordResult('DATABASE', 'Auditoria SQL x Prisma', 'Exceção', err.message, 'FALHOU');
   }

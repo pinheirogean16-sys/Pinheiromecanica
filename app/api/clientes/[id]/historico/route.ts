@@ -7,19 +7,26 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const { id } = await params;
     
+    const cliente = await prisma.cliente.findFirst({
+      where: { id, empresa_id: user.empresa_id }
+    });
+    if (!cliente) {
+      return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
+    }
+
     const [totalOS, totalGasto, ultimaOS] = await Promise.all([
-      prisma.ordemServico.count({ where: { cliente_id: id } }),
+      prisma.ordemServico.count({ where: { cliente_id: id, empresa_id: user.empresa_id } }),
       prisma.ordemServico.aggregate({
         _sum: { valor_total: true },
-        where: { cliente_id: id }
+        where: { cliente_id: id, empresa_id: user.empresa_id }
       }),
       prisma.ordemServico.findFirst({
-        where: { cliente_id: id },
+        where: { cliente_id: id, empresa_id: user.empresa_id },
         orderBy: { data_entrada: 'desc' },
         select: { numero: true, data_entrada: true }
       })

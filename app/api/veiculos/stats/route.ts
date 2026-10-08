@@ -4,31 +4,36 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
     const [total, ativo, maintToday, inMaint] = await Promise.all([
-      prisma.veiculo.count(),
+      prisma.veiculo.count({
+        where: {
+          empresa_id: user.empresa_id
+        }
+      }),
       prisma.veiculo.count({ 
         where: { 
-          OrdemServico: { 
-            some: { 
-              status: { notIn: ['FINALIZADA', 'ENTREGUE', 'CANCELADA'] } 
-            } 
-          } 
+          empresa_id: user.empresa_id,
+          Cliente: {
+            ativo: true
+          }
         } 
       }),
       prisma.ordemServico.count({ 
         where: { 
+          empresa_id: user.empresa_id,
           data_entrada: { gte: hoje },
           status: { notIn: ['FINALIZADA', 'ENTREGUE', 'CANCELADA'] }
         } 
       }),
       prisma.ordemServico.count({ 
         where: { 
+          empresa_id: user.empresa_id,
           status: { in: ['EM_EXECUCAO', 'EM_DIAGNOSTICO', 'ABERTA', 'AGUARDANDO_PECAS'] } 
         } 
       }),

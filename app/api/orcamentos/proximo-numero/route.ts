@@ -4,15 +4,16 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const now = new Date();
     const year = now.getFullYear();
     
-    // Buscar o último número do ano atual
+    // Buscar o último número do ano atual pertencente à empresa
     const lastOrcamento = await prisma.orcamento.findFirst({
       where: {
+        empresa_id: user.empresa_id,
         numero: {
           startsWith: `ORC-${year}-`,
         }

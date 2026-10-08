@@ -16,16 +16,16 @@
   {
     "modulo": "AUTENTICAÇÃO",
     "teste": "Consulta de sessão Admin A (id, role, empresa_id)",
-    "resultado": "Inconsistência nos dados de sessão",
-    "erro": "{\"id\":\"test_user_admin_a\",\"name\":\"Admin Alfa\",\"email\":\"admin.alfa@teste.com\",\"ro",
-    "status": "FALHOU"
+    "resultado": "Sucesso e isolado",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "AUTENTICAÇÃO",
-    "teste": "Consulta de sessão Admin B",
-    "resultado": "Inconsistência na sessão B",
-    "erro": "{\"id\":\"test_user_admin_b\",\"name\":\"Admin Beta\",\"email\":\"admin.beta@teste.com\",\"ro",
-    "status": "FALHOU"
+    "teste": "Consulta de sessão Admin B (id, role, empresa_id)",
+    "resultado": "Sucesso e isolado",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "AUTENTICAÇÃO",
@@ -44,7 +44,7 @@
   {
     "modulo": "CLIENTES",
     "teste": "Criar cliente na Empresa A",
-    "resultado": "Sucesso ID 68613dee-9f99-4412-9a7c-51b820ab3db9",
+    "resultado": "Sucesso ID dca5b5ec-b68a-40fb-86d0-5fe530cc923d",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -86,42 +86,42 @@
   {
     "modulo": "VEÍCULOS",
     "teste": "Criar veículo associado ao cliente na Empresa A",
-    "resultado": "HTTP 400",
-    "erro": "{\"error\":\"Invalid enum value. Expected 'CAVALO_MECANICO' | 'CARRETA' | 'ONIBUS' ",
-    "status": "FALHOU"
+    "resultado": "Sucesso ID bc1179a0-7c6f-4b55-bcc1-6cb9dac321cb",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "VEÍCULOS",
     "teste": "Consultar veículo por ID na Empresa A",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Veículo não encontrado\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "VEÍCULOS",
     "teste": "Editar veículo na Empresa A",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Não encontrado\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "VEÍCULOS",
     "teste": "Histórico do veículo na Empresa A",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Veículo não encontrado\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "VEÍCULOS",
     "teste": "Mesma placa na Empresa B",
-    "resultado": "HTTP 400",
-    "erro": "{\"error\":\"Invalid enum value. Expected 'CAVALO_MECANICO' | 'CARRETA' | 'ONIBUS' ",
+    "resultado": "HTTP 500",
+    "erro": "{\"error\":\"Erro ao criar veículo\"}",
     "status": "FALHOU"
   },
   {
     "modulo": "ESTOQUE",
     "teste": "Criar peça na Empresa A",
-    "resultado": "Sucesso ID 1c83f89b-eb13-43ca-a5ea-ff865fef77f3",
+    "resultado": "Sucesso ID 73f5b417-00a6-4459-a5fd-89ad3be1d6a0",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -142,7 +142,7 @@
   {
     "modulo": "ESTOQUE",
     "teste": "Mesmo código de peça na Empresa B (Multi-tenant isolado)",
-    "resultado": "Permitido ID 7d274bff-1d39-441f-8170-7162d9581ec5",
+    "resultado": "Permitido ID 54a9597b-e0d4-4e24-9df8-8b0ced997e21",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -156,72 +156,72 @@
   {
     "modulo": "ORÇAMENTOS",
     "teste": "Criar orçamento na Empresa A",
-    "resultado": "HTTP 500",
-    "erro": "{\"error\":\"\\nInvalid `prisma.veiculo.findFirst()` invocation:\\n\\n{\\n  where: {\\n ",
-    "status": "FALHOU"
+    "resultado": "Sucesso ID 1542fd92-26bf-48ef-99db-8d3cf222c8cc",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORÇAMENTOS",
     "teste": "Consultar orçamento por ID na Empresa A",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Orçamento não encontrado\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORÇAMENTOS",
     "teste": "Editar orçamento na Empresa A",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Não encontrado\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORÇAMENTOS",
     "teste": "Converter orçamento em OS na Empresa A",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Orçamento não encontrado\"}",
+    "resultado": "HTTP 500",
+    "erro": "{\"error\":\"\\nInvalid `prisma.ordemServico.create()` invocation:\\n\\n\\nUnique const",
     "status": "FALHOU"
   },
   {
     "modulo": "ORÇAMENTOS",
     "teste": "Criar orçamento com veículo de outro tenant",
-    "resultado": "Vulnerabilidade: aceitou HTTP 500",
-    "erro": "{\"error\":\"\\nInvalid `prisma.veiculo.findFirst()` invocation:\\n\\n{\\n  where: {\\n ",
-    "status": "FALHOU"
+    "resultado": "Rejeitado com sucesso (HTTP 400)",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORDENS",
     "teste": "Criar Ordem de Serviço na Empresa B",
     "resultado": "HTTP 500",
-    "erro": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",",
+    "erro": "{\"error\":\"\\nInvalid `prisma.ordemServico.create()` invocation:\\n\\n\\nUnique const",
     "status": "FALHOU"
   },
   {
     "modulo": "ORDENS",
     "teste": "Consultar OS por ID na Empresa B",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"OS não encontrada\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORDENS",
     "teste": "Editar OS na Empresa B",
-    "resultado": "HTTP 400",
-    "erro": "{\"error\":\"Expected string, received null\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORDENS",
     "teste": "Finalizar OS na Empresa B",
-    "resultado": "HTTP 400",
-    "erro": "{\"error\":\"Expected string, received null\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORDENS",
     "teste": "Criar OS na Empresa A com veículo da Empresa B",
-    "resultado": "Vulnerabilidade: aceitou HTTP 500",
-    "erro": "{\"error\":\"[\\n  {\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"expected\\\": \\\"string\\\",",
-    "status": "FALHOU"
+    "resultado": "Rejeitado com sucesso (HTTP 400)",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "ORDENS",
@@ -233,7 +233,7 @@
   {
     "modulo": "FINANCEIRO",
     "teste": "Criar movimentação financeira na Empresa A",
-    "resultado": "Sucesso ID 66c7de46-5f9d-43a3-922b-9e707913ff44",
+    "resultado": "Sucesso ID 872b7502-3210-402d-8ca4-bcaabc665d20",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -282,7 +282,7 @@
   {
     "modulo": "CHECKLIST",
     "teste": "Criar modelo de checklist na Empresa A",
-    "resultado": "Sucesso ID bc3fdcf1-7e0d-4640-9fc1-7a94e1ea590e",
+    "resultado": "Sucesso ID 5342fbd3-9ac6-48ed-84c2-5c42f11c30e4",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -296,7 +296,7 @@
   {
     "modulo": "CHECKLIST",
     "teste": "Executar checklist na Empresa A",
-    "resultado": "Sucesso Execução ID 28dd7292-3524-4a77-850d-ac9c9d61ab54",
+    "resultado": "Sucesso Execução ID 319bbf8c-886a-4f0b-a9b0-b3fdbad31fc5",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -310,30 +310,44 @@
   {
     "modulo": "AGENDA",
     "teste": "Criar evento de agenda na Empresa A",
-    "resultado": "HTTP 400",
-    "erro": "{\"error\":\"Invalid enum value. Expected 'OS' | 'REVISAO' | 'MANUTENCAO_PREVENTIVA",
-    "status": "FALHOU"
+    "resultado": "Sucesso ID 903914d5-d4c6-4d09-bd23-7909707a35b6",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "AGENDA",
-    "teste": "Editar evento de agenda",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Não encontrado\"}",
-    "status": "FALHOU"
+    "teste": "Editar evento de agenda na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "PREVENTIVAS",
     "teste": "Criar manutenção preventiva na Empresa A",
-    "resultado": "HTTP 400",
-    "erro": "{\"error\":\"Expected string, received null\"}",
-    "status": "FALHOU"
+    "resultado": "Sucesso ID e1476ea1-a213-4300-8008-ae7abe320167",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "PREVENTIVAS",
-    "teste": "Editar preventiva",
-    "resultado": "HTTP 404",
-    "erro": "{\"error\":\"Não encontrada\"}",
-    "status": "FALHOU"
+    "teste": "Editar manutenção preventiva na Empresa A",
+    "resultado": "Sucesso",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "PREVENTIVAS",
+    "teste": "Empresa A criar preventiva para veículo de B",
+    "resultado": "Rejeitado com sucesso (HTTP 400)",
+    "erro": "-",
+    "status": "PASSOU"
+  },
+  {
+    "modulo": "AGENDA",
+    "teste": "Empresa A criar agenda para veículo de B",
+    "resultado": "Rejeitado com sucesso (HTTP 400)",
+    "erro": "-",
+    "status": "PASSOU"
   },
   {
     "modulo": "USUÁRIOS",
@@ -373,7 +387,7 @@
   {
     "modulo": "AUDITORIA",
     "teste": "Consulta /api/logs Admin A (isolamento estrito)",
-    "resultado": "Retornou 8 logs exclusivos do Tenant A",
+    "resultado": "Retornou 10 logs exclusivos do Tenant A",
     "erro": "-",
     "status": "PASSOU"
   },
@@ -684,5 +698,26 @@
     "resultado": "Seguro (sem usuário hardcoded)",
     "erro": "-",
     "status": "PASSOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Banco Físico: Constraint Composta Cliente (cpf_cnpj, empresa_id)",
+    "resultado": "Banco físico retém constraint global antiga (Cliente_cpf_cnpj_key) - requer migration",
+    "erro": "Requer aplicação de migration no banco físico",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Banco Físico: Constraint Composta Veiculo (placa, empresa_id)",
+    "resultado": "Banco físico retém constraint global antiga (Veiculo_placa_key) - requer migration",
+    "erro": "Requer aplicação de migration no banco físico",
+    "status": "FALHOU"
+  },
+  {
+    "modulo": "DATABASE",
+    "teste": "Banco Físico: Constraint Composta OrdemServico (numero, empresa_id)",
+    "resultado": "Banco físico retém constraint global antiga (OrdemServico_numero_key) - requer migration",
+    "erro": "Requer aplicação de migration no banco físico",
+    "status": "FALHOU"
   }
 ]

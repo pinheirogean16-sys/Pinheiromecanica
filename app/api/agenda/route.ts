@@ -118,6 +118,21 @@ export async function POST(request: Request) {
     
     const empresa_id = user.empresa_id;
 
+    if (body.cliente_id) {
+      const cli = await prisma.cliente.findFirst({ where: { id: body.cliente_id, empresa_id } });
+      if (!cli) return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    if (body.veiculo_id) {
+      const vei = await prisma.veiculo.findFirst({ where: { id: body.veiculo_id, empresa_id } });
+      if (!vei) return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    if (body.os_id) {
+      const os = await prisma.ordemServico.findFirst({ where: { id: body.os_id, empresa_id } });
+      if (!os) return NextResponse.json({ error: 'Ordem de serviço não encontrada nesta empresa' }, { status: 400 });
+    }
+
     const event = await prisma.eventoAgenda.create({
       data: {
         id: crypto.randomUUID(),

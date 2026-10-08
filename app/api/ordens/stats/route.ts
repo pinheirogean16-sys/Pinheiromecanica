@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const today = new Date();
@@ -15,14 +15,18 @@ export async function GET() {
     const stats = await prisma.ordemServico.groupBy({
       by: ['status'],
       _count: { id: true },
-      _sum: { valor_total: true }
+      _sum: { valor_total: true },
+      where: { empresa_id: user.empresa_id }
     });
 
-    const totalOS = await prisma.ordemServico.count();
+    const totalOS = await prisma.ordemServico.count({
+      where: { empresa_id: user.empresa_id }
+    });
     
     const faturamentoMes = await prisma.ordemServico.aggregate({
       _sum: { valor_total: true },
       where: {
+        empresa_id: user.empresa_id,
         status: { in: ['FINALIZADA', 'ENTREGUE'] },
         data_finalizada: { gte: startMonth, lte: endMonth }
       }
@@ -35,6 +39,7 @@ export async function GET() {
       _count: { id: true },
       _sum: { valor_total: true },
       where: {
+        empresa_id: user.empresa_id,
         status: 'FINALIZADA',
         data_finalizada: { gte: startDay, lte: endDay }
       }

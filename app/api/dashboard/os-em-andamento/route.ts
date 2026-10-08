@@ -4,11 +4,12 @@ import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
   try {
-    const { error } = await requireAuth();
+    const { error, user } = await requireAuth();
     if (error) return error;
 
     const osEmAndamento = await prisma.ordemServico.findMany({
       where: {
+        empresa_id: user.empresa_id,
         status: {
           in: ['ABERTA', 'EM_DIAGNOSTICO', 'AGUARDANDO_PECAS', 'EM_EXECUCAO', 'AGUARDANDO_APROVACAO']
         }
