@@ -10,6 +10,8 @@ import {
 import { parseHoras } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import { useFieldWorkOrderCalculations } from '@/hooks/useFieldWorkOrderCalculations';
+import QuickClientModal from '@/components/QuickClientModal';
+import QuickVehicleModal from '@/components/QuickVehicleModal';
 
 interface WorkOrderFieldProps {
   onBack: () => void;
@@ -18,6 +20,10 @@ interface WorkOrderFieldProps {
 export default function WorkOrderField({ onBack }: WorkOrderFieldProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  // Modais de Cadastro Rápido
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
 
   // Catálogos e buscadores
   const [clientes, setClientes] = useState<any[]>([]);
@@ -344,6 +350,34 @@ export default function WorkOrderField({ onBack }: WorkOrderFieldProps) {
       else setClienteHistorico({ totalOS: 0, totalGasto: 0 });
     } catch (err) { 
       console.error(err); 
+    }
+  };
+
+  const handleQuickClientCreated = (newClient: any) => {
+    setClientes(prev => {
+      const exists = prev.some(c => c.id === newClient.id);
+      return exists ? prev : [newClient, ...prev];
+    });
+    setSelectedCliente(newClient);
+    setSelectedVeiculo(null);
+    setVeiculos([]);
+    fetch(`/api/veiculos?cliente_id=${newClient.id}`)
+      .then(r => r.json())
+      .then(data => setVeiculos(data.items || []))
+      .catch(() => setVeiculos([]));
+  };
+
+  const handleQuickVehicleCreated = (newVehicle: any) => {
+    setVeiculos(prev => {
+      const exists = prev.some(v => v.id === newVehicle.id);
+      return exists ? prev : [newVehicle, ...prev];
+    });
+    setSelectedVeiculo(newVehicle);
+    if (newVehicle.cliente_id && (!selectedCliente || selectedCliente.id !== newVehicle.cliente_id)) {
+      const matchingCliente = clientes.find(c => c.id === newVehicle.cliente_id) || newVehicle.cliente;
+      if (matchingCliente) {
+        setSelectedCliente(matchingCliente);
+      }
     }
   };
 
@@ -738,7 +772,17 @@ export default function WorkOrderField({ onBack }: WorkOrderFieldProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Cliente Solicitante */}
                 <div className="space-y-1.5 relative">
-                  <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Cliente Solicitante</label>
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">Cliente Solicitante</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsClientModalOpen(true)}
+                      className="text-[9px] font-black text-amber-500 hover:text-amber-400 uppercase tracking-widest flex items-center gap-1 cursor-pointer transition hover:underline"
+                    >
+                      <Plus size={11} />
+                      Novo Cliente
+                    </button>
+                  </div>
                   <div className="relative">
                     <div 
                       onClick={() => setShowClientList(!showClientList)}
@@ -790,7 +834,17 @@ export default function WorkOrderField({ onBack }: WorkOrderFieldProps) {
 
                 {/* Veículo atendido */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Ativo em Resgate</label>
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">Ativo em Resgate</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsVehicleModalOpen(true)}
+                      className="text-[9px] font-black text-amber-500 hover:text-amber-400 uppercase tracking-widest flex items-center gap-1 cursor-pointer transition hover:underline"
+                    >
+                      <Plus size={11} />
+                      Novo Veículo / Máquina
+                    </button>
+                  </div>
                   <div className="relative group">
                     <select 
                       className="w-full min-h-[46px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 pr-10 text-xs text-white outline-none transition font-bold uppercase cursor-pointer shadow-inner appearance-none disabled:opacity-30 focus:border-amber-500" 
@@ -1668,6 +1722,26 @@ export default function WorkOrderField({ onBack }: WorkOrderFieldProps) {
         </div>
 
       </div>
+
+      {/* Modais de Cadastro Rápido Integrados */}
+      <QuickClientModal
+        isOpen={isClientModalOpen}
+        onClose={() => setIsClientModalOpen(false)}
+        onSuccess={handleQuickClientCreated}
+      />
+
+      <QuickVehicleModal
+        isOpen={isVehicleModalOpen}
+        onClose={() => setIsVehicleModalOpen(false)}
+        onSuccess={handleQuickVehicleCreated}
+        selectedClientId={selectedCliente?.id}
+        selectedClientName={selectedCliente?.nome}
+        clients={clientes}
+        onOpenNewClientModal={() => {
+          setIsVehicleModalOpen(false);
+          setIsClientModalOpen(true);
+        }}
+      />
     </div>
   );
 }

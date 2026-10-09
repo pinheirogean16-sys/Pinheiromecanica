@@ -8,14 +8,14 @@ import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 
 const veiculoSchema = z.object({
-  placa: z.string().min(7).max(8).trim().transform(v => v.toUpperCase()),
-  modelo: z.string().min(2).trim(),
-  marca: z.string().min(2).trim(),
-  ano: z.coerce.number().int().min(1900).max(2030),
+  placa: z.string().min(3, 'Placa ou identificador deve ter no mínimo 3 caracteres').max(20, 'Placa ou identificador deve ter no máximo 20 caracteres').trim().transform(v => v.toUpperCase()),
+  modelo: z.string().min(2, 'Modelo obrigatório').trim(),
+  marca: z.string().min(2, 'Marca obrigatória').trim(),
+  ano: z.coerce.number().int().min(1900, 'Ano inválido').max(2035, 'Ano inválido'),
   tipo: z.nativeEnum(Veiculo_tipo),
   quilometragem: z.coerce.number().optional().nullable(),
   horimetro_atual: z.coerce.number().optional().nullable(),
-  cliente_id: z.string().min(1)
+  cliente_id: z.string().min(1, 'Cliente obrigatório')
 });
 
 export async function GET(request: Request) {
