@@ -7,7 +7,9 @@ export async function GET() {
   try {
     // 1. Check Authentication Status
     const { error: authError, user } = await requireAuth();
-    const authStatus = authError ? 'Não Autenticado' : 'Autenticado';
+    if (authError) return authError;
+
+    const authStatus = 'Autenticado';
 
     // 2. Test Database Connection and Get Row Counts
     let dbStatus = 'CONECTADO';
@@ -23,12 +25,12 @@ export async function GET() {
         totalFinanceiro,
         totalPecas,
       ] = await Promise.all([
-        prisma.user.count(),
-        prisma.cliente.count(),
-        prisma.veiculo.count(),
-        prisma.ordemServico.count(),
-        prisma.movimentacaoFinanceira.count(),
-        prisma.peca.count(),
+        prisma.user.count({ where: { empresa_id: user.empresa_id } }),
+        prisma.cliente.count({ where: { empresa_id: user.empresa_id } }),
+        prisma.veiculo.count({ where: { empresa_id: user.empresa_id } }),
+        prisma.ordemServico.count({ where: { empresa_id: user.empresa_id } }),
+        prisma.movimentacaoFinanceira.count({ where: { empresa_id: user.empresa_id } }),
+        prisma.peca.count({ where: { empresa_id: user.empresa_id } }),
       ]);
 
       counts = {

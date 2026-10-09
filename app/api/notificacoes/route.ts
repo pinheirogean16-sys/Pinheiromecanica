@@ -30,15 +30,20 @@ export async function GET(request: Request) {
     }
 
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || searchParams.get('limite') || '10');
     const skip = (page - 1) * limit;
 
-    const where = { 
+    const where: any = { 
       usuario_id: user.id,
       empresa_id: user.empresa_id
     };
 
-    const [items, total] = await Promise.all([
+    const lidaParam = searchParams.get('lida');
+    if (lidaParam !== null) {
+      where.lida = lidaParam === 'true';
+    }
+
+    const [items, total, naoLidas] = await Promise.all([
       prisma.notificacao.findMany({
         where,
         orderBy: [
@@ -48,12 +53,14 @@ export async function GET(request: Request) {
         skip,
         take: limit,
       }),
-      prisma.notificacao.count({ where })
+      prisma.notificacao.count({ where }),
+      prisma.notificacao.count({ where: { usuario_id: user.id, empresa_id: user.empresa_id, lida: false } })
     ]);
 
     return NextResponse.json({
       items,
       total,
+      naoLidas,
       page,
       totalPages: Math.ceil(total / limit)
     });

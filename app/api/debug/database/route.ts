@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/api-auth';
 import { getCachedStats, getCachedAtividades, getCachedResumoFinanceiro } from '@/lib/dashboard-cache';
 
 export async function GET() {
+  const { error, user } = await requireAuth();
+  if (error) return error;
+
+  const empresa_id = user.empresa_id;
   const results: Record<string, any> = {};
 
   const runTest = async (name: string, fn: () => Promise<any>) => {
@@ -43,6 +48,7 @@ export async function GET() {
   // Test 1: Agenda
   await runTest('Agenda (/api/agenda)', async () => {
     return await prisma.eventoAgenda.findMany({
+      where: { empresa_id },
       include: {
         OrdemServico: { select: { id: true, numero: true } },
         Cliente: { select: { id: true, nome: true } },
@@ -56,6 +62,7 @@ export async function GET() {
   // Test 2: Clientes
   await runTest('Clientes (/api/clientes)', async () => {
     return await prisma.cliente.findMany({
+      where: { empresa_id },
       include: {
         _count: {
           select: {
@@ -82,6 +89,7 @@ export async function GET() {
   // Test 3: Veiculos
   await runTest('Veículos (/api/veiculos)', async () => {
     return await prisma.veiculo.findMany({
+      where: { empresa_id },
       include: {
         Cliente: { select: { nome: true, id: true } }
       },
@@ -92,6 +100,7 @@ export async function GET() {
   // Test 4: Peças
   await runTest('Peças (/api/pecas)', async () => {
     return await prisma.peca.findMany({
+      where: { empresa_id },
       take: 10
     });
   });
@@ -99,7 +108,7 @@ export async function GET() {
   // Test 5: Fornecedores
   await runTest('Fornecedores (Ex: clientes PERFIL=FORNECEDOR)', async () => {
     return await prisma.cliente.findMany({
-      where: { perfil: 'FORNECEDOR' },
+      where: { empresa_id, perfil: 'FORNECEDOR' },
       take: 10
     });
   });
@@ -107,6 +116,7 @@ export async function GET() {
   // Test 6: Ordens
   await runTest('Ordens (/api/ordens)', async () => {
     return await prisma.ordemServico.findMany({
+      where: { empresa_id },
       include: {
         Cliente: { select: { nome: true } },
         Veiculo: { select: { placa: true, modelo: true } },
@@ -118,17 +128,17 @@ export async function GET() {
 
   // Test 7: Dashboard Stats
   await runTest('Dashboard Stats (/api/dashboard/stats)', async () => {
-    return await getCachedStats('default');
+    return await getCachedStats(empresa_id);
   });
 
   // Test 8: Dashboard Atividades
   await runTest('Dashboard Atividades (/api/dashboard/atividades)', async () => {
-    return await getCachedAtividades('default');
+    return await getCachedAtividades(empresa_id);
   });
 
   // Test 9: Dashboard Resumo Financeiro
   await runTest('Dashboard Resumo Financeiro (/api/dashboard/resumo-financeiro)', async () => {
-    return await getCachedResumoFinanceiro('default');
+    return await getCachedResumoFinanceiro(empresa_id);
   });
 
   const allSuccess = Object.values(results).every((r: any) => r.status === 'SUCCESS');
