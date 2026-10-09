@@ -4,10 +4,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   User as UserIcon, Car, Wrench, Package, 
-  Search, ChevronLeft, Clock, FileText, Trash2, Plus,
-  PenTool as Tool, Loader2, Save, Calendar, Check
+  Search, ChevronLeft, FileText, Trash2, Plus,
+  PenTool as Tool, Loader2, Save, Calendar
 } from 'lucide-react';
-import Link from 'next/link';
 import { parseHoras } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 
@@ -514,150 +513,226 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   };
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-2 sm:px-4 md:px-6 space-y-8 pb-20 overflow-hidden animate-in fade-in duration-300">
+    <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-6 pb-24 animate-in fade-in duration-300">
       
-      {/* HEADER DE CONTROL */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-6 rounded-[2.5rem] shadow-xl">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition shadow-sm cursor-pointer">
+      {/* HEADER DE CONTROLE */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-5 sm:p-6 rounded-2xl md:rounded-3xl shadow-xl">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <button 
+            type="button"
+            onClick={onBack} 
+            className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition shadow-sm cursor-pointer"
+            title="Voltar"
+          >
             <ChevronLeft size={18} />
           </button>
           <div className="flex flex-col">
-            <h1 className="text-xl font-black text-white uppercase tracking-tighter italic flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-black text-white uppercase tracking-tighter italic flex items-center gap-2">
               PINHEIRO DIESEL PRO <span className="text-zinc-700">|</span> <span className="text-blue-500">Fluxo de Oficina</span>
             </h1>
-            <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.3em] leading-none mt-1">PROCESSO E PRODUTIVIDADE DE PÁTIO INTERNO</p>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] leading-none mt-1">
+              Processo e Produtividade de Pátio Interno
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <span className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-[9px] font-black uppercase tracking-widest font-mono">
+        
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+          <span className="px-3.5 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-[10px] font-black uppercase tracking-widest font-mono">
             🏭 MODELO INTERNO ATIVO
           </span>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="hidden lg:flex items-center gap-2 bg-orange-600 hover:bg-orange-500 active:scale-95 text-white px-5 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider transition shadow-lg shadow-orange-950/30 disabled:opacity-50 cursor-pointer"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            SALVAR OS
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
         
-        {/* COLUNA 1: IDENTIFICAÇÃO E PROPRIEDADES (Tamanho 3/12) */}
-        <div className="lg:col-span-3 space-y-6">
-          <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 space-y-6 shadow-2xl">
-            <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
+        {/* COLUNA PRINCIPAL: OPERACIONAL E SERVIÇOS (7/12) */}
+        <div className="lg:col-span-7 xl:col-span-7 space-y-6">
+          
+          {/* CARD 1: ATIVO, PROPRIETÁRIO & AGENDAMENTO */}
+          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
+            <div className="flex items-center gap-2.5 border-b border-zinc-800 pb-4">
               <div className="w-1.5 h-4 rounded-full bg-blue-600" />
-              <h2 className="text-sm font-black text-white uppercase italic tracking-tight">Ativo & Proprietário</h2>
+              <div>
+                <h2 className="text-sm font-black text-white uppercase italic tracking-tight">Ativo & Proprietário</h2>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Identificação do cliente, veículo e agendamento</p>
+              </div>
             </div>
             
-            <div className="space-y-6">
-              {/* Pesquisar Cliente */}
-              <div className="space-y-2 relative">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Localizar Proprietário</label>
-                <div className="relative">
-                  <div 
-                    onClick={() => setShowClientList(!showClientList)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none transition cursor-pointer flex items-center justify-between shadow-inner group hover:border-blue-500/30"
-                  >
-                    <span className="font-bold uppercase tracking-tight transition-colors group-hover:text-blue-500">
-                      {selectedCliente?.nome || 'BUSCAR NO BANCO...'}
+            <div className="space-y-4">
+              {/* Linha 1: Cliente e Veículo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Pesquisar Cliente */}
+                <div className="space-y-1.5 relative">
+                  <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Proprietário / Cliente</label>
+                  <div className="relative">
+                    <div 
+                      onClick={() => setShowClientList(!showClientList)}
+                      className="w-full min-h-[46px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none transition cursor-pointer flex items-center justify-between shadow-inner group hover:border-blue-500/50"
+                    >
+                      <span className="font-bold uppercase tracking-tight truncate mr-2 transition-colors group-hover:text-blue-400">
+                        {selectedCliente?.nome || 'SELECIONAR CLIENTE...'}
+                      </span>
+                      <Search size={15} className="text-zinc-600 transition-colors group-hover:text-blue-500 flex-shrink-0" />
+                    </div>
+                    
+                    {showClientList && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
+                        <div className="p-3 border-b border-zinc-800">
+                          <input 
+                            autoFocus 
+                            type="text" 
+                            placeholder="FILTRAR POR NOME OU DOCUMENTO..." 
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none font-bold uppercase tracking-wider transition focus:border-blue-500" 
+                            value={searchTerm} 
+                            onChange={(e) => setSearchTerm(e.target.value)} 
+                          />
+                        </div>
+                        <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                          {clientesLoading ? (
+                            <div className="p-6 text-center animate-pulse">
+                              <Loader2 className="w-5 h-5 text-blue-500 animate-spin mx-auto mb-2" />
+                              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Acessando banco...</p>
+                            </div>
+                          ) : clientesError ? (
+                            <div className="p-6 text-center text-red-400 text-xs">⚠️ Erro ao obter clientes</div>
+                          ) : (clientes || []).filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).length === 0 ? (
+                            <div className="p-6 text-center text-zinc-500 text-xs">Nenhum proprietário localizado</div>
+                          ) : (
+                            (clientes || []).filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).map(c => (
+                              <button 
+                                key={c.id} 
+                                type="button"
+                                onClick={() => { handleClienteChange(c.id); setShowClientList(false); setSearchTerm(''); }} 
+                                className="w-full p-3.5 text-left text-xs font-bold uppercase text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all border-b border-zinc-800/50 last:border-0"
+                              >
+                                {c.nome} <span className="text-[10px] text-zinc-600 ml-2 font-mono">({c.cpf_cnpj})</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Vincular Veículo */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Ativo em Operação</label>
+                  <div className="relative group">
+                    <select 
+                      className="w-full min-h-[46px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 pr-10 text-xs text-white outline-none transition font-bold uppercase cursor-pointer shadow-inner appearance-none disabled:opacity-30 focus:border-blue-500" 
+                      value={selectedVeiculo?.id || ''} 
+                      onChange={(e) => { const v = veiculos.find(v => v.id === e.target.value); if (v) setSelectedVeiculo(v); }} 
+                      disabled={!selectedCliente}
+                    >
+                      <option value="">{selectedCliente ? 'SELECIONAR VEÍCULO...' : 'AGUARDANDO CLIENTE...'}</option>
+                      {(veiculos || []).map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.placa} • {v.marca} {v.modelo}
+                        </option>
+                      ))}
+                    </select>
+                    <Car size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none transition-colors group-hover:text-blue-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Linha 2: Mecânico e Previsão de Entrega */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Selecionar Mecânico de Pátio */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Mecânico Responsável</label>
+                  <div className="relative group">
+                    <select 
+                      className="w-full min-h-[46px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 pr-10 text-xs text-white outline-none transition font-bold uppercase cursor-pointer shadow-inner appearance-none focus:border-blue-500" 
+                      value={selectedMecanico} 
+                      onChange={(e) => setSelectedMecanico(e.target.value)} 
+                    >
+                      <option value="">ATRIBUIR TÉCNICO RESPONSÁVEL...</option>
+                      {mecanicos.map(m => <option key={m.id} value={m.id}>{m.name.toUpperCase()}</option>)}
+                    </select>
+                    <Wrench size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none transition-colors group-hover:text-blue-500" />
+                  </div>
+                </div>
+
+                {/* Previsão de Entrega */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Previsão de Entrega</label>
+                  <div className="relative group">
+                    <input 
+                      type="datetime-local" 
+                      className="w-full min-h-[46px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 pr-10 text-xs text-white outline-none focus:border-blue-500 transition font-mono uppercase shadow-inner cursor-pointer" 
+                      value={previsao} 
+                      onChange={(e) => setPrevisao(e.target.value)} 
+                    />
+                    <Calendar size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none transition-colors group-hover:text-blue-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Histórico do Cliente (LTV) */}
+              {selectedCliente && (
+                <div className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl space-y-3 shadow-inner">
+                  <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <UserIcon size={12} className="text-zinc-500" />
+                      Histórico do Proprietário
                     </span>
-                    <Search size={14} className="text-zinc-700 transition-colors group-hover:text-blue-500" />
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase">{selectedCliente.nome}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60">
+                      <span className="text-[8px] text-zinc-500 font-bold uppercase block">Gasto Acumulado</span>
+                      <span className="text-sm font-black text-white font-mono italic mt-0.5 block">{formatCurrency(clienteHistorico?.totalGasto || 0)}</span>
+                    </div>
+                    <div className="bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60">
+                      <span className="text-[8px] text-zinc-500 font-bold uppercase block">Última OS</span>
+                      <span className="text-sm font-black text-white italic mt-0.5 block">#{clienteHistorico?.ultimaOSNumero || '---'}</span>
+                    </div>
+                    <div className="bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60">
+                      <span className="text-[8px] text-zinc-500 font-bold uppercase block">Atendimentos</span>
+                      <span className="text-sm font-black text-white italic mt-0.5 block">{clienteHistorico?.totalOS || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* DADOS TÉCNICOS DE PÁTIO / PATIOPRO */}
+              <div className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-5 space-y-4 shadow-inner">
+                <div className="flex items-center justify-between border-b border-zinc-900 pb-2.5">
+                  <p className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    PATIOPRO • MONITORAMENTO DE BOX
+                  </p>
+                  <span className="text-[9px] font-mono text-zinc-500 uppercase">Gestão Operacional</span>
+                </div>
+
+                {/* Box, Estado, Prioridade, Tempo */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-400 uppercase font-black">Nº Box / Elevador</label>
+                    <input 
+                      type="text" 
+                      placeholder="EX: BOX 03" 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-bold uppercase outline-none focus:border-blue-500 transition" 
+                      value={boxElevador} 
+                      onChange={(e) => setBoxElevador(e.target.value.toUpperCase())} 
+                    />
                   </div>
                   
-                  {showClientList && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-3 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
-                      <div className="p-4 border-b border-zinc-800">
-                        <input 
-                          autoFocus 
-                          type="text" 
-                          placeholder="FILTRAR POR NOME OU DOCUMENTO..." 
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none font-bold uppercase tracking-widest transition focus:border-blue-500" 
-                          value={searchTerm} 
-                          onChange={(e) => setSearchTerm(e.target.value)} 
-                        />
-                      </div>
-                      <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                        {clientesLoading ? (
-                           <div className="p-8 text-center animate-pulse">
-                             <Loader2 className="w-6 h-6 text-blue-500 animate-spin mx-auto mb-2" />
-                             <p className="text-[10px] text-zinc-500">Acessando banco...</p>
-                           </div>
-                        ) : clientesError ? (
-                           <div className="p-8 text-center text-red-400 text-xs">⚠️ Erro ao obter clientes</div>
-                        ) : (clientes || []).filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).length === 0 ? (
-                           <div className="p-8 text-center text-zinc-500 text-xs">Nenhum proprietário localizado</div>
-                        ) : (
-                          (clientes || []).filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).map(c => (
-                            <button 
-                              key={c.id} 
-                              type="button"
-                              onClick={() => { handleClienteChange(c.id); setShowClientList(false); setSearchTerm(''); }} 
-                              className="w-full p-5 text-left text-xs font-black uppercase text-zinc-500 hover:bg-zinc-800 hover:text-white transition-all border-b border-zinc-800/50 last:border-0 italic"
-                            >
-                              {c.nome} <span className="text-[9px] text-zinc-700 ml-2 font-mono tracking-tighter">({c.cpf_cnpj})</span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Vincular Veículo */}
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Ativo em Operação</label>
-                <div className="relative group">
-                  <select 
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pr-10 text-xs text-white outline-none transition font-black uppercase tracking-widest cursor-pointer shadow-inner appearance-none disabled:opacity-20 focus:border-blue-500" 
-                    value={selectedVeiculo?.id || ''} 
-                    onChange={(e) => { const v = veiculos.find(v => v.id === e.target.value); if (v) setSelectedVeiculo(v); }} 
-                    disabled={!selectedCliente}
-                  >
-                    <option value="">SELECIONAR VEÍCULO...</option>
-                    {(veiculos || []).map(v => <option key={v.id} value={v.id}>{v.placa} • {v.modelo}</option>)}
-                  </select>
-                  <Car size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-700 pointer-events-none transition-colors group-hover:text-blue-500" />
-                </div>
-              </div>
-
-              {/* Selecionar Mecânico de Pátio */}
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Mecânico Responsável</label>
-                <div className="relative group">
-                  <select 
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pr-10 text-xs text-white outline-none transition font-black uppercase tracking-widest cursor-pointer shadow-inner appearance-none focus:border-blue-500" 
-                    value={selectedMecanico} 
-                    onChange={(e) => setSelectedMecanico(e.target.value)}
-                  >
-                    <option value="">ATRIBUIR TÉCNICO...</option>
-                    {mecanicos.map(m => <option key={m.id} value={m.id}>{m.name.toUpperCase()}</option>)}
-                  </select>
-                  <Wrench size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-700 pointer-events-none transition-colors group-hover:text-blue-500" />
-                </div>
-              </div>
-
-              {/* Dados Técnicos Decorativos de Oficina */}
-              <div className="bg-zinc-950/80 border border-zinc-805 rounded-[1.8rem] p-6 space-y-5 shadow-inner">
-                <div className="flex items-center gap-2 border-b border-zinc-900 pb-3">
-                   <p className="text-[9px] font-black text-white uppercase tracking-widest">PATIOPRO MONITOR</p>
-                </div>
-
-                {/* Box do Elevador */}
-                <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Nº Box / Elevador</label>
-                  <input 
-                    type="text" 
-                    placeholder="EX: LIFT 3 / BOX PESADO..." 
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-blue-500 transition" 
-                    value={boxElevador} 
-                    onChange={(e) => setBoxElevador(e.target.value)} 
-                  />
-                </div>
-
-                {/* Status elevador e prioridade */}
-                <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Estado Box</label>
+                    <label className="text-[9px] text-zinc-400 uppercase font-black">Estado Box</label>
                     <select 
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-bold uppercase outline-none focus:border-blue-500 cursor-pointer"
                       value={statusElevador}
                       onChange={(e) => setStatusElevador(e.target.value)}
                     >
@@ -666,11 +741,11 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                       <option value="MANUTENCAO">MANUTENÇÃO</option>
                     </select>
                   </div>
-                  
+
                   <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Prioridade</label>
+                    <label className="text-[9px] text-zinc-400 uppercase font-black">Prioridade</label>
                     <select 
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-bold uppercase outline-none focus:border-blue-500 cursor-pointer"
                       value={prioridade}
                       onChange={(e) => setPrioridade(e.target.value)}
                     >
@@ -680,201 +755,192 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                       <option value="URGENTE">⚠️ URGENTE</option>
                     </select>
                   </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-zinc-400 uppercase font-black">Tempo Box (HH:MM)</label>
+                    <input 
+                      type="text" 
+                      placeholder="EX: 04:30" 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs font-mono text-white outline-none focus:border-blue-500 transition" 
+                      value={tempoInterno} 
+                      onChange={(e) => setTempoInterno(e.target.value)} 
+                    />
+                  </div>
                 </div>
 
                 {/* Horários Oficina */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Horário Entrada</label>
+                    <label className="text-[9px] text-zinc-400 uppercase font-black">Horário Entrada Pátio</label>
                     <input 
                       type="datetime-local" 
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2 px-3 text-[9px] text-white font-mono outline-none focus:border-blue-500" 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 px-3 text-xs text-white font-mono outline-none focus:border-blue-500" 
                       value={horarioEntrada} 
                       onChange={(e) => setHorarioEntrada(e.target.value)} 
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Horário Saída</label>
+                    <label className="text-[9px] text-zinc-400 uppercase font-black">Horário Saída Previsto</label>
                     <input 
                       type="datetime-local" 
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2 px-3 text-[9px] text-white font-mono outline-none focus:border-blue-500" 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 px-3 text-xs text-white font-mono outline-none focus:border-blue-500" 
                       value={horarioSaida} 
                       onChange={(e) => setHorarioSaida(e.target.value)} 
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                   <label className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Tempo Interno (HH:MM)</label>
-                   <input 
-                     type="text" 
-                     placeholder="EX: 04:30" 
-                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs font-mono text-white outline-none focus:border-blue-500" 
-                     value={tempoInterno} 
-                     onChange={(e) => setTempoInterno(e.target.value)} 
-                   />
-                </div>
-
                 {/* Flags extras */}
-                <div className="flex items-center gap-4 pt-1">
-                   <label className="flex items-center gap-2 cursor-pointer text-[10px] uppercase font-bold text-zinc-400 select-none">
-                     <input 
-                       type="checkbox" 
-                       className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0 cursor-pointer" 
-                       checked={lavagem}
-                       onChange={(e) => setLavagem(e.target.checked)}
-                     />
-                     Lavagem ok
-                   </label>
-                   <label className="flex items-center gap-2 cursor-pointer text-[10px] uppercase font-bold text-zinc-400 select-none">
-                     <input 
-                       type="checkbox" 
-                       className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0 cursor-pointer" 
-                       checked={testeFinal}
-                       onChange={(e) => setTesteFinal(e.target.checked)}
-                     />
-                     Teste Estrada
-                   </label>
+                <div className="flex flex-wrap items-center gap-6 pt-1 border-t border-zinc-900">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs uppercase font-bold text-zinc-300 select-none">
+                    <input 
+                      type="checkbox" 
+                      className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0 cursor-pointer w-4 h-4" 
+                      checked={lavagem}
+                      onChange={(e) => setLavagem(e.target.checked)}
+                    />
+                    Lavagem Chassi Concluída
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs uppercase font-bold text-zinc-300 select-none">
+                    <input 
+                      type="checkbox" 
+                      className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0 cursor-pointer w-4 h-4" 
+                      checked={testeFinal}
+                      onChange={(e) => setTesteFinal(e.target.checked)}
+                    />
+                    Teste de Estrada / Dinamômetro
+                  </label>
                 </div>
 
-                {/* Checklist de Oficina */}
-                <div className="space-y-2 pt-3 border-t border-zinc-900">
-                   <p className="text-[8px] text-zinc-500 uppercase font-black tracking-widest">Checklist de Entrada Oficina</p>
-                   <div className="grid grid-cols-2 gap-2 text-[9px] font-semibold text-zinc-400">
-                      <label className="flex items-center gap-1.5 cursor-pointer leading-none">
-                        <input type="checkbox" className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0" checked={checklistOficina.fluidos} onChange={(e) => setChecklistOficina({ ...checklistOficina, fluidos: e.target.checked })} />
-                        Nível Óleos
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer leading-none">
-                        <input type="checkbox" className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0" checked={checklistOficina.filtros} onChange={(e) => setChecklistOficina({ ...checklistOficina, filtros: e.target.checked })} />
-                        Filtros Ar
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer leading-none">
-                        <input type="checkbox" className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0" checked={checklistOficina.freios} onChange={(e) => setChecklistOficina({ ...checklistOficina, freios: e.target.checked })} />
-                        Sist. Freios
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer leading-none">
-                        <input type="checkbox" className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0" checked={checklistOficina.suspensao} onChange={(e) => setChecklistOficina({ ...checklistOficina, suspensao: e.target.checked })} />
-                        Suspensão
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer leading-none">
-                        <input type="checkbox" className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0" checked={checklistOficina.bateria} onChange={(e) => setChecklistOficina({ ...checklistOficina, bateria: e.target.checked })} />
-                        Bateria 24V
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer leading-none">
-                        <input type="checkbox" className="rounded bg-zinc-900 border-zinc-800 text-blue-600 focus:ring-0" checked={checklistOficina.iluminacao} onChange={(e) => setChecklistOficina({ ...checklistOficina, iluminacao: e.target.checked })} />
-                        Iluminação
-                      </label>
-                   </div>
+                {/* Checklist de Entrada Oficina */}
+                <div className="space-y-2 pt-2 border-t border-zinc-900">
+                  <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider">Checklist de Entrada Oficina</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs font-semibold text-zinc-300">
+                    <label className="flex items-center gap-2 cursor-pointer bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60 hover:border-zinc-700 transition">
+                      <input type="checkbox" className="rounded bg-zinc-950 border-zinc-800 text-blue-600 focus:ring-0 w-3.5 h-3.5" checked={checklistOficina.fluidos} onChange={(e) => setChecklistOficina({ ...checklistOficina, fluidos: e.target.checked })} />
+                      Nível Óleos
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60 hover:border-zinc-700 transition">
+                      <input type="checkbox" className="rounded bg-zinc-950 border-zinc-800 text-blue-600 focus:ring-0 w-3.5 h-3.5" checked={checklistOficina.filtros} onChange={(e) => setChecklistOficina({ ...checklistOficina, filtros: e.target.checked })} />
+                      Filtros Ar/Combustível
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60 hover:border-zinc-700 transition">
+                      <input type="checkbox" className="rounded bg-zinc-950 border-zinc-800 text-blue-600 focus:ring-0 w-3.5 h-3.5" checked={checklistOficina.freios} onChange={(e) => setChecklistOficina({ ...checklistOficina, freios: e.target.checked })} />
+                      Sist. Freios / Pneumático
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60 hover:border-zinc-700 transition">
+                      <input type="checkbox" className="rounded bg-zinc-950 border-zinc-800 text-blue-600 focus:ring-0 w-3.5 h-3.5" checked={checklistOficina.suspensao} onChange={(e) => setChecklistOficina({ ...checklistOficina, suspensao: e.target.checked })} />
+                      Suspensão / Feixe Molas
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60 hover:border-zinc-700 transition">
+                      <input type="checkbox" className="rounded bg-zinc-950 border-zinc-800 text-blue-600 focus:ring-0 w-3.5 h-3.5" checked={checklistOficina.bateria} onChange={(e) => setChecklistOficina({ ...checklistOficina, bateria: e.target.checked })} />
+                      Bateria / Elétrica 24V
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/60 hover:border-zinc-700 transition">
+                      <input type="checkbox" className="rounded bg-zinc-950 border-zinc-800 text-blue-600 focus:ring-0 w-3.5 h-3.5" checked={checklistOficina.iluminacao} onChange={(e) => setChecklistOficina({ ...checklistOficina, iluminacao: e.target.checked })} />
+                      Iluminação / Sinalização
+                    </label>
+                  </div>
                 </div>
               </div>
-
-              {/* Histórico do Cliente */}
-              {selectedCliente && (
-                <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-[2rem] space-y-6 shadow-inner relative overflow-hidden">
-                   <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
-                      <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Histórico LTV</p>
-                      <UserIcon size={12} className="text-zinc-700" />
-                   </div>
-                   <div className="flex flex-col items-center gap-1">
-                      <span className="text-[8px] text-zinc-650 font-black uppercase tracking-widest leading-none">Gasto Acumulado</span>
-                      <span className="text-xl font-black text-white font-mono italic tracking-tighter">{formatCurrency(clienteHistorico?.totalGasto || 0)}</span>
-                   </div>
-                   <div className="grid grid-cols-2 gap-2 text-center">
-                      <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-850">
-                         <span className="text-[8px] text-zinc-650 font-black uppercase">Última OS</span>
-                         <span className="block text-xs font-black text-white italic mt-1">#{clienteHistorico?.ultimaOSNumero || '---'}</span>
-                      </div>
-                      <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-850">
-                         <span className="text-[8px] text-zinc-650 font-black uppercase">Atendimentos</span>
-                         <span className="block text-xs font-black text-white italic mt-1">{clienteHistorico?.totalOS || 0}</span>
-                      </div>
-                   </div>
-                </div>
-              )}
             </div>
           </section>
-        </div>
 
-        {/* COLUNA 2: MÃO DE OBRA E CRONOGRAMA DE TRABALHOS (Tamanho 5/12) */}
-        <div className="lg:col-span-5 space-y-6">
-          <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] shadow-2xl flex flex-col min-h-[500px]">
-            <div className="p-8 border-b border-zinc-800 bg-zinc-950/20 flex items-center justify-between">
+          {/* CARD 2: DIAGNÓSTICO E QUEIXA TÉCNICA (DEFEITO RECLAMADO) */}
+          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 space-y-3 shadow-xl">
+            <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+              <FileText size={16} className="text-orange-500" />
+              <h2 className="text-sm font-black text-white uppercase italic tracking-tight">Diagnóstico & Defeito Reclamado</h2>
+            </div>
+            <textarea 
+              placeholder="DESCREVA OS VÍCIOS APRESENTADOS, AVALIAÇÃO PRELIMINAR, ANÁLISE DE CÓDIGOS DE FALHA (DTC) E SERVIÇOS SOLICITADOS PELO CLIENTE..." 
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-blue-500 transition font-medium tracking-wide shadow-inner h-28 resize-none placeholder:text-zinc-650 leading-relaxed uppercase" 
+              value={diagnostico} 
+              onChange={(e) => setDiagnostico(e.target.value)} 
+            />
+          </section>
+
+          {/* CARD 3: MÃO DE OBRA E PROCEDIMENTOS */}
+          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl shadow-xl flex flex-col overflow-hidden">
+            <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-950/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-2xl text-blue-500 shadow-inner">
-                  <Tool size={20} />
+                <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-blue-500 shadow-inner">
+                  <Tool size={18} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white uppercase italic tracking-tighter">Mão de Obra e Procedimentos</h3>
-                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-1">Instruções e Tempo Técnico</p>
+                  <h3 className="text-sm font-black text-white uppercase italic tracking-tight">Mão de Obra e Procedimentos</h3>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Serviços técnicos e tempo de execução</p>
                 </div>
               </div>
               <button 
                 type="button"
                 onClick={addServico} 
-                className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition shadow-lg active:scale-95 group cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition shadow-lg active:scale-95 cursor-pointer"
               >
-                <Plus size={18} className="group-hover:rotate-90 transition-transform" />
+                <Plus size={16} />
+                <span>Adicionar Serviço</span>
               </button>
             </div>
 
-            {/* Serviços Items sem scroll estourando o container */}
-            <div className="flex-1 overflow-y-auto max-h-[600px] p-6 space-y-4 custom-scrollbar">
+            {/* Lista de Serviços */}
+            <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
               {servicos.map((servico) => (
-                <div key={servico.id} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5 group relative space-y-4 hover:border-blue-500/30 transition-all">
-                  <button 
-                    type="button"
-                    onClick={() => removeServico(servico.id)} 
-                    className="absolute -top-2 -right-2 w-7 h-7 bg-red-600 hover:bg-red-500 text-white rounded-full flex items-center justify-center transition-all shadow-xl z-20 hover:scale-110 active:scale-90"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                  
-                  {/* Tipo de Cobrança */}
-                  <div className="flex gap-2">
+                <div key={servico.id} className="bg-zinc-950 border border-zinc-850 rounded-2xl p-4 sm:p-5 space-y-4 hover:border-blue-500/40 transition-all">
+                  <div className="flex items-center justify-between gap-2 border-b border-zinc-900 pb-3">
+                    <div className="flex items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => updateServico(servico.id, 'tipo_cobranca', 'HORA')}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                          servico.tipo_cobranca === 'HORA' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300 border border-zinc-800'
+                        }`}
+                      >
+                        Por Hora
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => updateServico(servico.id, 'tipo_cobranca', 'PACOTE')}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                          servico.tipo_cobranca === 'PACOTE' 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300 border border-zinc-800'
+                        }`}
+                      >
+                        Tabela Fechada
+                      </button>
+                    </div>
+
                     <button 
                       type="button"
-                      onClick={() => updateServico(servico.id, 'tipo_cobranca', 'HORA')}
-                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition ${
-                        servico.tipo_cobranca === 'HORA' 
-                          ? 'bg-blue-600 text-white font-black' 
-                          : 'bg-zinc-900 text-zinc-500 border border-zinc-800/80'
-                      }`}
+                      onClick={() => removeServico(servico.id)} 
+                      className="p-2 text-zinc-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                      title="Remover serviço"
                     >
-                      Por Hora
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => updateServico(servico.id, 'tipo_cobranca', 'PACOTE')}
-                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition ${
-                        servico.tipo_cobranca === 'PACOTE' 
-                          ? 'bg-blue-600 text-white font-black' 
-                          : 'bg-zinc-900 text-zinc-500 border border-zinc-800/80'
-                      }`}
-                    >
-                      Tabela Fechada
+                      <Trash2 size={16} />
                     </button>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1">Natureza do Serviço</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Natureza do Serviço</label>
                     <input 
                       type="text" 
-                      placeholder="EX: RETÍFICA DE CABEÇOTE..." 
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 px-4 text-xs text-white outline-none focus:border-blue-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800" 
+                      placeholder="EX: RETÍFICA DE CABEÇOTE, TROCA DE EMBREAGEM..." 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 px-3.5 text-xs text-white outline-none focus:border-blue-500 font-bold uppercase transition" 
                       value={servico.descricao} 
                       onChange={(e) => updateServico(servico.id, 'descricao', e.target.value)} 
                     />
                   </div>
 
                   {servico.tipo_cobranca === 'HORA' ? (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[9px] font-black text-zinc-650 uppercase tracking-widest text-right block">Horas (H:MM)</label>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Tempo (Horas H:MM)</label>
                         <input 
                           type="text" 
                           placeholder="1:30"
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-black transition text-right tabular-nums shadow-inner"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-bold transition text-right tabular-nums"
                           value={servico.horas}
                           onChange={(e) => {
                             const val = e.target.value.replace(/[^0-9:]/g, '');
@@ -889,10 +955,10 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[9px] font-black text-zinc-655 uppercase tracking-widest text-right block">Valor/Hora (R$)</label>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Valor Hora (R$)</label>
                         <input 
                           type="number" 
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-black transition text-right tabular-nums shadow-inner"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-bold transition text-right tabular-nums"
                           value={servico.valor_hora}
                           onChange={(e) => updateServico(servico.id, 'valor_hora', parseFloat(e.target.value) || 0)}
                         />
@@ -900,63 +966,98 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-zinc-650 uppercase tracking-widest text-right block">Preço Pacote (R$)</label>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Preço Pacote (R$)</label>
                       <input 
                         type="number" 
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-black transition text-right tabular-nums shadow-inner"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-blue-500 font-mono font-bold transition text-right tabular-nums"
                         value={servico.valor_pacote}
                         onChange={(e) => updateServico(servico.id, 'valor_pacote', parseFloat(e.target.value) || 0)}
                       />
                     </div>
                   )}
 
-                  <div className="text-right text-xs text-green-400 font-black font-mono italic">
-                    SUBTOTAL: {formatCurrency(servico.valor_total)}
+                  <div className="flex justify-between items-center pt-2 border-t border-zinc-900/80">
+                    <span className="text-[10px] text-zinc-500 uppercase font-black tracking-wider">Subtotal do Procedimento:</span>
+                    <span className="text-xs text-green-400 font-black font-mono">{formatCurrency(servico.valor_total)}</span>
                   </div>
                 </div>
               ))}
               
               {servicos.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-24 opacity-10 space-y-4 italic">
-                  <Tool size={60} className="text-zinc-600" />
-                  <p className="text-[9px] font-black uppercase tracking-[0.4em] text-zinc-600">Nossa Mão de Obra está vazia</p>
+                <div className="flex flex-col items-center justify-center py-16 opacity-30 space-y-2">
+                  <Tool size={40} className="text-zinc-500" />
+                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Nenhum serviço adicionado ainda</p>
                 </div>
               )}
             </div>
 
-            {/* Rodapé Interno da Caixa de Serviços */}
-            <div className="p-8 border-t border-zinc-800 bg-zinc-950/20">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] italic">Serviços Totais</p>
-                  <p className="text-[8px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">{servicos.length} de Oficina</p>
-                </div>
-                <p className="text-xl font-black text-white italic font-mono">{formatCurrency(totalServicos)}</p>
+            {/* Rodapé da Caixa de Serviços */}
+            <div className="p-5 sm:p-6 border-t border-zinc-800 bg-zinc-950/40 flex justify-between items-center">
+              <div>
+                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Total de Mão de Obra</p>
+                <p className="text-[9px] text-zinc-500 font-bold uppercase">{servicos.length} procedimento(s) listado(s)</p>
               </div>
+              <p className="text-xl font-black text-white italic font-mono">{formatCurrency(totalServicos)}</p>
             </div>
           </section>
+
+          {/* CARD 4: FOTOS DE EVIDÊNCIA */}
+          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h4 className="text-sm font-black text-white uppercase italic tracking-tight">Galeria de Evidências (Fotos)</h4>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase font-mono">{fotosOficina.length} imagem(ns)</span>
+            </div>
+            
+            <div className="space-y-4">
+              <label className="w-full p-6 bg-zinc-950 hover:bg-zinc-900 border border-dashed border-zinc-800 hover:border-blue-500/50 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition">
+                <span className="text-2xl">📸</span>
+                <span className="text-xs font-black text-white uppercase tracking-wider mt-1.5">Anexar Fotos do Pátio</span>
+                <span className="text-[10px] text-zinc-500 mt-0.5">Clique ou arraste imagens do veículo ou peças danificadas</span>
+                <input type="file" multiple accept="image/*" className="hidden" onChange={handleFotoChange} />
+              </label>
+              
+              {fotosOficina.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 pt-1">
+                  {fotosOficina.map((foto, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 group">
+                      <img src={foto} alt={`oficina-${idx}`} className="w-full h-full object-cover" />
+                      <button 
+                        type="button" 
+                        onClick={() => removerFoto(idx)} 
+                        className="absolute top-1.5 right-1.5 bg-red-600 hover:bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-lg"
+                        title="Remover foto"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
         </div>
 
-        {/* COLUNA 3: ALMOXARIFADO, RESUMO E SALVAMENTO (Tamanho 4/12) */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* COLUNA LATERAL: INSUMOS, FINANCEIRO & FINALIZAÇÃO (5/12) */}
+        <div className="lg:col-span-5 xl:col-span-5 space-y-6">
           
-          {/* PAINEL DE INSUMOS & REPOSIÇÃO (Estoque de Peças) */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
+          {/* CARD 1: INSUMOS & REPOSIÇÃO (ALMOXARIFADO) */}
+          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
               <div>
-                <h4 className="text-xs font-black text-white uppercase italic tracking-tighter">Insumos & Reposição</h4>
-                <p className="text-[8px] text-zinc-600 font-black uppercase tracking-widest leading-none mt-1">Requisição Almoxarifado Direto</p>
+                <h4 className="text-sm font-black text-white uppercase italic tracking-tight">Insumos & Reposição</h4>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Peças requisitadas do estoque</p>
               </div>
-              <Package size={16} className="text-zinc-700" />
+              <Package size={18} className="text-blue-500" />
             </div>
 
             <div className="space-y-4">
               <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-blue-500 transition-colors" size={14} />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors" size={15} />
                 <input 
                   type="text"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-3 pl-12 pr-10 text-[10px] text-white font-black uppercase tracking-widest outline-none focus:border-blue-500 transition shadow-inner placeholder:text-zinc-800"
-                  placeholder="CONSULTAR PEÇA POR NOME..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-11 pr-10 text-xs text-white font-bold uppercase tracking-wider outline-none focus:border-blue-500 transition shadow-inner placeholder:text-zinc-600"
+                  placeholder="CONSULTAR PEÇA POR CÓDIGO OU NOME..."
                   value={pecaSearchQuery}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -968,22 +1069,22 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                 />
                 
                 {pecasLoading && (
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500">
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
                   </div>
                 )}
 
-                {/* Resultado Busca de Peças */}
+                {/* Dropdown de Busca */}
                 {pecaSearchQuery && pecaSearchQuery.trim().length >= 2 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-3 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar">
+                  <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar">
                     {pecasLoading ? (
-                      <div className="p-6 text-center text-zinc-500 text-[10px] font-black uppercase tracking-widest">
+                      <div className="p-5 text-center text-zinc-400 text-xs">
                         <Loader2 className="w-4 h-4 text-blue-500 animate-spin mx-auto mb-2" />
-                        Acessando Prateleiras...
+                        Consultando estoque...
                       </div>
                     ) : availablePecas.length === 0 ? (
-                      <div className="p-6 text-center text-zinc-600 text-[10px] font-black uppercase tracking-widest">
-                        Sem resultados no estoque
+                      <div className="p-5 text-center text-zinc-500 text-xs">
+                        Nenhum insumo encontrado
                       </div>
                     ) : (
                       availablePecas.map(p => (
@@ -995,13 +1096,13 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                             setPecaSearchQuery('');
                             setAvailablePecas([]);
                           }}
-                          className="w-full p-4 text-left flex items-center justify-between hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-0"
+                          className="w-full p-3.5 text-left flex items-center justify-between hover:bg-zinc-800 transition-colors border-b border-zinc-800/60 last:border-0"
                         >
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-black text-white uppercase">{p.descricao}</span>
-                            <span className="text-[8px] text-zinc-650 font-mono font-bold tracking-widest mt-1 uppercase">CÓD: {p.codigo || 'S/ CÓD'} • DISP: {p.quantidade} {p.unidadeMedida || 'un'}</span>
+                          <div className="flex flex-col pr-2 min-w-0">
+                            <span className="text-xs font-bold text-white uppercase truncate">{p.descricao}</span>
+                            <span className="text-[10px] text-zinc-400 font-mono mt-0.5">CÓD: {p.codigo || 'S/ CÓD'} • SALDO: {p.quantidade} {p.unidadeMedida || 'un'}</span>
                           </div>
-                          <span className="text-[10px] font-mono font-black text-green-500">{formatCurrency(p.preco_venda)}</span>
+                          <span className="text-xs font-mono font-black text-green-400 flex-shrink-0">{formatCurrency(p.preco_venda)}</span>
                         </button>
                       ))
                     )}
@@ -1009,140 +1110,109 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                 )}
               </div>
 
-              {/* Peças vinculadas no estado */}
-              <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pt-2">
+              {/* Peças vinculadas */}
+              <div className="space-y-2.5 max-h-[320px] overflow-y-auto custom-scrollbar pt-1">
                 {pecas.map(peca => (
-                  <div key={peca.id} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex items-center justify-between border-l-4 border-l-blue-600/30 hover:border-l-blue-500 transition-all">
-                    <div className="flex-1 mr-2 min-w-0">
-                      <p className="text-[10px] font-black text-white uppercase italic truncate">{peca.descricao}</p>
-                      <p className="text-[8px] text-zinc-600 font-mono mt-0.5 font-bold">UNIT: {formatCurrency(peca.valor_unit)}</p>
+                  <div key={peca.id} className="bg-zinc-950 border border-zinc-850 rounded-xl p-3.5 flex items-center justify-between gap-3 border-l-4 border-l-blue-600/50 hover:border-l-blue-500 transition-all">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-white uppercase truncate">{peca.descricao}</p>
+                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">Unit: {formatCurrency(peca.valor_unit)} • Total: <span className="text-green-400 font-black">{formatCurrency(peca.valor_total)}</span></p>
                     </div>
+                    
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="flex items-center gap-1.5 bg-zinc-900 px-2 py-1 rounded-xl border border-zinc-800">
+                      <div className="flex items-center gap-1 bg-zinc-900 px-2 py-1.5 rounded-lg border border-zinc-800">
                         <input 
                           type="number" 
                           step="any" 
-                          className="w-10 bg-transparent text-white text-[10px] font-mono font-black text-center outline-none p-0 focus:ring-0" 
+                          className="w-12 bg-transparent text-white text-xs font-mono font-bold text-center outline-none p-0 focus:ring-0" 
                           value={peca.quantidade} 
                           onChange={(e) => updatePeca(peca.id, 'quantidade', parseFloat(e.target.value) || 0)} 
                         />
                         <select 
-                          className="bg-zinc-900 text-zinc-500 text-[8px] font-black uppercase outline-none cursor-pointer p-0 border-0 focus:text-white"
+                          className="bg-zinc-900 text-zinc-400 text-[10px] font-bold uppercase outline-none cursor-pointer p-0 border-0 focus:text-white"
                           value={peca.unidade || 'un'} 
                           onChange={(e) => updatePeca(peca.id, 'unidade', e.target.value)}
                         >
                           {(peca.compativeis && peca.compativeis.length > 0 ? peca.compativeis : [{ sigla: peca.unidade || 'un' }]).map((u: any) => (
-                            <option key={u.sigla} value={u.sigla} className="bg-zinc-950 text-white text-[8px] uppercase">{u.sigla}</option>
+                            <option key={u.sigla} value={u.sigla} className="bg-zinc-950 text-white uppercase">{u.sigla}</option>
                           ))}
                         </select>
                       </div>
-                      <button type="button" onClick={() => removePeca(peca.id)} className="text-zinc-700 hover:text-red-500 transition-all">
-                        <Trash2 size={13} />
+                      <button 
+                        type="button" 
+                        onClick={() => removePeca(peca.id)} 
+                        className="p-1.5 text-zinc-600 hover:text-red-400 transition"
+                        title="Remover peça"
+                      >
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </div>
                 ))}
                 
                 {pecas.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-10 opacity-10 border border-dashed border-zinc-800 rounded-2xl italic space-y-1">
-                    <Package size={30} className="text-zinc-600" />
-                    <p className="text-[8px] font-black uppercase tracking-widest text-center mt-1">Sem insumos vinculados</p>
+                  <div className="flex flex-col items-center justify-center py-10 opacity-30 border border-dashed border-zinc-800 rounded-xl space-y-1">
+                    <Package size={30} className="text-zinc-500" />
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Nenhum insumo vinculado</p>
                   </div>
                 )}
               </div>
-            </div>
-          </div>
 
-          {/* FOTOS DE COMPROVAÇÃO DE TRABALHOS */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
-            <h4 className="text-xs font-black text-white uppercase italic tracking-tighter mb-4">Galeria de Evidências (Fotos)</h4>
-            <div className="flex flex-col gap-3">
-              <label className="w-full p-4 bg-zinc-950 hover:bg-zinc-900 border border-dashed border-zinc-800 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition">
-                <span className="text-xl">📸</span>
-                <span className="text-[9px] font-black text-white uppercase tracking-widest mt-1">Vincular Imagens</span>
-                <span className="text-[8px] text-zinc-600 mt-0.5 lowercase">& Arraste fotos</span>
-                <input type="file" multiple accept="image/*" className="hidden" onChange={handleFotoChange} />
-              </label>
-              
-              {fotosOficina.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 pt-2 max-h-32 overflow-y-auto custom-scrollbar">
-                  {fotosOficina.map((foto, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 group">
-                      <img src={foto} alt={`oficina-${idx}`} className="w-full h-full object-cover" />
-                      <button 
-                        type="button" 
-                        onClick={() => removerFoto(idx)} 
-                        className="absolute top-1 right-1 bg-red-650 hover:bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black shadow-lg"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+              {pecas.length > 0 && (
+                <div className="pt-3 border-t border-zinc-900 flex justify-between items-center text-xs">
+                  <span className="text-zinc-400 font-bold uppercase">Subtotal Peças:</span>
+                  <span className="text-sm font-black text-white font-mono">{formatCurrency(totalPecas)}</span>
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* DIAGNÓSTICO E TRIAGEM */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl space-y-4">
-            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic px-1">Instruções de Diagnóstico / Reclamação</label>
-            <textarea 
-              placeholder="DESCREVA OS VÍCIOS APRESENTADOS, AVALIAÇÃO PRELIMINAR E RECURSOS TÉCNICOS NECESSÁRIOS..." 
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] text-white outline-none focus:border-zinc-700 transition font-bold uppercase tracking-widest shadow-inner h-28 resize-none placeholder:text-zinc-800 leading-relaxed" 
-              value={diagnostico} 
-              onChange={(e) => setDiagnostico(e.target.value)} 
-            />
-          </div>
-
-          {/* LIQUIDAÇÃO FINANCEIRA */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-green-500 shadow-inner">
-                <FileText size={18} />
-              </div>
+          {/* CARD 2: LIQUIDAÇÃO FINANCEIRA */}
+          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl space-y-5">
+            <div className="flex items-center gap-2.5 border-b border-zinc-800 pb-3">
+              <FileText size={16} className="text-green-500" />
               <div>
-                <h3 className="text-xs font-black text-white uppercase italic tracking-tighter">Liquidação Financeira</h3>
-                <p className="text-[9px] text-zinc-650 font-bold uppercase tracking-widest">Resumo Consolidado</p>
+                <h3 className="text-sm font-black text-white uppercase italic tracking-tight">Liquidação Financeira</h3>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Fechamento de valores e cobrança</p>
               </div>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-900 rounded-[1.8rem] p-6 space-y-4 shadow-inner">
-              <div className="flex justify-between items-center text-[10px] font-black text-zinc-600 uppercase tracking-widest italic">
-                <span>Insumos Almoxarifado</span>
-                <span className="text-white font-mono">{formatCurrency(totalPecas)}</span>
-              </div>
-              <div className="flex justify-between items-center text-[10px] font-black text-zinc-600 uppercase tracking-widest italic">
+            <div className="bg-zinc-950 border border-zinc-850 rounded-2xl p-5 space-y-3.5 shadow-inner">
+              <div className="flex justify-between items-center text-xs text-zinc-400 font-semibold uppercase">
                 <span>Mão de Obra</span>
-                <span className="text-white font-mono">{formatCurrency(totalServicos)}</span>
+                <span className="text-white font-mono font-bold">{formatCurrency(totalServicos)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-zinc-400 font-semibold uppercase">
+                <span>Insumos Almoxarifado</span>
+                <span className="text-white font-mono font-bold">{formatCurrency(totalPecas)}</span>
               </div>
               
-              {/* Descontos aplicados */}
-              <div className="space-y-1">
-                <label className="text-[8px] text-zinc-650 uppercase font-black tracking-widest">Desconto direto (R$)</label>
+              {/* Desconto */}
+              <div className="space-y-1 pt-1 border-t border-zinc-900">
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Conceder Desconto (R$)</label>
                 <input 
                   type="number" 
                   step="any"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2 px-3 text-xs text-white font-mono outline-none text-right focus:border-blue-500" 
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 px-3 text-xs text-white font-mono outline-none text-right focus:border-blue-500 transition" 
                   value={desconto || ''} 
+                  placeholder="0,00"
                   onChange={(e) => setDesconto(parseFloat(e.target.value) || 0)} 
                 />
               </div>
 
-              <div className="h-px bg-zinc-900 my-1" />
-
               {/* Forma de Pagamento */}
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Condição de Pagamento</label>
+              <div className="space-y-1 pt-2 border-t border-zinc-900">
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Condição de Pagamento</label>
                 <select 
                   value={formaPagamento}
                   onChange={(e) => {
                     setFormaPagamento(e.target.value);
                     if (e.target.value === 'BOLETO PARCELADO' && numParcelas < 2) setNumParcelas(3);
                   }}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white font-bold uppercase outline-none focus:border-blue-500 transition shadow-inner"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-bold uppercase outline-none focus:border-blue-500 transition shadow-inner cursor-pointer"
                 >
                   <option value="DINHEIRO">DINHEIRO</option>
-                  <option value="PIX">PIX (MÓVEL)</option>
+                  <option value="PIX">PIX</option>
                   <option value="CARTÃO DÉBITO">CARTÃO DÉBITO</option>
                   <option value="CARTÃO CRÉDITO">CARTÃO CRÉDITO</option>
                   <option value="BOLETO À VISTA">BOLETO À VISTA</option>
@@ -1151,54 +1221,54 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
               </div>
 
               {formaPagamento === 'BOLETO PARCELADO' && (
-                <div className="space-y-3 pt-2 border-t border-zinc-900 leading-none">
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-3 pt-3 border-t border-zinc-900">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div className="space-y-1">
-                      <label className="text-[8px] font-bold text-zinc-650 uppercase">Parcelas</label>
+                      <label className="text-[9px] font-bold text-zinc-400 uppercase">Nº Parcelas</label>
                       <input 
                         type="number" 
                         min="2" 
                         max="24"
                         value={numParcelas}
                         onChange={(e) => setNumParcelas(parseInt(e.target.value) || 2)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2 text-xs text-white font-mono outline-none"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] font-bold text-zinc-650 uppercase">Intervalo (dias)</label>
+                      <label className="text-[9px] font-bold text-zinc-400 uppercase">Intervalo (Dias)</label>
                       <input 
                         type="number" 
-                        min="1"
+                        min="1" 
                         value={diasEntreParcelas}
                         onChange={(e) => setDiasEntreParcelas(parseInt(e.target.value) || 28)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2 text-xs text-white font-mono outline-none"
                       />
                     </div>
                   </div>
+                  
                   <div className="space-y-1">
-                    <label className="text-[8px] font-bold text-zinc-650 uppercase">Data 1º Boleto</label>
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase">Data 1º Vencimento</label>
                     <input 
                       type="date"
                       value={dataPrimeiraParcela}
                       onChange={(e) => setDataPrimeiraParcela(e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-mono outline-none"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-2 text-xs text-white font-mono outline-none"
                     />
                   </div>
 
-                  {/* Simulação rápida */}
-                  <div className="pt-2 max-h-40 overflow-y-auto custom-scrollbar space-y-1.5 border-t border-zinc-900">
-                    <div className="flex items-center justify-between opacity-50 text-[8px] uppercase tracking-widest mb-1">
-                      <span>Parcelas simuladas</span>
-                      <span>Valor: {formatCurrency(totalGeral / numParcelas)}</span>
-                    </div>
+                  {/* Simulação rápida de parcelas */}
+                  <div className="pt-2 max-h-36 overflow-y-auto custom-scrollbar space-y-1 border-t border-zinc-900">
+                    <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold block mb-1">
+                      Parcelas Simuladas ({numParcelas}x de {formatCurrency(totalGeral / numParcelas)})
+                    </span>
                     {Array.from({ length: numParcelas }).map((_, i) => {
                       const dt = new Date(dataPrimeiraParcela);
                       dt.setDate(dt.getDate() + (i * diasEntreParcelas));
                       return (
-                        <div key={i} className="flex justify-between items-center text-[9px] font-mono text-zinc-400 bg-zinc-900/30 p-2 rounded-xl">
-                          <span className="text-zinc-600 font-bold">P {i + 1}/{numParcelas}</span>
+                        <div key={i} className="flex justify-between items-center text-[10px] font-mono text-zinc-400 bg-zinc-900/60 p-2 rounded-lg border border-zinc-800/40">
+                          <span className="text-zinc-500 font-bold">P {i + 1}/{numParcelas}</span>
                           <span>{dt.toLocaleDateString('pt-BR')}</span>
-                          <span className="text-white font-black">{formatCurrency(totalGeral / numParcelas)}</span>
+                          <span className="text-white font-bold">{formatCurrency(totalGeral / numParcelas)}</span>
                         </div>
                       );
                     })}
@@ -1206,39 +1276,39 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                 </div>
               )}
 
-              <div className="h-px bg-zinc-900 my-1" />
+              {/* Total Geral Consolidado */}
+              <div className="pt-3 border-t border-zinc-900 flex justify-between items-end">
+                <div>
+                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-wider block">Consolidado Geral</span>
+                  <span className="text-[9px] text-zinc-500 uppercase">Líquido a faturar</span>
+                </div>
+                <span className="text-2xl sm:text-3xl font-black text-white italic font-mono tracking-tight tabular-nums">
+                  {formatCurrency(totalGeral)}
+                </span>
+              </div>
+            </div>
+
+            {/* Ações de Envio */}
+            <div className="space-y-3 pt-2">
+              <button 
+                type="button"
+                onClick={handleSubmit} 
+                disabled={loading} 
+                className="w-full py-4 bg-orange-600 hover:bg-orange-500 active:scale-[0.99] text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-orange-950/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
+                PROTOCOLAR OS OFICINA
+              </button>
               
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest italic">Consolidado Geral</span>
-                <span className="text-3xl font-black text-white italic font-mono leading-none tracking-tighter tabular-nums">{formatCurrency(totalGeral)}</span>
-              </div>
+              <button
+                type="button"
+                onClick={onBack}
+                className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl font-bold uppercase text-[10px] tracking-wider transition border border-zinc-800/80 cursor-pointer"
+              >
+                Cancelar / Voltar
+              </button>
             </div>
-
-            {/* Previsão de Entrega */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Previsão Entrega do Veículo</label>
-              <div className="relative">
-                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 font-mono pointer-events-none" size={14} />
-                <input 
-                  type="datetime-local" 
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-3 pl-12 pr-4 text-xs text-white outline-none focus:border-blue-550 transition font-black uppercase tracking-widest shadow-inner cursor-pointer" 
-                  value={previsao} 
-                  onChange={(e) => setPrevisao(e.target.value)} 
-                />
-              </div>
-            </div>
-
-            {/* Ação salvar */}
-            <button 
-              type="button"
-              onClick={handleSubmit} 
-              disabled={loading} 
-              className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] shadow-[0_20px_40px_-10px_rgba(37,99,235,0.4)] transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 italic cursor-pointer"
-            >
-              {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />} 
-              PROTOCOLAR OS OFICINA
-            </button>
-          </div>
+          </section>
 
         </div>
 

@@ -945,9 +945,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   }
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8 pb-20 overflow-hidden">
+    <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-6 pb-24 animate-in fade-in duration-300">
       {/* Header Fino */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link href={`/os/${id}`} className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition shadow-sm">
             <ChevronLeft size={18} />
@@ -958,9 +958,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        <div className="flex gap-3 items-center">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Indicador de Autosave Premium */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950/40 border border-zinc-900 rounded-xl h-9">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950/40 border border-zinc-900 rounded-xl h-10">
             {autosaveStatus === 'saving' ? (
               <>
                 <Loader2 size={12} className="text-orange-500 animate-spin" />
@@ -987,7 +987,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           <select 
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all cursor-pointer h-10 ${
               status === 'FINALIZADA' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
               status === 'EM_EXECUCAO' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
               status === 'CANCELADA' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
@@ -1007,7 +1007,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition shadow-lg shadow-orange-950/20 disabled:opacity-50"
+            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition shadow-lg shadow-orange-950/20 disabled:opacity-50 h-10 cursor-pointer"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             SALVAR ALTERAÇÕES
@@ -1018,7 +1018,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* COLUNA 1: DADOS FIXOS */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-4 space-y-6">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-7 space-y-6 shadow-xl">
             {/* Escolha Obrigatória de Tipo de OS - Sem Reload e Mantendo Peças e Serviços Intactos */}
             <div className="space-y-2">
@@ -1064,19 +1064,21 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             </div>
             
             <div className="space-y-4 pt-1">
-              <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1">
-                <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest flex items-center gap-1">
-                  <User size={10} /> Cliente Responsável
-                </p>
-                <p className="text-xs font-black text-white uppercase truncate">{ordem?.cliente?.nome}</p>
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1">
+                  <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest flex items-center gap-1">
+                    <User size={10} /> Cliente Responsável
+                  </p>
+                  <p className="text-xs font-black text-white uppercase truncate">{ordem?.cliente?.nome}</p>
+                </div>
 
-              <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1">
-                <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest flex items-center gap-1">
-                  <Car size={10} /> Veículo em Manutenção
-                </p>
-                <p className="text-xs font-black text-white uppercase">{ordem?.veiculo?.marca} {ordem?.veiculo?.modelo}</p>
-                <p className="text-[10px] font-mono text-orange-500 opacity-80">{ordem?.veiculo?.placa}</p>
+                <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1">
+                  <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest flex items-center gap-1">
+                    <Car size={10} /> Veículo em Manutenção
+                  </p>
+                  <p className="text-xs font-black text-white uppercase truncate">{ordem?.veiculo?.marca} {ordem?.veiculo?.modelo}</p>
+                  <p className="text-[10px] font-mono text-orange-500 font-bold">{ordem?.veiculo?.placa}</p>
+                </div>
               </div>
 
               <div className="space-y-2 pt-2">
@@ -1578,9 +1580,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         </div>
 
         {/* COLUNA 2: SERVIÇOS E DIAGNÓSTICO */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-4 space-y-6">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <div className="p-8 border-b border-zinc-800/50 bg-zinc-900/50 flex items-center justify-between">
+            <div className="p-6 sm:p-8 border-b border-zinc-800/50 bg-zinc-900/50 flex items-center justify-between">
               <div className="flex items-center gap-3">
                  <div className="p-2 bg-orange-600/10 text-orange-500 rounded-xl">
                    <Wrench size={18} />
@@ -1592,20 +1594,20 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
               </div>
               <button 
                 onClick={addServico}
-                className="p-3 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl border border-zinc-800 transition shadow-lg"
+                className="p-3 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl border border-zinc-800 transition shadow-lg cursor-pointer"
               >
                 <Plus size={18} />
               </button>
             </div>
 
-            <div className="hidden lg:block min-h-[200px] overflow-x-auto">
-               <table className="w-full text-left min-w-[600px]">
+            <div className="hidden lg:block min-h-[200px]">
+               <table className="w-full text-left">
                   <thead>
                     <tr className="bg-zinc-950 border-b border-zinc-800">
-                      <th className="p-5 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Tipo</th>
-                      <th className="p-5 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Procedimento</th>
-                      <th className="p-5 text-[10px] font-black text-zinc-600 uppercase tracking-widest text-right">Cálculo/Total</th>
-                      <th className="p-5 w-16"></th>
+                      <th className="p-3.5 text-[9px] font-black text-zinc-600 uppercase tracking-widest w-20">Tipo</th>
+                      <th className="p-3.5 text-[9px] font-black text-zinc-600 uppercase tracking-widest">Procedimento</th>
+                      <th className="p-3.5 text-[9px] font-black text-zinc-600 uppercase tracking-widest text-right">Cálculo/Total</th>
+                      <th className="p-3.5 w-10"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/40">
@@ -1616,15 +1618,15 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                           key={s.id} 
                           className="hover:bg-zinc-800/20 group transition-colors"
                         >
-                          <td className="p-5">
+                          <td className="p-3.5 align-top">
                             <div className="flex flex-col gap-1">
                               <button 
                                 type="button"
                                 onClick={() => updateServico(s.id, 'tipo_cobranca', 'HORA')}
-                                className={`px-3 py-1 rounded text-[8px] font-black uppercase transition ${
+                                className={`px-2.5 py-1 rounded text-[8px] font-black uppercase transition cursor-pointer ${
                                   s.tipo_cobranca === 'HORA' 
                                     ? 'bg-blue-600 text-white' 
-                                    : 'bg-zinc-900 text-zinc-600 border border-zinc-800'
+                                    : 'bg-zinc-900 text-zinc-600 border border-zinc-800 hover:text-zinc-400'
                                 }`}
                               >
                                 Hora
@@ -1632,30 +1634,30 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                               <button 
                                 type="button"
                                 onClick={() => updateServico(s.id, 'tipo_cobranca', 'PACOTE')}
-                                className={`px-3 py-1 rounded text-[8px] font-black uppercase transition ${
+                                className={`px-2.5 py-1 rounded text-[8px] font-black uppercase transition cursor-pointer ${
                                   s.tipo_cobranca === 'PACOTE' 
                                     ? 'bg-blue-600 text-white' 
-                                    : 'bg-zinc-900 text-zinc-600 border border-zinc-800'
+                                    : 'bg-zinc-900 text-zinc-600 border border-zinc-800 hover:text-zinc-400'
                                 }`}
                               >
                                 Pacote
                               </button>
                             </div>
                           </td>
-                          <td className="p-5">
+                          <td className="p-3.5 align-top">
                             <input 
                               type="text" 
                               value={s.descricao}
                               onChange={(e) => updateServico(s.id, 'descricao', e.target.value)}
                               placeholder="Descrição do serviço"
-                              className="bg-transparent border-none outline-none text-xs font-black text-white w-full placeholder:text-zinc-800 focus:text-orange-500 transition-colors uppercase"
+                              className="bg-transparent border border-zinc-800/60 focus:border-orange-500 rounded-lg px-2.5 py-1.5 text-xs font-black text-white w-full placeholder:text-zinc-800 outline-none uppercase transition-colors"
                             />
                           </td>
-                          <td className="p-5">
+                          <td className="p-3.5 align-top">
                             {s.tipo_cobranca === 'HORA' ? (
-                              <div className="flex flex-col gap-2 items-end">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[8px] text-zinc-600 font-black">HRS (H:MM)</span>
+                              <div className="flex flex-col gap-1.5 items-end">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[7px] text-zinc-600 font-black">HRS</span>
                                   <input 
                                     type="text" 
                                     value={s.horas}
@@ -1669,42 +1671,40 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                                         updateServico(s.id, 'horas', `${val}:00`);
                                       }
                                     }}
-                                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-right text-[10px] font-black font-mono text-white w-16 outline-none"
+                                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-1 text-right text-[10px] font-black font-mono text-white w-14 outline-none"
                                   />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[8px] text-zinc-600 font-black">VLR/H</span>
+                                  <span className="text-[7px] text-zinc-600 font-black">R$/H</span>
                                   <input 
                                     type="number" 
                                     value={s.valor_hora}
                                     onChange={(e) => updateServico(s.id, 'valor_hora', e.target.value)}
-                                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-right text-[10px] font-black font-mono text-white w-24 outline-none"
+                                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-1 text-right text-[10px] font-black font-mono text-white w-16 outline-none"
                                   />
                                 </div>
                                 <span className="text-[10px] font-black text-green-400 font-mono italic">{formatCurrency(s.valor_total)}</span>
                               </div>
                             ) : (
-                              <div className="flex flex-col gap-2 items-end">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[8px] text-zinc-600 font-black">VLR PACOTE</span>
+                              <div className="flex flex-col gap-1.5 items-end">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[7px] text-zinc-600 font-black">R$</span>
                                   <input 
                                     type="number" 
                                     value={s.valor_pacote}
                                     onChange={(e) => updateServico(s.id, 'valor_pacote', e.target.value)}
-                                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-1.5 text-right text-[10px] font-black font-mono text-white w-32 outline-none"
+                                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-1 text-right text-[10px] font-black font-mono text-white w-24 outline-none"
                                   />
                                 </div>
                                 <span className="text-[10px] font-black text-green-400 font-mono italic">{formatCurrency(s.valor_total)}</span>
                               </div>
                             )}
                           </td>
-                          <td className="p-5 text-center">
-                             <button onClick={() => removeServico(s.id)} className="text-zinc-800 hover:text-red-500 transition p-1.5 hover:bg-red-500/10 rounded-lg"><Trash2 size={14} /></button>
+                          <td className="p-3.5 text-center align-top">
+                             <button onClick={() => removeServico(s.id)} className="text-zinc-800 hover:text-red-500 transition p-1 hover:bg-red-500/10 rounded-lg cursor-pointer"><Trash2 size={14} /></button>
                           </td>
                         </motion.tr>
                       )) : (
                         <tr>
-                          <td colSpan={3} className="p-12 text-center opacity-10">
+                          <td colSpan={4} className="p-12 text-center opacity-10">
                             <div className="flex flex-col items-center gap-4">
                               <Wrench size={40} />
                               <p className="text-[10px] font-black uppercase tracking-[0.4em]">Sem serviços registrados</p>
