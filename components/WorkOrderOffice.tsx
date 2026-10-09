@@ -7,10 +7,11 @@ import {
   Search, ChevronLeft, FileText, Trash2, Plus,
   PenTool as Tool, Loader2, Save, Calendar
 } from 'lucide-react';
-import { parseHoras } from '@/lib/utils';
+import { parseHoras, roundDecimal } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import QuickClientModal from '@/components/QuickClientModal';
 import QuickVehicleModal from '@/components/QuickVehicleModal';
+import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
 
 interface WorkOrderOfficeProps {
   onBack: () => void;
@@ -20,9 +21,10 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   
-  // Modais de Cadastro Rápido
+  // Modais de Cadastro Rápido e Almoxarifado
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   
   // Catálogos e buscadores
   const [clientes, setClientes] = useState<any[]>([]);
@@ -355,22 +357,82 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   const addPeca = useCallback((pecaRef: any) => {
     const defaultUnit = pecaRef.unidadeMedida || 'un';
     const compativeis = obterUnidadesCompativeis(defaultUnit);
-    setPecas(prev => [
-      ...prev,
-      { 
-        id: crypto.randomUUID(), 
-        peca_id: pecaRef.id, 
-        descricao: pecaRef.descricao, 
-        quantidade: 1, 
-        unidade: defaultUnit,
-        unidadeMedidaOriginal: defaultUnit,
-        valor_unit: pecaRef.preco_venda, 
-        valor_total: pecaRef.preco_venda,
-        maxQuantidade: pecaRef.quantidade,
-        original_preco_venda: pecaRef.preco_venda,
-        compativeis
+    setPecas(prev => {
+      const existingIndex = prev.findIndex(p => p.peca_id === pecaRef.id);
+      if (existingIndex >= 0) {
+        const updatedList = [...prev];
+        const existing = updatedList[existingIndex];
+        const novaQtd = roundDecimal(existing.quantidade + 1);
+        const novoTotal = roundDecimal(novaQtd * existing.valor_unit);
+        updatedList[existingIndex] = {
+          ...existing,
+          quantidade: novaQtd,
+          valor_total: novoTotal
+        };
+        return updatedList;
       }
-    ]);
+      return [
+        ...prev,
+        { 
+          id: crypto.randomUUID(), 
+          peca_id: pecaRef.id, 
+          descricao: pecaRef.descricao, 
+          quantidade: 1, 
+          unidade: defaultUnit,
+          unidadeMedidaOriginal: defaultUnit,
+          valor_unit: pecaRef.preco_venda, 
+          valor_total: pecaRef.preco_venda,
+          maxQuantidade: pecaRef.quantidade,
+          original_preco_venda: pecaRef.preco_venda,
+          compativeis
+        }
+      ];
+    });
+  }, []);
+
+  const handleAddPartFromStockModal = useCallback((data: {
+    peca: StockPartItem;
+    quantidade: number;
+    unidade: string;
+    valorUnitario: number;
+    valorTotal: number;
+  }) => {
+    const { peca, quantidade, unidade, valorUnitario, valorTotal } = data;
+    const defaultUnit = unidade || peca.unidadeMedida || 'un';
+    const compativeis = obterUnidadesCompativeis(peca.unidadeMedida || 'un');
+
+    setPecas(prev => {
+      const existingIndex = prev.findIndex(p => p.peca_id === peca.id);
+      if (existingIndex >= 0) {
+        const updatedList = [...prev];
+        const existing = updatedList[existingIndex];
+        const novaQtd = roundDecimal(existing.quantidade + quantidade);
+        const novoTotal = roundDecimal(novaQtd * existing.valor_unit);
+        updatedList[existingIndex] = {
+          ...existing,
+          quantidade: novaQtd,
+          valor_total: novoTotal
+        };
+        return updatedList;
+      }
+
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          peca_id: peca.id,
+          descricao: peca.descricao,
+          quantidade,
+          unidade: defaultUnit,
+          unidadeMedidaOriginal: peca.unidadeMedida || 'un',
+          valor_unit: valorUnitario,
+          valor_total: valorTotal,
+          original_preco_venda: peca.preco_venda,
+          maxQuantidade: peca.quantidade,
+          compativeis
+        }
+      ];
+    });
   }, []);
 
   const updatePeca = useCallback((pid: string, field: string, value: any) => {
@@ -1097,12 +1159,22 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
           
           {/* CARD 1: INSUMOS & REPOSIÇÃO (ALMOXARIFADO) */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
-              <div>
-                <h4 className="text-sm font-black text-white uppercase italic tracking-tight">Insumos & Reposição</h4>
-                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Peças requisitadas do estoque</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800 pb-3 mb-4 gap-2">
+              <div className="flex items-center gap-2.5">
+                <Package size={18} className="text-blue-500 flex-shrink-0" />
+                <div>
+                  <h4 className="text-sm font-black text-white uppercase italic tracking-tight">Insumos & Reposição</h4>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Peças requisitadas do estoque</p>
+                </div>
               </div>
-              <Package size={18} className="text-blue-500" />
+              <button
+                type="button"
+                onClick={() => setIsStockModalOpen(true)}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-blue-950/40 transition cursor-pointer self-start sm:self-auto"
+              >
+                <Plus size={14} />
+                Adicionar peça do estoque
+              </button>
             </div>
 
             <div className="space-y-4">
@@ -1386,6 +1458,15 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
           setIsVehicleModalOpen(false);
           setIsClientModalOpen(true);
         }}
+      />
+
+      {/* Modal de Almoxarifado / Adicionar Peças do Estoque */}
+      <StockPartsModal
+        isOpen={isStockModalOpen}
+        onClose={() => setIsStockModalOpen(false)}
+        onAddPart={handleAddPartFromStockModal}
+        existingParts={pecas}
+        colorScheme="blue"
       />
     </div>
   );
