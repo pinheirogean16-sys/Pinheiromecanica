@@ -12,6 +12,7 @@ import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import QuickClientModal from '@/components/QuickClientModal';
 import QuickVehicleModal from '@/components/QuickVehicleModal';
 import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
+import QuickPartModal, { QuickPartSuccessData } from '@/components/QuickPartModal';
 
 interface WorkOrderOfficeProps {
   onBack: () => void;
@@ -25,6 +26,7 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
+  const [isQuickPartModalOpen, setIsQuickPartModalOpen] = useState(false);
   
   // Catálogos e buscadores
   const [clientes, setClientes] = useState<any[]>([]);
@@ -434,6 +436,23 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
       ];
     });
   }, []);
+
+  const handleQuickPartCreated = useCallback((data: QuickPartSuccessData) => {
+    const { peca, applyToOrder } = data;
+    // Atualiza catálogo disponível local
+    setAvailablePecas(prev => [peca, ...prev.filter(p => p.id !== peca.id)]);
+
+    // Se usuário solicitou aplicar na OS
+    if (applyToOrder) {
+      handleAddPartFromStockModal({
+        peca,
+        quantidade: applyToOrder.quantidade,
+        unidade: applyToOrder.unidade,
+        valorUnitario: applyToOrder.valorUnitario,
+        valorTotal: applyToOrder.valorTotal,
+      });
+    }
+  }, [handleAddPartFromStockModal]);
 
   const updatePeca = useCallback((pid: string, field: string, value: any) => {
     setPecas(prev => prev.map(p => {
@@ -1167,14 +1186,24 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                   <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Peças requisitadas do estoque</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsStockModalOpen(true)}
-                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-blue-950/40 transition cursor-pointer self-start sm:self-auto"
-              >
-                <Plus size={14} />
-                Adicionar peça do estoque
-              </button>
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickPartModalOpen(true)}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 active:scale-[0.98] text-blue-400 border border-blue-500/30 hover:border-blue-500/60 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus size={14} />
+                  Cadastrar peça rápida
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsStockModalOpen(true)}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-blue-950/40 transition cursor-pointer"
+                >
+                  <Plus size={14} />
+                  Adicionar peça do estoque
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -1465,7 +1494,16 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
         isOpen={isStockModalOpen}
         onClose={() => setIsStockModalOpen(false)}
         onAddPart={handleAddPartFromStockModal}
+        onOpenQuickPartModal={() => setIsQuickPartModalOpen(true)}
         existingParts={pecas}
+        colorScheme="blue"
+      />
+
+      {/* Modal de Cadastro Rápido de Peças */}
+      <QuickPartModal
+        isOpen={isQuickPartModalOpen}
+        onClose={() => setIsQuickPartModalOpen(false)}
+        onSuccess={handleQuickPartCreated}
         colorScheme="blue"
       />
     </div>

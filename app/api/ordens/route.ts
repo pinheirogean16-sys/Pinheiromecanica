@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { notificarNovaOS, notificarEstoqueBaixo, notificarOSFinalizada } from '@/lib/notificacoes';
+import { sincronizarPreventivasAposOS } from '@/lib/preventivas';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
@@ -538,6 +539,7 @@ export async function POST(request: Request) {
       if (result.status === 'FINALIZADA') {
         await notificarOSFinalizada(result);
       }
+      await sincronizarPreventivasAposOS(result);
       if (body.pecas && body.pecas.length > 0) {
         for (const p of (body.pecas as any[])) {
           const pecaId = p.pecaId;

@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { z } from 'zod';
 import { OrdemServico_status as StatusOS } from '@prisma/client';
 import { notificarOSFinalizada, notificarEstoqueBaixo } from '@/lib/notificacoes';
+import { sincronizarPreventivasAposOS } from '@/lib/preventivas';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
@@ -663,6 +664,7 @@ export async function PATCH(
       if (body.status === 'FINALIZADA') {
         await notificarOSFinalizada(result);
       }
+      await sincronizarPreventivasAposOS(result);
 
       if (body.pecas && body.pecas.length > 0) {
         for (const p of body.pecas) {
@@ -1076,6 +1078,7 @@ export async function PUT(
       if (body.status === 'FINALIZADA') {
         await notificarOSFinalizada(result);
       }
+      await sincronizarPreventivasAposOS(result);
       if (body.pecas && body.pecas.length > 0) {
         for (const p of body.pecas) {
           const actualPecaId = p.peca_id || (p as any).pecaId;

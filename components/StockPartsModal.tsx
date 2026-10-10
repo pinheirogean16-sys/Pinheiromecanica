@@ -34,6 +34,7 @@ interface StockPartsModalProps {
     valorUnitario: number;
     valorTotal: number;
   }) => void;
+  onOpenQuickPartModal?: () => void;
   existingParts?: Array<{
     peca_id: string;
     quantidade: number;
@@ -64,6 +65,7 @@ export default function StockPartsModal({
   isOpen,
   onClose,
   onAddPart,
+  onOpenQuickPartModal,
   existingParts = [],
   colorScheme = 'orange',
   isEditing = false,
@@ -349,14 +351,30 @@ export default function StockPartsModal({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800/80 rounded-xl transition cursor-pointer"
-            title="Fechar (ESC)"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenQuickPartModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenQuickPartModal();
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer border border-zinc-700 hover:border-zinc-500 bg-zinc-900 text-zinc-200 hover:text-white`}
+              >
+                <Plus size={14} className={theme.text} />
+                Cadastrar Peça Rápida
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800/80 rounded-xl transition cursor-pointer"
+              title="Fechar (ESC)"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* BARRA DE FILTROS E BUSCA */}
@@ -434,6 +452,19 @@ export default function StockPartsModal({
                   <p className="text-[11px] text-zinc-600 max-w-sm mx-auto">
                     Tente buscar por outro código ou termo, ou selecione outra categoria de componente.
                   </p>
+                  {onOpenQuickPartModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenQuickPartModal();
+                      }}
+                      className={`mt-3 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition cursor-pointer shadow-lg ${theme.primary}`}
+                    >
+                      <Plus size={14} />
+                      Cadastrar Peça Rápida Agora
+                    </button>
+                  )}
                 </div>
               ) : (
                 items.map((item) => {

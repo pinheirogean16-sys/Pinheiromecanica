@@ -18,7 +18,7 @@ export default function Header() {
   };
 
   return (
-    <header className="h-14 lg:h-16 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800 flex items-center justify-between px-4 lg:px-6">
+    <header className="relative z-30 h-14 lg:h-16 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800 flex items-center justify-between px-4 lg:px-6">
       {/* Espaço para o botão mobile */}
       <div className="w-12 lg:hidden" />
       

@@ -438,22 +438,43 @@ model PecaAplicada {
 }
 
 model Preventiva {
-  id          String    @id
-  empresa_id  String
-  veiculo_id  String
-  componente  String
-  descricao   String?
-  km_limite   Int?
-  km_atual    Int?
-  data_limite DateTime?
-  status      String    @default("SAUDAVEL")
-  observacoes String?
-  notificado  Boolean   @default(false)
-  created_at  DateTime  @default(now())
-  updated_at  DateTime
-  Veiculo     Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
+  id                 String    @id
+  empresa_id         String
+  veiculo_id         String
+  componente         String
+  descricao          String?
+  nome               String?
+  servico            String?
+  tipo_controle      String    @default("KM")
+  intervalo_dias     Int?
+  intervalo_km       Int?
+  intervalo_horas    Float?
+  ultima_data        DateTime?
+  ultimo_km          Int?
+  ultimo_horimetro   Float?
+  proxima_data       DateTime?
+  proximo_km         Int?
+  proximo_horimetro  Float?
+  horimetro_atual    Float?
+  antecedencia_dias  Int?      @default(15)
+  antecedencia_km    Int?      @default(1500)
+  antecedencia_horas Float?    @default(50)
+  ativo              Boolean   @default(true)
+  created_by         String?
+  updated_by         String?
+  km_limite          Int?
+  km_atual           Int?
+  data_limite        DateTime?
+  status             String    @default("SAUDAVEL")
+  observacoes        String?
+  notificado         Boolean   @default(false)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  Veiculo            Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
 
   @@index([veiculo_id])
+  @@index([empresa_id])
+  @@index([status])
 }
 
 model RefreshToken {

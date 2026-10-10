@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { verificarContasAtrasadas, verificarContasAVencer } from '@/lib/notificacoes-financeiras';
+import { notificarPreventivasPendentes } from '@/lib/preventivas';
 
 const notificacaoSchema = z.object({
   titulo: z.string().min(1).trim(),
@@ -27,6 +28,10 @@ export async function GET(request: Request) {
       // Essas funções já criam notificações no banco para os admins
       await verificarContasAtrasadas(user.empresa_id);
       await verificarContasAVencer(3, user.empresa_id);
+    }
+
+    if (triggerCheck && (user.role === 'ADMIN' || user.role === 'LIDER')) {
+      await notificarPreventivasPendentes(user.empresa_id);
     }
 
     const page = parseInt(searchParams.get('page') || '1');

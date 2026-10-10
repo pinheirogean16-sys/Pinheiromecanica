@@ -137,7 +137,8 @@ export async function POST(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    if (!checkPermission(user, 'pecas', 'criar')) {
+    const canCreatePeca = checkPermission(user, 'pecas', 'criar') || checkPermission(user, 'os', 'criar') || checkPermission(user, 'os', 'editar');
+    if (!canCreatePeca) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
@@ -155,19 +156,39 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
-      return NextResponse.json({ error: 'Código de peça já cadastrado' }, { status: 400 });
+      return NextResponse.json({ error: 'Código de peça já cadastrado para esta empresa' }, { status: 400 });
     }
 
-    const peca = await prisma.peca.create({
-      data: {
-        id: crypto.randomUUID(),
-        ...data,
-        empresa_id: empresa_id,
-        preco_custo: roundDecimal(data.preco_custo),
-        preco_venda: roundDecimal(data.preco_venda),
-        created_by: user?.name || user?.email || 'Sistema',
-        updated_at: new Date()
+    const peca = await prisma.$transaction(async (tx) => {
+      const createdPeca = await tx.peca.create({
+        data: {
+          id: crypto.randomUUID(),
+          ...data,
+          empresa_id: empresa_id,
+          preco_custo: roundDecimal(data.preco_custo),
+          preco_venda: roundDecimal(data.preco_venda),
+          created_by: user?.name || user?.email || 'Sistema',
+          updated_at: new Date()
+        }
+      });
+
+      if (data.quantidade > 0) {
+        await tx.movimentacaoEstoque.create({
+          data: {
+            id: crypto.randomUUID(),
+            peca_id: createdPeca.id,
+            tipo: 'ENTRADA',
+            quantidade: data.quantidade,
+            motivo: 'CADASTRO_INICIAL',
+            observacao: 'Saldo inicial cadastrado no almoxarifado',
+            os_id: null,
+            usuario_id: user.id,
+            empresa_id: empresa_id
+          }
+        });
       }
+
+      return createdPeca;
     });
 
     await createAuditLog({

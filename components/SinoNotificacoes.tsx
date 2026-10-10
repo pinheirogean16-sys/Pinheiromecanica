@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Bell, Check, Trash2, X, ExternalLink, Loader2, BellOff, MoreVertical } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Bell, Check, Trash2, X, ExternalLink, Loader2, BellOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -18,12 +19,16 @@ export default function SinoNotificacoes() {
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [aberto, setAberto] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const [ultimaNotificacaoId, setUltimaNotificacaoId] = useState<string | null>(null);
 
   const notificacoesRef = useRef<Notificacao[]>([]);
   const ultimaNotificacaoIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const updateNotificacoes = (lista: Notificacao[]) => {
     notificacoesRef.current = lista;
@@ -37,7 +42,7 @@ export default function SinoNotificacoes() {
 
   const fetchNotificacoes = useCallback(async (triggerFinance = false) => {
     try {
-      const url = `/api/notificacoes?limite=5${triggerFinance ? '&triggerCheck=true' : ''}`;
+      const url = `/api/notificacoes?limite=10${triggerFinance ? '&triggerCheck=true' : ''}`;
       const res = await fetch(url, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
@@ -74,7 +79,7 @@ export default function SinoNotificacoes() {
     const timer = setTimeout(() => {
       fetchNotificacoes(true);
     }, 50);
-    const interval = setInterval(() => fetchNotificacoes(false), 30000); // Aumentado para 30s
+    const interval = setInterval(() => fetchNotificacoes(false), 30000);
 
     return () => {
       clearTimeout(timer);
@@ -82,16 +87,19 @@ export default function SinoNotificacoes() {
     };
   }, [fetchNotificacoes]);
 
-  // Fechar dropdown ao clicar fora
+  // Fechar com a tecla Escape
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    if (!aberto) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         setAberto(false);
       }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [aberto]);
 
   const nLidas = notificacoes.filter(n => !n.lida).length;
 
@@ -156,126 +164,177 @@ export default function SinoNotificacoes() {
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <>
+      {/* Botão de Notificações no Cabeçalho */}
       <button 
         onClick={() => setAberto(!aberto)}
-        className="relative p-2 hover:bg-zinc-800 rounded-lg transition"
+        aria-expanded={aberto}
+        aria-label={`Notificações${nLidas > 0 ? ` (${nLidas} não lidas)` : ''}`}
+        title="Notificações"
+        className="relative p-2 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-zinc-400 hover:text-white"
       >
-        <Bell className="w-5 h-5 text-zinc-400" />
+        <Bell className="w-5 h-5" />
         {nLidas > 0 && (
-          <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-red-600 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-lg border-2 border-zinc-900">
+          <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-red-600 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-lg border-2 border-zinc-950">
             {nLidas > 99 ? '99+' : nLidas}
           </span>
         )}
       </button>
 
-      {aberto && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
-          {/* Header do Dropdown */}
-          <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
-            <div>
-              <h3 className="text-xs font-black text-white uppercase tracking-widest truncate">Notificações</h3>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase truncate">{nLidas} novas alertas</p>
-            </div>
-            <div className="flex items-center gap-1">
-              {notificacoes.length > 0 && (
-                <>
-                  <button 
-                    onClick={marcarTodasLidas}
-                    title="Marcar todas como lidas"
-                    className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-green-500 transition"
-                  >
-                    <Check size={14} />
-                  </button>
-                  <button 
-                    onClick={excluirTodas}
-                    title="Excluir todas"
-                    className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-red-500 transition"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </>
-              )}
-              <button 
-                onClick={() => setAberto(false)}
-                className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 transition"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
+      {/* Painel montado via Portal diretamente no body */}
+      {mounted && aberto && createPortal(
+        <div 
+          className="fixed inset-0 z-[99999] flex justify-end"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Central de Notificações"
+        >
+          {/* Fundo escurecido que impede concorrência visual com a página */}
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity duration-200 animate-in fade-in"
+            onClick={() => setAberto(false)}
+            aria-hidden="true"
+          />
 
-          {/* Lista de Notificações */}
-          <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-            {carregando ? (
-              <div className="p-8 flex flex-col items-center justify-center gap-3">
-                <Loader2 size={24} className="text-orange-500 animate-spin" />
-                <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Sincronizando...</p>
-              </div>
-            ) : notificacoes.length === 0 ? (
-              <div className="p-12 flex flex-col items-center justify-center text-center opacity-40">
-                <div className="p-4 bg-zinc-900 rounded-full mb-3">
-                  <BellOff size={24} className="text-zinc-600" />
+          {/* Painel com fundo sólido 100% opaco e isolado de overflow/stacking contexts */}
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="fixed top-14 sm:top-16 right-2 sm:right-6 w-[calc(100vw-1rem)] sm:w-[420px] max-w-[440px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl shadow-black/90 overflow-hidden flex flex-col max-h-[calc(100vh-4.5rem)] sm:max-h-[580px] z-[100000] animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200"
+          >
+            {/* Header do Painel */}
+            <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500 border border-orange-500/20 shrink-0">
+                  <Bell size={16} />
                 </div>
-                <p className="text-xs font-black text-white uppercase tracking-widest mb-1">Céu limpo por aqui</p>
-                <p className="text-[10px] text-zinc-500 font-bold uppercase">Nenhuma notificação nova</p>
+                <div className="min-w-0">
+                  <h3 className="text-xs font-black text-white uppercase tracking-widest truncate">Notificações</h3>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase truncate">
+                    {nLidas > 0 ? `${nLidas} ${nLidas === 1 ? 'novo alerta' : 'novos alertas'}` : 'Nenhum alerta pendente'}
+                  </p>
+                </div>
               </div>
-            ) : (
-              <div className="divide-y divide-zinc-900">
-                {notificacoes.slice(0, 5).map((n) => (
+
+              <div className="flex items-center gap-1 shrink-0">
+                {notificacoes.length > 0 && (
+                  <>
+                    <button 
+                      onClick={marcarTodasLidas}
+                      title="Marcar todas como lidas"
+                      aria-label="Marcar todas como lidas"
+                      className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button 
+                      onClick={excluirTodas}
+                      title="Excluir todas"
+                      aria-label="Excluir todas"
+                      className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-400 transition cursor-pointer"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
+                )}
+                <button 
+                  onClick={() => setAberto(false)}
+                  title="Fechar"
+                  aria-label="Fechar"
+                  className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition cursor-pointer ml-1"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Lista com rolagem interna */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-zinc-900 bg-zinc-950">
+              {carregando ? (
+                <div className="p-10 flex flex-col items-center justify-center gap-3">
+                  <Loader2 size={24} className="text-orange-500 animate-spin" />
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Sincronizando...</p>
+                </div>
+              ) : notificacoes.length === 0 ? (
+                <div className="p-12 flex flex-col items-center justify-center text-center">
+                  <div className="p-4 bg-zinc-900 rounded-full mb-3 border border-zinc-800 text-zinc-500">
+                    <BellOff size={24} />
+                  </div>
+                  <p className="text-xs font-black text-white uppercase tracking-widest mb-1">Céu limpo por aqui</p>
+                  <p className="text-[11px] text-zinc-400 font-medium">Nenhuma notificação nova no momento</p>
+                </div>
+              ) : (
+                notificacoes.map((n) => (
                   <div 
                     key={n.id}
                     onClick={() => marcarLida(n.id, n.link)}
-                    className={`group px-5 py-4 cursor-pointer transition-all hover:bg-zinc-900/50 ${!n.lida ? 'bg-orange-500/[0.03] border-l-2 border-l-orange-500' : 'border-l-2 border-l-transparent'}`}
+                    className={`group relative px-5 py-4 cursor-pointer transition-colors ${
+                      !n.lida 
+                        ? 'bg-zinc-900/80 hover:bg-zinc-900 border-l-4 border-l-orange-500' 
+                        : 'bg-zinc-950 hover:bg-zinc-900/50 border-l-4 border-l-transparent'
+                    }`}
                   >
-                    <div className="flex gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1 gap-2">
-                          <h4 className={`text-xs font-black uppercase tracking-tight truncate ${!n.lida ? 'text-white' : 'text-zinc-500'}`}>
-                            {n.titulo}
-                          </h4>
-                          <span className="text-[9px] text-zinc-600 font-bold whitespace-nowrap flex-shrink-0">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {!n.lida && (
+                              <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+                            )}
+                            <h4 className={`text-xs uppercase tracking-tight truncate ${
+                              !n.lida ? 'text-white font-black' : 'text-zinc-300 font-bold'
+                            }`}>
+                              {n.titulo}
+                            </h4>
+                          </div>
+                          <span className="text-[10px] text-zinc-400 font-semibold whitespace-nowrap shrink-0">
                             {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
-                        <p className={`text-[11px] leading-relaxed line-clamp-2 ${!n.lida ? 'text-zinc-300 font-medium' : 'text-zinc-600'}`}>
+                        
+                        <p className={`text-[11px] leading-relaxed line-clamp-2 ${
+                          !n.lida ? 'text-zinc-200 font-normal' : 'text-zinc-400 font-normal'
+                        }`}>
                           {n.mensagem}
                         </p>
+
                         {n.link && (
-                          <div className="flex items-center gap-1 mt-2 text-[9px] font-black text-orange-500 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                            <ExternalLink size={10} /> Ver Detalhes
+                          <div className="flex items-center gap-1.5 mt-2.5 text-[10px] font-black text-orange-500 uppercase tracking-widest hover:text-orange-400 transition-colors">
+                            <ExternalLink size={11} /> 
+                            <span>Ver Detalhes</span>
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={(e) => excluirNotificacao(n.id, e)}
-                          className="p-1.5 hover:bg-red-600/20 rounded-lg text-zinc-700 hover:text-red-500 transition"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
+
+                      <button 
+                        onClick={(e) => excluirNotificacao(n.id, e)}
+                        title="Excluir notificação"
+                        aria-label="Excluir notificação"
+                        className="p-1.5 hover:bg-red-500/10 rounded-lg text-zinc-500 hover:text-red-400 transition-colors opacity-70 group-hover:opacity-100 shrink-0 cursor-pointer"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                ))
+              )}
+            </div>
 
-          {/* Footer */}
-          <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
-            <button 
-              onClick={() => {
-                setAberto(false);
-                router.push('/notificacoes');
-              }}
-              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition shadow-lg border border-zinc-700/50"
-            >
-              Ver Todas as Notificações
-            </button>
+            {/* Footer Fixo */}
+            <div className="p-4 border-t border-zinc-800 bg-zinc-900/90 shrink-0">
+              <button 
+                onClick={() => {
+                  setAberto(false);
+                  router.push('/notificacoes');
+                }}
+                className="w-full py-2.5 bg-zinc-800 hover:bg-orange-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors shadow-lg border border-zinc-700/60 hover:border-orange-500 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Ver Todas as Notificações</span>
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }

@@ -15,7 +15,8 @@ export type Modulo =
   | 'nfe'
   | 'configuracoes'
   | 'relatorios'
-  | 'notificacoes';
+  | 'notificacoes'
+  | 'preventivas';
 
 export type Acao = 
   | 'visualizar'
@@ -41,7 +42,8 @@ export const ROLES: Record<Role, string[]> = {
     'usuarios.visualizar',
     'financeiro.visualizar',
     'checklist.visualizar', 'checklist.executar', 'checklist.criar', 'checklist.editar', 'checklist.excluir',
-    'nfe.visualizar', 'nfe.importar'
+    'nfe.visualizar', 'nfe.importar',
+    'preventivas.visualizar', 'preventivas.criar', 'preventivas.editar', 'preventivas.excluir', 'preventivas.gerenciar'
   ],
   MECANICO: [
     'ler',
@@ -52,7 +54,8 @@ export const ROLES: Record<Role, string[]> = {
     'veiculos.visualizar',
     'pecas.visualizar',
     'usuarios.visualizar',
-    'dashboard.visualizar'
+    'dashboard.visualizar',
+    'preventivas.visualizar', 'preventivas.criar'
   ],
   FINANCEIRO: [
     'dashboard.visualizar',
@@ -61,7 +64,8 @@ export const ROLES: Record<Role, string[]> = {
     'usuarios.visualizar',
     'fornecedores.visualizar', 'fornecedores.criar', 'fornecedores.editar',
     'veiculos.visualizar',
-    'pecas.visualizar'
+    'pecas.visualizar',
+    'preventivas.visualizar'
   ],
   ESTOQUISTA: [
     'dashboard.visualizar',
@@ -70,7 +74,8 @@ export const ROLES: Record<Role, string[]> = {
     'clientes.visualizar',
     'fornecedores.visualizar', 'fornecedores.criar', 'fornecedores.editar',
     'veiculos.visualizar',
-    'nfe.visualizar', 'nfe.importar'
+    'nfe.visualizar', 'nfe.importar',
+    'preventivas.visualizar'
   ],
 };
 
@@ -82,7 +87,8 @@ function normalizeModulo(modulo: string): string {
     'peca': 'pecas',
     'orcamento': 'orcamentos',
     'notificacao': 'notificacoes',
-    'configuracao': 'configuracoes'
+    'configuracao': 'configuracoes',
+    'preventiva': 'preventivas'
   };
   const normalized = map[modulo.toLowerCase()];
   return normalized || modulo;

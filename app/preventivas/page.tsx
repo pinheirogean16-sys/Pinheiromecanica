@@ -1,0 +1,496 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { 
+  AlertTriangle, CheckCircle2, AlertCircle, Plus, Sparkles, 
+  Search, Sliders, ChevronRight, Wrench, RefreshCw, Calendar, 
+  Loader2, Gauge, Trash2, Edit, Clock, ShieldCheck, Car, User
+} from 'lucide-react';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import PreventivaModal from '@/components/PreventivaModal';
+
+export default function PreventivasPage() {
+  const [preventivas, setPreventivas] = useState<any[]>([]);
+  const [veiculos, setVeiculos] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filtros
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [clienteFilter, setClienteFilter] = useState<string>('');
+  const [veiculoFilter, setVeiculoFilter] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+
+  // Modais
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingPreventiva, setEditingPreventiva] = useState<any | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch Preventivas com filtros de URL se existirem
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+      if (veiculoFilter) params.append('veiculo_id', veiculoFilter);
+      if (clienteFilter) params.append('cliente_id', clienteFilter);
+
+      const url = `/api/preventivas${params.toString() ? `?${params.toString()}` : ''}`;
+      const resPrev = await fetch(url);
+      if (!resPrev.ok) throw new Error('Erro ao carregar preventivas');
+      const dataPrev = await resPrev.json();
+      setPreventivas(dataPrev);
+
+      // 2. Fetch Veículos para os seletores
+      const resVeic = await fetch('/api/veiculos?limit=1000');
+      if (resVeic.ok) {
+        const dataVeic = await resVeic.json();
+        setVeiculos(dataVeic.items || []);
+      }
+
+      // 3. Fetch Clientes para o filtro
+      const resCli = await fetch('/api/clientes?limit=1000');
+      if (resCli.ok) {
+        const dataCli = await resCli.json();
+        setClientes(dataCli.items || []);
+      }
+    } catch (e: any) {
+      toast.error('Erro ao conectar com o serviço de manutenção preventiva');
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, veiculoFilter, clienteFilter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deseja realmente excluir este plano de manutenção preventiva?')) return;
+    try {
+      const res = await fetch(`/api/preventivas/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      toast.success('Plano preventivo removido com sucesso!');
+      fetchData();
+    } catch (e) {
+      toast.error('Erro ao remover preventiva');
+    }
+  };
+
+  const handleEdit = (p: any) => {
+    setEditingPreventiva(p);
+    setModalOpen(true);
+  };
+
+  const handleNew = () => {
+    setEditingPreventiva(null);
+    setModalOpen(true);
+  };
+
+  // Estatísticas calculadas sobre dados reais
+  const totalCadastradas = preventivas.length;
+  const totalVencidas = preventivas.filter(p => p.status === 'VENCIDO').length;
+  const totalProximas = preventivas.filter(p => p.status === 'PROXIMO').length;
+  const totalSaudaveis = preventivas.filter(p => p.status === 'SAUDAVEL').length;
+
+  // Filtragem local por texto
+  const filteredPreventivas = preventivas.filter(p => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    const matchesPlate = p.veiculo?.placa?.toLowerCase().includes(term);
+    const matchesModel = p.veiculo?.modelo?.toLowerCase().includes(term);
+    const matchesClient = p.veiculo?.Cliente?.nome?.toLowerCase().includes(term) || p.veiculo?.cliente?.nome?.toLowerCase().includes(term);
+    const matchesNome = p.nome?.toLowerCase().includes(term);
+    const matchesServico = p.servico?.toLowerCase().includes(term);
+    const matchesComponente = p.componente?.toLowerCase().includes(term);
+    const matchesDesc = p.descricao?.toLowerCase().includes(term);
+
+    return matchesPlate || matchesModel || matchesClient || matchesNome || matchesServico || matchesComponente || matchesDesc;
+  });
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'VENCIDO':
+        return {
+          banner: 'bg-red-950/20 border-red-900/60 text-red-400',
+          badge: 'bg-red-500/10 border-red-500/30 text-red-400',
+          dot: 'bg-red-500 animate-ping',
+          label: 'VENCIDO'
+        };
+      case 'PROXIMO':
+        return {
+          banner: 'bg-amber-950/20 border-amber-900/60 text-amber-400',
+          badge: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+          dot: 'bg-amber-500 animate-pulse',
+          label: 'PRÓXIMO'
+        };
+      default:
+        return {
+          banner: 'bg-zinc-950/80 border-zinc-800 text-zinc-300',
+          badge: 'bg-green-500/10 border-green-500/30 text-green-400',
+          dot: 'bg-green-500',
+          label: 'EM DIA'
+        };
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8" id="preventivas-dashboard">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[10px] text-orange-500 font-black uppercase tracking-widest bg-orange-500/10 border border-orange-500/20 px-3 py-1 rounded-2xl w-fit">
+            <Sparkles size={12} className="animate-spin text-orange-500" />
+            OFICINA DIESEL & MÁQUINAS PESADAS
+          </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white uppercase italic">
+            PLANO DE MANUTENÇÃO PREVENTIVA
+          </h1>
+          <p className="text-xs text-zinc-400 font-medium">
+            Acompanhamento preditivo por Data, Quilometragem e Horímetro para frotas pesadas e equipamentos diesel.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchData}
+            className="p-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition cursor-pointer"
+            title="Atualizar dados"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin text-orange-500' : ''} />
+          </button>
+          <button
+            onClick={handleNew}
+            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-orange-950/20"
+          >
+            <Plus size={16} />
+            Cadastrar Novo Plano
+          </button>
+        </div>
+      </div>
+
+      {/* METRIC CARDS DE TELEMETRIA */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Cadastradas */}
+        <div className="bg-zinc-950 border border-zinc-850 p-5 rounded-2xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Planos Ativos</span>
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+              <ShieldCheck size={14} />
+            </div>
+          </div>
+          <div className="text-2xl md:text-3xl font-black font-mono text-white">
+            {totalCadastradas}
+          </div>
+          <span className="text-[9px] text-zinc-500 font-mono block">Monitoramento contínuo</span>
+        </div>
+
+        {/* Vencidas */}
+        <div 
+          onClick={() => setStatusFilter(statusFilter === 'VENCIDO' ? '' : 'VENCIDO')}
+          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'VENCIDO' ? 'border-red-500 ring-1 ring-red-500/30' : 'border-zinc-850 hover:border-red-900/50'}`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Vencidas</span>
+            <div className="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
+              <AlertCircle size={14} />
+            </div>
+          </div>
+          <div className="text-2xl md:text-3xl font-black font-mono text-red-400">
+            {totalVencidas}
+          </div>
+          <span className="text-[9px] text-zinc-500 font-mono block">Necessitam intervenção imediata</span>
+        </div>
+
+        {/* Próximas */}
+        <div 
+          onClick={() => setStatusFilter(statusFilter === 'PROXIMO' ? '' : 'PROXIMO')}
+          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'PROXIMO' ? 'border-amber-500 ring-1 ring-amber-500/30' : 'border-zinc-850 hover:border-amber-900/50'}`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">Próximas do Vencimento</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+              <Clock size={14} />
+            </div>
+          </div>
+          <div className="text-2xl md:text-3xl font-black font-mono text-amber-400">
+            {totalProximas}
+          </div>
+          <span className="text-[9px] text-zinc-500 font-mono block">Na faixa de tolerância de alerta</span>
+        </div>
+
+        {/* Em Dia */}
+        <div 
+          onClick={() => setStatusFilter(statusFilter === 'SAUDAVEL' ? '' : 'SAUDAVEL')}
+          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'SAUDAVEL' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-zinc-850 hover:border-green-900/50'}`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest text-green-500">Em Dia</span>
+            <div className="w-7 h-7 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-500">
+              <CheckCircle2 size={14} />
+            </div>
+          </div>
+          <div className="text-2xl md:text-3xl font-black font-mono text-green-400">
+            {totalSaudaveis}
+          </div>
+          <span className="text-[9px] text-zinc-500 font-mono block">Manutenções regulares</span>
+        </div>
+      </div>
+
+      {/* PAINEL DE BUSCA E FILTROS */}
+      <div className="bg-zinc-950 border border-zinc-850 p-4 md:p-5 rounded-2xl space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {/* Busca textual */}
+          <div className="relative md:col-span-2">
+            <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-zinc-500" />
+            <input
+              type="text"
+              placeholder="PESQUISAR CLIENTE, VEÍCULO, PLACA OU SERVIÇO..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-xs font-mono font-bold text-white uppercase focus:outline-none focus:border-orange-500"
+            />
+          </div>
+
+          {/* Filtro por Cliente */}
+          <div>
+            <select
+              value={clienteFilter}
+              onChange={(e) => setClienteFilter(e.target.value)}
+              className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-3 text-xs font-mono font-bold text-zinc-300 uppercase focus:outline-none focus:border-orange-500"
+            >
+              <option value="">TODOS OS CLIENTES</option>
+              {clientes.map(c => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro por Veículo */}
+          <div>
+            <select
+              value={veiculoFilter}
+              onChange={(e) => setVeiculoFilter(e.target.value)}
+              className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-3 text-xs font-mono font-bold text-zinc-300 uppercase focus:outline-none focus:border-orange-500"
+            >
+              <option value="">TODOS OS VEÍCULOS</option>
+              {veiculos.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.placa ? `[${v.placa}] ` : ''}{v.marca} {v.modelo}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Abas Rápidas de Situação */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-900">
+          <button
+            onClick={() => setStatusFilter('')}
+            className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer ${!statusFilter ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-transparent border-zinc-900 text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Todos ({totalCadastradas})
+          </button>
+          <button
+            onClick={() => setStatusFilter('VENCIDO')}
+            className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer ${statusFilter === 'VENCIDO' ? 'bg-red-500/10 border-red-500/40 text-red-400' : 'bg-transparent border-zinc-900 text-zinc-500 hover:text-red-400'}`}
+          >
+            Vencidos ({totalVencidas})
+          </button>
+          <button
+            onClick={() => setStatusFilter('PROXIMO')}
+            className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer ${statusFilter === 'PROXIMO' ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' : 'bg-transparent border-zinc-900 text-zinc-500 hover:text-amber-400'}`}
+          >
+            Próximos ({totalProximas})
+          </button>
+          <button
+            onClick={() => setStatusFilter('SAUDAVEL')}
+            className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer ${statusFilter === 'SAUDAVEL' ? 'bg-green-500/10 border-green-500/40 text-green-400' : 'bg-transparent border-zinc-900 text-zinc-500 hover:text-green-400'}`}
+          >
+            Em Dia ({totalSaudaveis})
+          </button>
+        </div>
+      </div>
+
+      {/* LISTA / GRID DE PLANOS PREVENTIVOS */}
+      {loading ? (
+        <div className="py-20 text-center space-y-3">
+          <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto" />
+          <p className="text-xs font-mono text-zinc-500 uppercase tracking-wider">Carregando planos de preventiva...</p>
+        </div>
+      ) : filteredPreventivas.length === 0 ? (
+        <div className="py-16 text-center border-2 border-dashed border-zinc-900 rounded-3xl space-y-3 bg-zinc-950/40">
+          <AlertCircle className="w-12 h-12 text-zinc-700 mx-auto" />
+          <h4 className="text-zinc-400 font-extrabold uppercase font-mono text-sm">Nenhum plano de manutenção encontrado</h4>
+          <p className="text-xs text-zinc-600 font-mono">
+            Cadastre os planos de inspeção e substituição periódica para os veículos e máquinas diesel.
+          </p>
+          <button
+            onClick={handleNew}
+            className="mt-3 inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer"
+          >
+            <Plus size={14} /> Cadastrar Primeiro Plano
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {filteredPreventivas.map((p: any) => {
+            const styles = getStatusBadge(p.status || '');
+            const veiculo = p.Veiculo || p.veiculo;
+            const cliente = veiculo?.Cliente || veiculo?.cliente;
+            const kmAtual = veiculo?.quilometragem ?? p.km_atual ?? 0;
+            const horimetroAtual = veiculo?.horimetro_atual ?? p.horimetro_atual ?? 0;
+            const proximoKm = p.proximo_km ?? p.km_limite;
+            const proximaData = p.proxima_data ?? p.data_limite;
+
+            return (
+              <div 
+                key={p.id} 
+                className={`border rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-zinc-700 transition shadow-lg ${styles.banner}`}
+              >
+                {/* Header do Card */}
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        {veiculo?.placa ? (
+                          <span className="px-2 py-0.5 bg-orange-600 text-white font-extrabold text-[10px] rounded tracking-tight font-mono">
+                            {veiculo.placa}
+                          </span>
+                        ) : null}
+                        <span className="text-xs font-black text-white uppercase tracking-tight truncate max-w-[180px] block">
+                          {veiculo?.marca} {veiculo?.modelo}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 font-bold block truncate max-w-[220px]">
+                        Cliente: {cliente?.nome || 'Sem cliente vinculado'}
+                      </span>
+                    </div>
+
+                    <span className={`px-2.5 py-1 border text-[9px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1.5 ${styles.badge}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
+                      {styles.label}
+                    </span>
+                  </div>
+
+                  {/* Nome e Serviço */}
+                  <div className="bg-black/50 border border-zinc-900 p-3.5 rounded-xl space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-white uppercase tracking-tight">
+                        {p.nome || p.servico || p.componente}
+                      </span>
+                      <span className="text-[9px] font-mono text-orange-400 font-bold uppercase">
+                        {p.componente}
+                      </span>
+                    </div>
+                    {p.descricao && (
+                      <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
+                        {p.descricao}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Métricas e Telemetria de Previsão */}
+                <div className="space-y-3 border-t border-zinc-900/80 pt-3 text-xs font-mono">
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    {/* KM */}
+                    <div className="bg-zinc-900/40 p-2 rounded-lg">
+                      <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-black block">KM Atual / Alvo</span>
+                      <span className="text-zinc-200 font-bold block mt-0.5">
+                        {kmAtual.toLocaleString('pt-BR')} / {proximoKm ? `${proximoKm.toLocaleString('pt-BR')} KM` : '—'}
+                      </span>
+                      {p.km_restante !== null && p.km_restante !== undefined && (
+                        <span className={`text-[9px] font-bold block mt-0.5 ${p.km_restante <= 0 ? 'text-red-400' : 'text-zinc-400'}`}>
+                          {p.km_restante <= 0 ? `Excedido em ${Math.abs(p.km_restante)} KM` : `Resta ${p.km_restante} KM`}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Horímetro */}
+                    <div className="bg-zinc-900/40 p-2 rounded-lg">
+                      <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-black block">Horímetro / Alvo</span>
+                      <span className="text-zinc-200 font-bold block mt-0.5">
+                        {horimetroAtual}h / {p.proximo_horimetro ? `${p.proximo_horimetro}h` : '—'}
+                      </span>
+                      {p.horas_restantes !== null && p.horas_restantes !== undefined && (
+                        <span className={`text-[9px] font-bold block mt-0.5 ${p.horas_restantes <= 0 ? 'text-red-400' : 'text-zinc-400'}`}>
+                          {p.horas_restantes <= 0 ? `Excedido em ${Math.abs(p.horas_restantes)}h` : `Restam ${p.horas_restantes}h`}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Data Limite */}
+                    <div className="col-span-2 bg-zinc-900/40 p-2 rounded-lg flex items-center justify-between">
+                      <div>
+                        <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-black block">Data Prevista</span>
+                        <span className="text-zinc-200 font-bold block mt-0.5">
+                          {proximaData ? new Date(proximaData).toLocaleDateString('pt-BR') : 'Sem data limite'}
+                        </span>
+                      </div>
+                      {p.dias_restantes !== null && p.dias_restantes !== undefined && (
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${p.dias_restantes <= 0 ? 'bg-red-500/10 text-red-400' : 'bg-zinc-800 text-zinc-300'}`}>
+                          {p.dias_restantes <= 0 ? `Vencido há ${Math.abs(p.dias_restantes)} dias` : `Em ${p.dias_restantes} dias`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ações do Card */}
+                  <div className="flex items-center justify-between border-t border-zinc-900/60 pt-3">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEdit(p)}
+                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition cursor-pointer"
+                        title="Editar Plano"
+                      >
+                        <Edit size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        className="p-2 text-zinc-400 hover:text-red-500 hover:bg-zinc-800 rounded-lg transition cursor-pointer"
+                        title="Excluir Plano"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/veiculos/${p.veiculo_id}/historico`}
+                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1"
+                      >
+                        Histórico
+                      </Link>
+                      <Link
+                        href={`/os/nova?veiculo_id=${p.veiculo_id}&preventiva_id=${p.id}&diagnostico=MANUTENCAO+PREVENTIVA:+${encodeURIComponent(p.nome || p.servico || p.componente)}`}
+                        className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-orange-950/20"
+                      >
+                        <Wrench size={12} />
+                        Gerar OS
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MODAL DE CADASTRO / EDIÇÃO DE PLANO PREVENTIVO */}
+      {modalOpen && (
+        <PreventivaModal
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingPreventiva(null);
+          }}
+          onSuccess={fetchData}
+          veiculos={veiculos}
+          preventivaToEdit={editingPreventiva}
+        />
+      )}
+    </main>
+  );
+}

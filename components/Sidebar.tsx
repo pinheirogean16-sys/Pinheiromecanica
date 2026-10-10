@@ -7,7 +7,7 @@ import {
   LayoutDashboard, ClipboardList, ClipboardCheck, Users, Truck, 
   Package, DollarSign, Settings, Menu, X,
   ChevronLeft, ChevronRight, Calendar, FileText, ChevronDown,
-  Building2, Palette, PenTool as Tool
+  Building2, Palette, PenTool as Tool, ShieldAlert
 } from 'lucide-react';
 
 import { checkPermission } from '@/lib/rbac';
@@ -46,6 +46,7 @@ const sidebarGroups: MenuGroup[] = [
     items: [
       { href: '/os', label: 'Ordens de Serviço', icon: ClipboardList, modulo: 'os', acao: 'visualizar' },
       { href: '/orcamentos', label: 'Orçamentos', icon: FileText, modulo: 'orcamentos', acao: 'visualizar' },
+      { href: '/preventivas', label: 'Preventivas', icon: ShieldAlert, modulo: 'preventivas', acao: 'visualizar' },
       { href: '/agenda', label: 'Agenda', icon: Calendar, modulo: 'agenda', acao: 'visualizar' },
       { href: '/checklist', label: 'Checklist', icon: ClipboardCheck, modulo: 'checklist', acao: 'visualizar' },
     ]
