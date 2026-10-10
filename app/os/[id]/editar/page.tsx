@@ -11,8 +11,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { parseHoras, formatHoras } from '@/lib/utils';
+import { parseHoras, formatHoras, roundDecimal } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
+import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
 
 function sanitizeWorkOrderPayload(payload: any) {
   console.log("Payload Final OS", payload);
@@ -80,6 +81,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [mecanicos, setMecanicos] = useState<any[]>([]);
   const [availablePecas, setAvailablePecas] = useState<any[]>([]);
   const [pecasLoading, setPecasLoading] = useState(false);
+  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   
   // Dados da OS
   const [ordem, setOrdem] = useState<any>(null);
@@ -489,27 +491,86 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     setServicos(prev => prev.filter(s => s.id !== sid));
   }, []);
 
-  // Lógica de Peças Memoizada com Adição Direta de Linha Independente
+  // Lógica de Peças Memoizada com Adição e Atualização Consistente
   const addPeca = useCallback((pecaRef: any) => {
-    const partId = crypto.randomUUID();
     const defaultUnit = pecaRef.unidadeMedida || 'un';
     const compativeis = obterUnidadesCompativeis(defaultUnit);
-    setPecas(prev => [
-      ...prev,
-      { 
-        id: partId, 
-        peca_id: pecaRef.id, 
-        descricao: pecaRef.descricao, 
-        quantidade: 1, 
-        unidade: defaultUnit,
-        unidadeMedidaOriginal: defaultUnit,
-        valor_unit: pecaRef.preco_venda, 
-        valor_total: pecaRef.preco_venda,
-        original_preco_venda: pecaRef.preco_venda,
-        maxQuantidade: pecaRef.quantidade,
-        compativeis
+    setPecas(prev => {
+      const existingIndex = prev.findIndex(p => p.peca_id === pecaRef.id);
+      if (existingIndex >= 0) {
+        const updatedList = [...prev];
+        const existing = updatedList[existingIndex];
+        const novaQtd = roundDecimal(existing.quantidade + 1);
+        const novoTotal = roundDecimal(novaQtd * existing.valor_unit);
+        updatedList[existingIndex] = {
+          ...existing,
+          quantidade: novaQtd,
+          valor_total: novoTotal
+        };
+        return updatedList;
       }
-    ]);
+      return [
+        ...prev,
+        { 
+          id: crypto.randomUUID(), 
+          peca_id: pecaRef.id, 
+          descricao: pecaRef.descricao, 
+          quantidade: 1, 
+          unidade: defaultUnit,
+          unidadeMedidaOriginal: defaultUnit,
+          valor_unit: pecaRef.preco_venda, 
+          valor_total: pecaRef.preco_venda,
+          original_preco_venda: pecaRef.preco_venda,
+          maxQuantidade: pecaRef.quantidade,
+          compativeis
+        }
+      ];
+    });
+  }, []);
+
+  const handleAddPartFromStockModal = useCallback((data: {
+    peca: StockPartItem;
+    quantidade: number;
+    unidade: string;
+    valorUnitario: number;
+    valorTotal: number;
+  }) => {
+    const { peca, quantidade, unidade, valorUnitario, valorTotal } = data;
+    const defaultUnit = unidade || peca.unidadeMedida || 'un';
+    const compativeis = obterUnidadesCompativeis(peca.unidadeMedida || 'un');
+
+    setPecas(prev => {
+      const existingIndex = prev.findIndex(p => p.peca_id === peca.id);
+      if (existingIndex >= 0) {
+        const updatedList = [...prev];
+        const existing = updatedList[existingIndex];
+        const novaQtd = roundDecimal(existing.quantidade + quantidade);
+        const novoTotal = roundDecimal(novaQtd * existing.valor_unit);
+        updatedList[existingIndex] = {
+          ...existing,
+          quantidade: novaQtd,
+          valor_total: novoTotal
+        };
+        return updatedList;
+      }
+
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          peca_id: peca.id,
+          descricao: peca.descricao,
+          quantidade,
+          unidade: defaultUnit,
+          unidadeMedidaOriginal: peca.unidadeMedida || 'un',
+          valor_unit: valorUnitario,
+          valor_total: valorTotal,
+          original_preco_venda: peca.preco_venda,
+          maxQuantidade: peca.quantidade,
+          compativeis
+        }
+      ];
+    });
   }, []);
 
   const updatePeca = useCallback((pid: string, field: string, value: any) => {
@@ -1860,11 +1921,22 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         {/* COLUNA 3: PEÇAS E FECHAMENTO */}
         <div className="lg:col-span-4 space-y-6">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <div className="p-7 border-b border-zinc-800 bg-zinc-900/50">
+            <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Package size={18} className="text-orange-500" />
-                <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Requisição de Peças</h2>
+                <Package size={18} className="text-orange-500 flex-shrink-0" />
+                <div>
+                  <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Requisição de Peças</h2>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Almoxarifado e insumos</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsStockModalOpen(true)}
+                className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 active:scale-[0.98] text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-orange-950/40 transition cursor-pointer self-start sm:self-auto"
+              >
+                <Plus size={14} />
+                Adicionar peça do estoque
+              </button>
             </div>
 
             <div className="p-6 bg-zinc-950/20 space-y-6">
@@ -2150,6 +2222,16 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           SALVAR ALTERAÇÕES
         </button>
       </div>
+
+      {/* Modal de Almoxarifado / Adicionar Peças do Estoque */}
+      <StockPartsModal
+        isOpen={isStockModalOpen}
+        onClose={() => setIsStockModalOpen(false)}
+        onAddPart={handleAddPartFromStockModal}
+        existingParts={pecas}
+        colorScheme="orange"
+        isEditing={true}
+      />
 
     </div>
   );

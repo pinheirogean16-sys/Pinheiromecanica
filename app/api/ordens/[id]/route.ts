@@ -12,7 +12,7 @@ import { converterUnidade } from '@/lib/unidades';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 
-export function serializeDecimals(obj: any): any {
+function serializeDecimals(obj: any): any {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj !== 'object') return obj;
   
