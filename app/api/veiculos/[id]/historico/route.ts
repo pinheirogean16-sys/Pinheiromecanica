@@ -56,7 +56,7 @@ export async function GET(
       }
     });
 
-    // 3. Obter Preventivas Ativas
+    // 3. Obter Preventivas Ativas e Histórico de Execuções
     const preventivas = await prisma.preventiva.findMany({
       where: {
         veiculo_id: id,
@@ -66,6 +66,45 @@ export async function GET(
         created_at: 'desc'
       }
     });
+
+    let execucoesPreventivas: any[] = [];
+    try {
+      execucoesPreventivas = await (prisma as any).preventivaExecucao.findMany({
+        where: { veiculo_id: id, empresa_id: user.empresa_id },
+        orderBy: { data_conclusao: 'desc' }
+      });
+    } catch (e) {
+      // fallback
+    }
+
+    if (execucoesPreventivas.length === 0) {
+      const logs = await prisma.auditLog.findMany({
+        where: {
+          empresa_id: user.empresa_id,
+          modulo: 'PREVENTIVA_EXECUCAO'
+        },
+        orderBy: { created_at: 'desc' }
+      });
+      for (const l of logs) {
+        try {
+          const d = typeof l.dados_depois === 'string' ? JSON.parse(l.dados_depois) : l.dados_depois;
+          const prevMatch = preventivas.find(p => p.id === d?.preventiva_id);
+          if (prevMatch) {
+            execucoesPreventivas.push({
+              id: d?.execucao_id || l.id,
+              preventiva_id: d?.preventiva_id,
+              servico: d?.nome_plano || prevMatch?.servico || prevMatch?.nome,
+              os_id: l.entidade_id,
+              os_numero: d?.os_numero,
+              km_conclusao: d?.km_conclusao,
+              horimetro_conclusao: d?.horimetro_conclusao,
+              data_conclusao: d?.data_conclusao ? new Date(d.data_conclusao) : l.created_at,
+              usuario_nome: l.usuario
+            });
+          }
+        } catch (err) {}
+      }
+    }
 
     // 4. Calcular o KM Médio Rodado por Mês de forma inteligente
     // Filtramos ordens que registram KM de saída ou retorno de forma válida
@@ -145,7 +184,8 @@ export async function GET(
       },
       timeline,
       pecasTrocadas,
-      preventivas
+      preventivas,
+      execucoesPreventivas
     });
   } catch (error: any) {
     log('ERROR', 'VEICULOS_HISTORICO', 'Erro ao processar linha do tempo de veículo', { error }, 'sistema');

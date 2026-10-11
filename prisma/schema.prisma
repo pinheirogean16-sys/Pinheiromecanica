@@ -477,6 +477,34 @@ model Preventiva {
   @@index([status])
 }
 
+model PreventivaExecucao {
+  id                          String    @id
+  empresa_id                  String
+  preventiva_id               String
+  veiculo_id                  String
+  os_id                       String
+  data_conclusao              DateTime
+  km_conclusao                Int?
+  horimetro_conclusao         Float?
+  usuario_id                  String?
+  usuario_nome                String?
+  componente                  String?
+  servico                     String?
+  ciclo_numero                Int       @default(1)
+  km_proximo_calculado        Int?
+  horimetro_proximo_calculado Float?
+  data_proxima_calculada      DateTime?
+  observacoes                 String?   @db.LongText
+  created_at                  DateTime  @default(now())
+  updated_at                  DateTime  @updatedAt
+
+  @@unique([empresa_id, os_id, preventiva_id], map: "PreventivaExecucao_empresa_os_prev_unique")
+  @@index([empresa_id])
+  @@index([preventiva_id])
+  @@index([veiculo_id])
+  @@index([os_id])
+}
+
 model RefreshToken {
   id         String   @id
   token_hash String

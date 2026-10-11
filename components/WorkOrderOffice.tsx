@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   User as UserIcon, Car, Wrench, Package, 
   Search, ChevronLeft, FileText, Trash2, Plus,
@@ -13,6 +13,7 @@ import QuickClientModal from '@/components/QuickClientModal';
 import QuickVehicleModal from '@/components/QuickVehicleModal';
 import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
 import QuickPartModal, { QuickPartSuccessData } from '@/components/QuickPartModal';
+import PreventivaVinculoSelector from '@/components/PreventivaVinculoSelector';
 
 interface WorkOrderOfficeProps {
   onBack: () => void;
@@ -20,6 +21,7 @@ interface WorkOrderOfficeProps {
 
 export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   
   // Modais de Cadastro Rápido e Almoxarifado
@@ -85,6 +87,17 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
   const [showClientList, setShowClientList] = useState(false);
   const [pecaSearchQuery, setPecaSearchQuery] = useState('');
   const [pecasLoading, setPecasLoading] = useState(false);
+
+  // Odômetro, Horímetro e Manutenção Preventiva Explícita
+  const [kmVeiculo, setKmVeiculo] = useState<string>('');
+  const [horimetroVeiculo, setHorimetroVeiculo] = useState<string>('');
+  const [confirmarSaltoKm, setConfirmarSaltoKm] = useState(false);
+  const [confirmarSaltoHorimetro, setConfirmarSaltoHorimetro] = useState(false);
+  const [autorizarReducaoKm, setAutorizarReducaoKm] = useState(false);
+  const [autorizarReducaoHorimetro, setAutorizarReducaoHorimetro] = useState(false);
+  const [justificativaAjuste, setJustificativaAjuste] = useState('');
+  const [preventivasVeiculo, setPreventivasVeiculo] = useState<any[]>([]);
+  const [selectedPreventivas, setSelectedPreventivas] = useState<string[]>([]);
 
   const isLoadedRef = useRef(false);
 
@@ -207,12 +220,67 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
             return;
           }
         }
+
+        // Se veio parâmetros de URL (ex: preventiva_id, veiculo_id, diagnostico)
+        const urlVeiculoId = searchParams?.get('veiculo_id');
+        const urlDiagnostico = searchParams?.get('diagnostico');
+        if (urlDiagnostico) {
+          setDiagnostico(urlDiagnostico);
+        }
+        if (urlVeiculoId) {
+          fetch(`/api/veiculos/${urlVeiculoId}`)
+            .then(res => res.json())
+            .then(v => {
+              if (v && !v.error) {
+                setSelectedVeiculo(v);
+                if (v.cliente) {
+                  setSelectedCliente(v.cliente);
+                  fetch(`/api/veiculos?cliente_id=${v.cliente.id}`)
+                    .then(r => r.json())
+                    .then(data => setVeiculos(data.items || []))
+                    .catch(console.error);
+                }
+              }
+            })
+            .catch(console.error);
+        }
       } catch (err) {
         console.error('Falha ao restaurar rascunho de nova OS Oficina:', err);
       }
       isLoadedRef.current = true;
     }
-  }, []);
+  }, [searchParams]);
+
+  // Carregar Preventivas do Veículo e odômetro inicial
+  useEffect(() => {
+    if (selectedVeiculo?.id) {
+      if (selectedVeiculo.quilometragem && !kmVeiculo) {
+        setKmVeiculo(String(selectedVeiculo.quilometragem));
+      }
+      if (selectedVeiculo.horimetro_atual && !horimetroVeiculo) {
+        setHorimetroVeiculo(String(selectedVeiculo.horimetro_atual));
+      }
+      fetch(`/api/preventivas?veiculo_id=${selectedVeiculo.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setPreventivasVeiculo(data.filter((p: any) => p.ativo !== false));
+          }
+        })
+        .catch(console.error);
+    } else {
+      setPreventivasVeiculo([]);
+      setSelectedPreventivas([]);
+    }
+  }, [selectedVeiculo?.id]);
+
+  // Pré-selecionar preventiva vinda da URL
+  useEffect(() => {
+    const urlPrevId = searchParams?.get('preventiva_id');
+    if (urlPrevId) {
+      setSelectedPreventivas(prev => prev.includes(urlPrevId) ? prev : [...prev, urlPrevId]);
+    }
+  }, [searchParams]);
 
   // Salvar rascunho ao mudar dados relevantes
   useEffect(() => {
@@ -601,7 +669,19 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
         km_retorno: 0,
         km_total: 0,
         valor_km: 0,
-        total_deslocamento: 0
+        total_deslocamento: 0,
+
+        // Leituras de Odômetro e Horímetro com Proteção
+        km_veiculo: kmVeiculo ? parseInt(kmVeiculo, 10) : null,
+        horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : null,
+        confirmar_salto_km: confirmarSaltoKm,
+        confirmar_salto_horimetro: confirmarSaltoHorimetro,
+        autorizar_reducao_km: autorizarReducaoKm,
+        autorizar_reducao_horimetro: autorizarReducaoHorimetro,
+        justificativa_ajuste_leitura: justificativaAjuste,
+
+        // Vinculação Explícita de Planos Preventivos
+        preventivas_ids: selectedPreventivas
       };
 
       console.log("Payload Final OS (Oficina)", rawPayload);
@@ -813,6 +893,30 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
                   </div>
                 </div>
               </div>
+
+              {/* SELETOR DE PREVENTIVAS & LEITURAS DE ODÔMETRO/HORÍMETRO */}
+              {selectedVeiculo && (
+                <PreventivaVinculoSelector
+                  veiculo={selectedVeiculo}
+                  kmVeiculo={kmVeiculo}
+                  setKmVeiculo={setKmVeiculo}
+                  horimetroVeiculo={horimetroVeiculo}
+                  setHorimetroVeiculo={setHorimetroVeiculo}
+                  selectedPreventivas={selectedPreventivas}
+                  setSelectedPreventivas={setSelectedPreventivas}
+                  confirmarSaltoKm={confirmarSaltoKm}
+                  setConfirmarSaltoKm={setConfirmarSaltoKm}
+                  confirmarSaltoHorimetro={confirmarSaltoHorimetro}
+                  setConfirmarSaltoHorimetro={setConfirmarSaltoHorimetro}
+                  autorizarReducaoKm={autorizarReducaoKm}
+                  setAutorizarReducaoKm={setAutorizarReducaoKm}
+                  autorizarReducaoHorimetro={autorizarReducaoHorimetro}
+                  setAutorizarReducaoHorimetro={setAutorizarReducaoHorimetro}
+                  justificativaAjuste={justificativaAjuste}
+                  setJustificativaAjuste={setJustificativaAjuste}
+                  preventivas={preventivasVeiculo}
+                />
+              )}
 
               {/* Histórico do Cliente (LTV) */}
               {selectedCliente && (

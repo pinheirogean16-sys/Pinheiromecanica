@@ -10,6 +10,7 @@ import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
 import { converterUnidade } from '@/lib/unidades';
+import { validarEProcessarLeiturasVeiculo } from '@/lib/odometro-horimetro';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 
@@ -232,7 +233,16 @@ const updateOsSchema = z.object({
   assinatura_mecanico: z.string().optional().nullable(),
   assinatura_supervisor: z.string().optional().nullable(),
   assinatura_hash: z.string().optional().nullable(),
-  assinatura_timestamp: z.string().optional().nullable()
+  assinatura_timestamp: z.string().optional().nullable(),
+  km_veiculo: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
+  horimetro_veiculo: z.preprocess(preprocessNumber, z.number().optional().nullable()),
+  confirmar_salto_km: z.boolean().optional().default(false),
+  confirmar_salto_horimetro: z.boolean().optional().default(false),
+  autorizar_reducao_km: z.boolean().optional().default(false),
+  autorizar_reducao_horimetro: z.boolean().optional().default(false),
+  justificativa_ajuste_leitura: z.string().optional().nullable(),
+  preventivas_ids: z.array(z.string()).optional().default([]),
+  preventiva_id: z.string().optional().nullable()
 }).partial();
 
 const putOsSchema = z.object({
@@ -305,7 +315,16 @@ const putOsSchema = z.object({
   assinatura_mecanico: z.string().optional().nullable(),
   assinatura_supervisor: z.string().optional().nullable(),
   assinatura_hash: z.string().optional().nullable(),
-  assinatura_timestamp: z.string().optional().nullable()
+  assinatura_timestamp: z.string().optional().nullable(),
+  km_veiculo: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
+  horimetro_veiculo: z.preprocess(preprocessNumber, z.number().optional().nullable()),
+  confirmar_salto_km: z.boolean().optional().default(false),
+  confirmar_salto_horimetro: z.boolean().optional().default(false),
+  autorizar_reducao_km: z.boolean().optional().default(false),
+  autorizar_reducao_horimetro: z.boolean().optional().default(false),
+  justificativa_ajuste_leitura: z.string().optional().nullable(),
+  preventivas_ids: z.array(z.string()).optional().default([]),
+  preventiva_id: z.string().optional().nullable()
 });
 
 export async function GET(
@@ -399,6 +418,36 @@ export async function PATCH(
     if (user.role !== 'ADMIN' && antes.created_by !== user.name && antes.created_by !== user.email) {
       log('WARN', 'OS', 'Tentativa de edição de OS de outro usuário negada', { id, userId: user?.id, owner: antes.created_by }, user?.name);
       return NextResponse.json({ error: 'Você só pode editar suas próprias OS' }, { status: 403 });
+    }
+
+    const veiculoId = antes.veiculo_id;
+    let leiturasRes: any = { kmFinalAtualizar: null, horimetroFinalAtualizar: null, sucesso: true };
+    if (body.km_veiculo !== undefined || body.horimetro_veiculo !== undefined) {
+      leiturasRes = await validarEProcessarLeiturasVeiculo({
+        veiculoId,
+        empresaId: user.empresa_id,
+        kmInformado: body.km_veiculo,
+        horimetroInformado: body.horimetro_veiculo,
+        confirmarSaltoKm: body.confirmar_salto_km,
+        confirmarSaltoHorimetro: body.confirmar_salto_horimetro,
+        autorizarReducaoKm: body.autorizar_reducao_km,
+        autorizarReducaoHorimetro: body.autorizar_reducao_horimetro,
+        justificativa: body.justificativa_ajuste_leitura,
+        usuario: user,
+        contexto: 'EDICAO_OS_PATCH',
+        osId: id
+      });
+      if (!leiturasRes.sucesso) {
+        return NextResponse.json({ error: leiturasRes.erro }, { status: 400 });
+      }
+    }
+
+    const preventivasIds: string[] = [];
+    if (Array.isArray(body.preventivas_ids)) {
+      preventivasIds.push(...body.preventivas_ids);
+    }
+    if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
+      preventivasIds.push(body.preventiva_id);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -662,9 +711,16 @@ export async function PATCH(
 
     try {
       if (body.status === 'FINALIZADA') {
-        await notificarOSFinalizada(result);
+        if (antes.status !== 'FINALIZADA') {
+          await notificarOSFinalizada(result);
+        }
+        await sincronizarPreventivasAposOS(result, {
+          preventivasIds,
+          usuario: user,
+          kmVeiculo: leiturasRes.kmFinalAtualizar,
+          horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
+        });
       }
-      await sincronizarPreventivasAposOS(result);
 
       if (body.pecas && body.pecas.length > 0) {
         for (const p of body.pecas) {
@@ -747,6 +803,36 @@ export async function PUT(
       if (!veiculoOk) {
         return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
       }
+    }
+
+    const veiculoIdFinal = body.veiculo_id || antes.veiculo_id;
+    let leiturasRes: any = { kmFinalAtualizar: null, horimetroFinalAtualizar: null, sucesso: true };
+    if (body.km_veiculo !== undefined || body.horimetro_veiculo !== undefined) {
+      leiturasRes = await validarEProcessarLeiturasVeiculo({
+        veiculoId: veiculoIdFinal,
+        empresaId: user.empresa_id,
+        kmInformado: body.km_veiculo,
+        horimetroInformado: body.horimetro_veiculo,
+        confirmarSaltoKm: body.confirmar_salto_km,
+        confirmarSaltoHorimetro: body.confirmar_salto_horimetro,
+        autorizarReducaoKm: body.autorizar_reducao_km,
+        autorizarReducaoHorimetro: body.autorizar_reducao_horimetro,
+        justificativa: body.justificativa_ajuste_leitura,
+        usuario: user,
+        contexto: 'EDICAO_OS_PUT',
+        osId: id
+      });
+      if (!leiturasRes.sucesso) {
+        return NextResponse.json({ error: leiturasRes.erro }, { status: 400 });
+      }
+    }
+
+    const preventivasIds: string[] = [];
+    if (Array.isArray(body.preventivas_ids)) {
+      preventivasIds.push(...body.preventivas_ids);
+    }
+    if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
+      preventivasIds.push(body.preventiva_id);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -1076,9 +1162,16 @@ export async function PUT(
 
     try {
       if (body.status === 'FINALIZADA') {
-        await notificarOSFinalizada(result);
+        if (antes.status !== 'FINALIZADA') {
+          await notificarOSFinalizada(result);
+        }
+        await sincronizarPreventivasAposOS(result, {
+          preventivasIds,
+          usuario: user,
+          kmVeiculo: leiturasRes.kmFinalAtualizar,
+          horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
+        });
       }
-      await sincronizarPreventivasAposOS(result);
       if (body.pecas && body.pecas.length > 0) {
         for (const p of body.pecas) {
           const actualPecaId = p.peca_id || (p as any).pecaId;

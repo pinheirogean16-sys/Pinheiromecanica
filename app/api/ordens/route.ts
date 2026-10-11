@@ -10,6 +10,7 @@ import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
 import { converterUnidade } from '@/lib/unidades';
+import { validarEProcessarLeiturasVeiculo } from '@/lib/odometro-horimetro';
 
 const preprocessNumber = (val: any) => {
   if (val === null || val === undefined || val === '') return 0;
@@ -94,7 +95,20 @@ const osSchema = z.object({
   assinatura_mecanico: z.string().optional().nullable(),
   assinatura_supervisor: z.string().optional().nullable(),
   assinatura_hash: z.string().optional().nullable(),
-  assinatura_timestamp: z.string().optional().nullable()
+  assinatura_timestamp: z.string().optional().nullable(),
+
+  // Campos de Leitura de Odômetro e Horímetro com Proteção e Auditoria
+  km_veiculo: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
+  horimetro_veiculo: z.preprocess(preprocessNumber, z.number().optional().nullable()),
+  confirmar_salto_km: z.boolean().optional().default(false),
+  confirmar_salto_horimetro: z.boolean().optional().default(false),
+  autorizar_reducao_km: z.boolean().optional().default(false),
+  autorizar_reducao_horimetro: z.boolean().optional().default(false),
+  justificativa_ajuste_leitura: z.string().optional().nullable(),
+
+  // Identificação Explícita de Manutenções Preventivas
+  preventivas_ids: z.array(z.string()).optional().default([]),
+  preventiva_id: z.string().optional().nullable()
 });
 
 export async function GET(request: Request) {
@@ -228,6 +242,33 @@ export async function POST(request: Request) {
     });
     if (!veiculoExistente) {
       return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    // Validação rigorosa e protegida das leituras de odômetro e horímetro do veículo
+    const leiturasRes = await validarEProcessarLeiturasVeiculo({
+      veiculoId: body.veiculo_id,
+      empresaId,
+      kmInformado: body.km_veiculo !== undefined ? body.km_veiculo : null,
+      horimetroInformado: body.horimetro_veiculo !== undefined ? body.horimetro_veiculo : null,
+      confirmarSaltoKm: body.confirmar_salto_km,
+      confirmarSaltoHorimetro: body.confirmar_salto_horimetro,
+      autorizarReducaoKm: body.autorizar_reducao_km,
+      autorizarReducaoHorimetro: body.autorizar_reducao_horimetro,
+      justificativa: body.justificativa_ajuste_leitura,
+      usuario: user,
+      contexto: 'CRIACAO_OS'
+    });
+
+    if (!leiturasRes.sucesso) {
+      return NextResponse.json({ error: leiturasRes.erro }, { status: 400 });
+    }
+
+    const preventivasIds: string[] = [];
+    if (Array.isArray(body.preventivas_ids)) {
+      preventivasIds.push(...body.preventivas_ids);
+    }
+    if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
+      preventivasIds.push(body.preventiva_id);
     }
 
     let attempts = 0;
@@ -538,8 +579,13 @@ export async function POST(request: Request) {
       await notificarNovaOS(result);
       if (result.status === 'FINALIZADA') {
         await notificarOSFinalizada(result);
+        await sincronizarPreventivasAposOS(result, {
+          preventivasIds,
+          usuario: user,
+          kmVeiculo: leiturasRes.kmFinalAtualizar,
+          horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
+        });
       }
-      await sincronizarPreventivasAposOS(result);
       if (body.pecas && body.pecas.length > 0) {
         for (const p of (body.pecas as any[])) {
           const pecaId = p.pecaId;

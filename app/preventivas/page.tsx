@@ -87,11 +87,38 @@ export default function PreventivasPage() {
     setModalOpen(true);
   };
 
-  // Estatísticas calculadas sobre dados reais
+  // Modal de Histórico de Ciclos Executados
+  const [historicoModalOpen, setHistoricoModalOpen] = useState(false);
+  const [historicoLoading, setHistoricoLoading] = useState(false);
+  const [selectedPreventivaHistory, setSelectedPreventivaHistory] = useState<any[]>([]);
+  const [selectedPreventivaInfo, setSelectedPreventivaInfo] = useState<any | null>(null);
+
+  const handleOpenHistorico = async (p: any) => {
+    setSelectedPreventivaInfo(p);
+    setHistoricoModalOpen(true);
+    setHistoricoLoading(true);
+    try {
+      const res = await fetch(`/api/preventivas/${p.id}/historico`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedPreventivaHistory(data.historico || []);
+      } else {
+        setSelectedPreventivaHistory([]);
+      }
+    } catch (e) {
+      setSelectedPreventivaHistory([]);
+    } finally {
+      setHistoricoLoading(false);
+    }
+  };
+
+  // Estatísticas calculadas sobre dados reais (Planos inativos não são classificados como vencidos)
   const totalCadastradas = preventivas.length;
-  const totalVencidas = preventivas.filter(p => p.status === 'VENCIDO').length;
-  const totalProximas = preventivas.filter(p => p.status === 'PROXIMO').length;
-  const totalSaudaveis = preventivas.filter(p => p.status === 'SAUDAVEL').length;
+  const totalAtivas = preventivas.filter(p => p.ativo !== false).length;
+  const totalVencidas = preventivas.filter(p => p.ativo !== false && p.status === 'VENCIDO').length;
+  const totalProximas = preventivas.filter(p => p.ativo !== false && p.status === 'PROXIMO').length;
+  const totalSaudaveis = preventivas.filter(p => p.ativo !== false && p.status === 'SAUDAVEL').length;
+  const totalDesativadas = preventivas.filter(p => p.ativo === false || p.status === 'DESATIVADO').length;
 
   // Filtragem local por texto
   const filteredPreventivas = preventivas.filter(p => {
@@ -108,7 +135,15 @@ export default function PreventivasPage() {
     return matchesPlate || matchesModel || matchesClient || matchesNome || matchesServico || matchesComponente || matchesDesc;
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, ativo = true) => {
+    if (!ativo || status === 'DESATIVADO') {
+      return {
+        banner: 'bg-zinc-900/60 border-zinc-800 text-zinc-400',
+        badge: 'bg-zinc-800/80 border-zinc-700 text-zinc-400',
+        dot: 'bg-zinc-600',
+        label: 'DESATIVADO'
+      };
+    }
     switch (status) {
       case 'VENCIDO':
         return {
@@ -335,7 +370,7 @@ export default function PreventivasPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredPreventivas.map((p: any) => {
-            const styles = getStatusBadge(p.status || '');
+            const styles = getStatusBadge(p.status || '', p.ativo !== false);
             const veiculo = p.Veiculo || p.veiculo;
             const cliente = veiculo?.Cliente || veiculo?.cliente;
             const kmAtual = veiculo?.quilometragem ?? p.km_atual ?? 0;
@@ -456,11 +491,18 @@ export default function PreventivasPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenHistorico(p)}
+                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer transition"
+                      >
+                        <Clock size={12} className="text-orange-500" />
+                        Ciclos
+                      </button>
                       <Link
                         href={`/veiculos/${p.veiculo_id}/historico`}
                         className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1"
                       >
-                        Histórico
+                        Veículo
                       </Link>
                       <Link
                         href={`/os/nova?veiculo_id=${p.veiculo_id}&preventiva_id=${p.id}&diagnostico=MANUTENCAO+PREVENTIVA:+${encodeURIComponent(p.nome || p.servico || p.componente)}`}
@@ -475,6 +517,86 @@ export default function PreventivasPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODAL DE HISTÓRICO DE CICLOS CONCLUÍDOS */}
+      {historicoModalOpen && selectedPreventivaInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500">
+                  <Clock size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                    Histórico de Ciclos Concluídos
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    {selectedPreventivaInfo.nome || selectedPreventivaInfo.servico || selectedPreventivaInfo.componente} • {selectedPreventivaInfo.Veiculo?.placa || selectedPreventivaInfo.veiculo?.placa || 'Sem Placa'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setHistoricoModalOpen(false)}
+                className="p-2 text-zinc-500 hover:text-white rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4">
+              {historicoLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 text-xs font-mono">
+                  <Loader2 size={24} className="animate-spin text-orange-500" />
+                  Carregando ciclos concluídos...
+                </div>
+              ) : selectedPreventivaHistory.length === 0 ? (
+                <div className="py-12 text-center text-zinc-500 text-xs font-mono">
+                  Nenhuma conclusão de ciclo registrada para este plano até o momento.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedPreventivaHistory.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-orange-400 uppercase font-mono">
+                          Ciclo Concluído em {new Date(item.data_conclusao).toLocaleDateString('pt-BR')}
+                        </span>
+                        {item.os_numero ? (
+                          <span className="px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] font-mono text-zinc-300">
+                            OS #{item.os_numero}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono text-zinc-400 pt-1">
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">KM Conclusão</span>
+                          <strong className="text-white">{item.km_conclusao ? `${item.km_conclusao.toLocaleString('pt-BR')} KM` : '---'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">Horímetro</span>
+                          <strong className="text-white">{item.horimetro_conclusao ? `${item.horimetro_conclusao} h` : '---'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">Próximo KM Calculado</span>
+                          <strong className="text-zinc-300">{item.km_proximo_calculado ? `${item.km_proximo_calculado.toLocaleString('pt-BR')} KM` : '---'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-zinc-500 uppercase block">Responsável</span>
+                          <strong className="text-zinc-300 truncate block">{item.usuario_nome || 'Sistema'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

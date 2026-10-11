@@ -312,46 +312,62 @@ export default function VeiculoHistoricoPage({ params }: PageProps) {
         {/* ALERTA PREVENTIVAS ATIVAS */}
         <div className="space-y-6">
           <div className="bg-zinc-950 border border-zinc-850 p-6 rounded-2xl space-y-4">
-            <div className="flex items-center gap-2">
-              <Sliders className="text-orange-500 w-5 h-5 animate-pulse" />
-              <h2 className="text-md font-black tracking-tight text-white uppercase italic">Alertas de Preventiva</h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="text-orange-500 w-5 h-5" />
+                <h2 className="text-md font-black tracking-tight text-white uppercase italic">Plano de Manutenção Preventiva</h2>
+              </div>
+              <Link
+                href="/preventivas"
+                className="text-[10px] text-orange-500 hover:text-orange-400 font-bold uppercase tracking-wider"
+              >
+                Gerenciar Planos →
+              </Link>
             </div>
             
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Inspeções automáticas e substituições planejadas por quilometragem ou período máximo de rodagem.</p>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Inspeções automáticas e substituições planejadas por quilometragem, horímetro ou data de rodagem.</p>
 
             <div className="space-y-3 pt-2">
               {preventivas.length === 0 ? (
                 <div className="text-center py-6 text-zinc-500 font-mono text-xs uppercase border border-dashed border-zinc-900 rounded-lg">
-                  Sem regras ativas.
+                  Sem regras ativas para este veículo.
                 </div>
               ) : (
-                preventivas.map((p: any) => (
-                  <div key={p.id} className="bg-black/60 border border-zinc-900 p-4 rounded-xl space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-black text-white hover:text-orange-500 tracking-tight block uppercase">
-                        {p.componente}
-                      </span>
-                      <span className={`px-2 py-0.5 border text-[9px] font-black rounded uppercase tracking-widest ${getStatusBadgePreventiva(p.status)}`}>
-                        {p.status}
-                      </span>
-                    </div>
-
-                    {p.descricao && (
-                      <p className="text-[10px] text-zinc-400 font-medium">{p.descricao}</p>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-zinc-950/80 pt-2 font-mono text-zinc-500 font-bold">
-                      <div>
-                        <span className="block text-[8px] uppercase tracking-widest text-zinc-500">KM Limite</span>
-                        <span className="text-zinc-300 block">{p.km_limite ? `${p.km_limite.toLocaleString('pt-BR')} KM` : 'Sem limite'}</span>
+                preventivas.map((p: any) => {
+                  const proximoKm = p.proximo_km ?? p.km_limite;
+                  const proximaData = p.proxima_data ?? p.data_limite;
+                  return (
+                    <div key={p.id} className="bg-black/60 border border-zinc-900 p-4 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-black text-white hover:text-orange-500 tracking-tight block uppercase">
+                          {p.nome || p.servico || p.componente}
+                        </span>
+                        <span className={`px-2 py-0.5 border text-[9px] font-black rounded uppercase tracking-widest ${getStatusBadgePreventiva(p.status)}`}>
+                          {p.status}
+                        </span>
                       </div>
-                      <div>
-                        <span className="block text-[8px] uppercase tracking-widest text-zinc-500">Data Limite</span>
-                        <span className="text-zinc-300 block">{p.data_limite ? new Date(p.data_limite).toLocaleDateString('pt-BR') : 'Sem data'}</span>
+
+                      {p.descricao && (
+                        <p className="text-[10px] text-zinc-400 font-medium">{p.descricao}</p>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-2 text-[10px] border-t border-zinc-950/80 pt-2 font-mono text-zinc-500 font-bold">
+                        <div>
+                          <span className="block text-[8px] uppercase tracking-widest text-zinc-500">KM Alvo</span>
+                          <span className="text-zinc-300 block">{proximoKm ? `${proximoKm.toLocaleString('pt-BR')} KM` : '—'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[8px] uppercase tracking-widest text-zinc-500">Horímetro Alvo</span>
+                          <span className="text-zinc-300 block">{p.proximo_horimetro ? `${p.proximo_horimetro} h` : '—'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[8px] uppercase tracking-widest text-zinc-500">Data Limite</span>
+                          <span className="text-zinc-300 block">{proximaData ? new Date(proximaData).toLocaleDateString('pt-BR') : '—'}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

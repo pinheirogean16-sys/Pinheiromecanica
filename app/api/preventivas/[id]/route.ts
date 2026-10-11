@@ -154,7 +154,7 @@ export async function PUT(
     };
 
     const avaliacao = avaliarStatusPreventiva(mergedObj);
-    updateData.status = body.status !== undefined ? body.status : avaliacao.status;
+    updateData.status = (mergedObj.ativo === false) ? 'DESATIVADO' : (body.status !== undefined ? body.status : avaliacao.status);
 
     const updated = await prisma.preventiva.update({
       where: { id },
@@ -174,6 +174,7 @@ export async function PUT(
       entidade: 'Preventiva',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: beforeObj,
       dados_depois: updated
     });
@@ -210,6 +211,58 @@ export async function DELETE(
 
     if (!beforeObj) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 
+    // Verificar se existem execuções históricas vinculadas a este plano
+    let temExecucoes = false;
+    try {
+      const countExec = await (prisma as any).preventivaExecucao.count({
+        where: { preventiva_id: id, empresa_id: user.empresa_id }
+      });
+      if (countExec > 0) temExecucoes = true;
+    } catch (e) {
+      // fallback
+    }
+
+    if (!temExecucoes) {
+      const auditExec = await prisma.auditLog.findFirst({
+        where: {
+          empresa_id: user.empresa_id,
+          modulo: 'PREVENTIVA_EXECUCAO',
+          acao: `CONCLUSAO_${id}`
+        }
+      });
+      if (auditExec) temExecucoes = true;
+    }
+
+    if (temExecucoes) {
+      // Política de retenção: planos com histórico de execução são desativados para preservar histórico
+      await prisma.preventiva.update({
+        where: { id },
+        data: {
+          ativo: false,
+          status: 'DESATIVADO',
+          updated_at: new Date()
+        }
+      });
+
+      await createAuditLog({
+        modulo: 'PREVENTIVAS',
+        acao: 'ARQUIVAR_COM_HISTORICO',
+        entidade: 'Preventiva',
+        entidade_id: id,
+        usuario: user?.name || user?.email || 'Sistema',
+        empresa_id: user.empresa_id,
+        dados_antes: beforeObj,
+        dados_depois: { motivo: 'Plano possui histórico de execuções. Desativado com retenção integral.' }
+      });
+
+      return NextResponse.json({
+        success: true,
+        arquivado: true,
+        message: 'Plano possui histórico de manutenções realizadas e foi desativado com sucesso, preservando todos os registros históricos.'
+      });
+    }
+
+    // Se nunca foi executado, pode ser excluído fisicamente
     await prisma.preventiva.delete({ where: { id } });
 
     await createAuditLog({
@@ -218,6 +271,7 @@ export async function DELETE(
       entidade: 'Preventiva',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: beforeObj
     });
 

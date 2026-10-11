@@ -202,7 +202,8 @@ export async function POST(request: Request) {
       data_limite: proximaData,
       antecedencia_dias: body.antecedencia_dias,
       antecedencia_km: body.antecedencia_km,
-      antecedencia_horas: body.antecedencia_horas
+      antecedencia_horas: body.antecedencia_horas,
+      ativo: body.ativo !== undefined ? body.ativo : true
     };
 
     const avaliacao = avaliarStatusPreventiva(tempObj, veiculo);
@@ -237,7 +238,7 @@ export async function POST(request: Request) {
         km_atual: kmAtual,
         horimetro_atual: horimetroAtual,
         data_limite: proximaData,
-        status: avaliacao.status,
+        status: (body.ativo === false) ? 'DESATIVADO' : avaliacao.status,
         updated_at: new Date()
       },
       include: {
@@ -255,6 +256,7 @@ export async function POST(request: Request) {
       entidade: 'Preventiva',
       entidade_id: novaPreventiva.id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_depois: novaPreventiva
     });
 
