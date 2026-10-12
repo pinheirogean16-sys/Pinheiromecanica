@@ -256,6 +256,16 @@ model Notificacao {
   @@index([usuario_id, lida, created_at])
 }
 
+model NotificacaoDeduplicacao {
+  id         String   @id
+  empresa_id String
+  dedup_key  String
+  created_at DateTime @default(now())
+
+  @@unique([empresa_id, dedup_key], map: "NotificacaoDeduplicacao_empresa_dedup_unique")
+  @@index([empresa_id])
+}
+
 model Orcamento {
   id               String             @id
   numero           String

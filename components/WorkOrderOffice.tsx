@@ -17,9 +17,10 @@ import PreventivaVinculoSelector from '@/components/PreventivaVinculoSelector';
 
 interface WorkOrderOfficeProps {
   onBack: () => void;
+  initialData?: any;
 }
 
-export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
+export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOfficeProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -281,6 +282,24 @@ export default function WorkOrderOffice({ onBack }: WorkOrderOfficeProps) {
       setSelectedPreventivas(prev => prev.includes(urlPrevId) ? prev : [...prev, urlPrevId]);
     }
   }, [searchParams]);
+
+  // Hidratar dados existentes (edição de OS ou reabertura)
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.cliente) setSelectedCliente(initialData.cliente);
+      if (initialData.veiculo) {
+        setSelectedVeiculo(initialData.veiculo);
+        if (initialData.veiculo.quilometragem && !kmVeiculo) setKmVeiculo(String(initialData.veiculo.quilometragem));
+        if (initialData.veiculo.horimetro_atual && !horimetroVeiculo) setHorimetroVeiculo(String(initialData.veiculo.horimetro_atual));
+      }
+      if (initialData.mecanico_id) setSelectedMecanico(initialData.mecanico_id);
+      if (initialData.diagnostico) setDiagnostico(initialData.diagnostico);
+      if (initialData.desconto) setDesconto(initialData.desconto);
+      if (Array.isArray(initialData.preventivas_ids) && initialData.preventivas_ids.length > 0) {
+        setSelectedPreventivas(initialData.preventivas_ids);
+      }
+    }
+  }, [initialData]);
 
   // Salvar rascunho ao mudar dados relevantes
   useEffect(() => {

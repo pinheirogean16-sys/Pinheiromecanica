@@ -1,6 +1,5 @@
 import { prisma } from '@/lib/prisma';
 import { notifyAdminsAndLeaders } from '@/lib/notificacoes';
-import { createAuditLog } from '@/lib/audit';
 import { log } from '@/lib/logger';
 import { randomUUID } from 'crypto';
 
@@ -132,23 +131,23 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
   };
 }
 
-// Mutex in-memory por tenant para evitar concorrência desordenada em notificarPreventivasPendentes
+// Mutex in-memory por tenant para alívio de requisições repetidas no mesmo processo
 const notificationLocks = new Map<string, number>();
 
 /**
  * Notifica administradores e líderes sobre preventivas vencidas ou próximas.
- * Protegido contra concorrência simultânea, requisições repetidas e isolado por empresa.
- * Deduplicação considera o ID do plano, o status e o ciclo atual, liberando alertas em novos ciclos.
+ * Utiliza deduplicação persistente no banco (NotificacaoDeduplicacao) com restrição única
+ * por (empresa_id, dedup_key), garantindo imunidade a concorrência entre múltiplas instâncias.
+ * O novo ciclo produz nova dedup_key, liberando novos alertas legítimos.
  */
 export async function notificarPreventivasPendentes(empresa_id: string) {
   try {
     if (!empresa_id || empresa_id === 'default') return;
 
-    // Mutex com expiração de 30 segundos
+    // Throttle no processo para evitar processamentos desnecessários em sequência
     const now = Date.now();
     const lastLock = notificationLocks.get(empresa_id) || 0;
     if (now - lastLock < 15000) {
-      // Bloqueio temporário ativo para esta empresa
       return;
     }
     notificationLocks.set(empresa_id, now);
@@ -168,53 +167,63 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
     });
 
     const umDiaAtras = new Date(now - 24 * 60 * 60 * 1000);
+    const hojeYMD = new Date().toISOString().split('T')[0];
 
     for (const p of preventivas) {
       const avaliacao = avaliarStatusPreventiva(p);
 
       if (avaliacao.status === 'VENCIDO' || avaliacao.status === 'PROXIMO') {
-        // Tag única com identificador de ciclo para permitir alerta legítimo após conclusão
         const cicloKm = p.proximo_km ?? '0';
         const cicloData = p.proxima_data ? new Date(p.proxima_data).toISOString().split('T')[0] : '0';
         const dedupTag = `[PREV:${p.id}:${avaliacao.status}:${cicloKm}:${cicloData}]`;
+        const dedupKey = `PREV_${p.id}_${avaliacao.status}_${cicloKm}_${cicloData}_${hojeYMD}`;
 
-        // 1. Checa se já existe notificação recente com a chave de ciclo
-        const jaNotificado = await prisma.notificacao.findFirst({
-          where: {
-            empresa_id,
-            mensagem: { contains: dedupTag },
-            created_at: { gte: umDiaAtras }
+        // 1. Tentar registrar a chave persistente com restrição de unicidade
+        let lockAdquirido = false;
+        try {
+          await (prisma as any).notificacaoDeduplicacao.create({
+            data: {
+              id: randomUUID(),
+              empresa_id,
+              dedup_key: dedupKey
+            }
+          });
+          lockAdquirido = true;
+        } catch (err: any) {
+          // Violação de constraint única (P2002 no Prisma ou ER_DUP_ENTRY no MySQL):
+          // Outra requisição/instância já gerou a notificação deste ciclo hoje.
+          if (err.code === 'P2002' || (err.message && (err.message.includes('unique') || err.message.includes('dedup_unique')))) {
+            continue;
           }
-        });
 
-        if (jaNotificado) {
-          continue;
+          // Se a tabela física NotificacaoDeduplicacao ainda não foi migrada pelo DBA (P2021)
+          if (err.code === 'P2021' || (err.message && err.message.includes("doesn't exist"))) {
+            // Fallback resiliente: verificar se já existe notificação recente com a chave de ciclo
+            const jaNotificado = await prisma.notificacao.findFirst({
+              where: {
+                empresa_id,
+                mensagem: { contains: dedupTag },
+                created_at: { gte: umDiaAtras }
+              }
+            });
+            if (jaNotificado) {
+              continue;
+            }
+            lockAdquirido = true;
+          } else {
+            // Erro real de banco (conexão, timeout, etc.) -> registrar e não ignorar silenciosamente
+            log('ERROR', 'PREVENTIVAS_NOTIF', 'Erro de banco ao verificar deduplicação de notificação', {
+              error: err.message,
+              empresa_id,
+              dedupKey
+            });
+            continue;
+          }
         }
 
-        // 2. Proteção transacional contra duplicação concorrente via AuditLog
-        const markerKey = `NOTIF_PREV_${p.id}_${avaliacao.status}_${cicloKm}_${cicloData}_${new Date().toISOString().split('T')[0]}`;
-        const markerExiste = await prisma.auditLog.findFirst({
-          where: {
-            empresa_id,
-            modulo: 'NOTIFICACAO_PREVENTIVA',
-            entidade_id: markerKey
-          }
-        });
-
-        if (markerExiste) {
+        if (!lockAdquirido) {
           continue;
         }
-
-        // Registrar marcador
-        await createAuditLog({
-          modulo: 'NOTIFICACAO_PREVENTIVA',
-          acao: 'DISPARAR_ALERTA',
-          entidade: 'Preventiva',
-          entidade_id: markerKey,
-          usuario: 'Sistema',
-          empresa_id,
-          dados_depois: { preventiva_id: p.id, status: avaliacao.status }
-        });
 
         const identificador = p.Veiculo?.placa 
           ? `${p.Veiculo.placa} (${p.Veiculo.modelo})` 
@@ -252,31 +261,25 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
   }
 }
 
-export interface ExecucaoPreventivaInput {
-  osId: string;
-  osNumero?: number | string;
-  veiculoId: string;
-  empresaId: string;
-  preventivaIds: string[];
-  kmVeiculo?: number | null;
-  horimetroVeiculo?: number | null;
-  usuario: {
-    id?: string;
-    name?: string;
-    email?: string;
-    role?: string;
-  };
-  observacoes?: string;
+export interface SincronizarPreventivasResult {
+  sucesso: boolean;
+  executadas: string[];
+  ignoradas: string[];
+  concorrente?: boolean;
+  erro?: string;
 }
 
 /**
  * Conclui explicitamente os planos preventivos selecionados quando uma Ordem de Serviço é FINALIZADA.
- * REQUISITOS OBRIGATÓRIOS:
+ * REQUISITOS OBRIGATÓRIOS DE INTEGRIDADE:
  * 1. OS deve estar estritamente no status FINALIZADA.
  * 2. Planos devem ser explicitamente vinculados (sem conclusão automática por substring).
  * 3. Validação de tenant (empresa_id) e vínculo com o veículo da OS.
  * 4. Proteção contra duplo avanço: se a OS já concluiu o plano, ignora com idempotência.
- * 5. Registro imutável de histórico preservado.
+ * 5. Atomicidade: inserção de PreventivaExecucao e avanço de Preventiva ocorrem dentro
+ *    da MESMA transação Prisma interativa tx.
+ * 6. Tratamento de concorrência: violação P2002 na chave (empresa_id, os_id, preventiva_id)
+ *    aborta a transação e impede duplo avanço.
  */
 export async function sincronizarPreventivasAposOS(
   os: any,
@@ -285,30 +288,34 @@ export async function sincronizarPreventivasAposOS(
     usuario?: any;
     kmVeiculo?: number | null;
     horimetroVeiculo?: number | null;
+    tx?: any; // Suporte a cliente transacional externo
   }
-) {
-  try {
-    if (!os?.id || !os?.veiculo_id || !os?.empresa_id) return;
+): Promise<SincronizarPreventivasResult> {
+  if (!os?.id || !os?.veiculo_id || !os?.empresa_id) {
+    return { sucesso: false, executadas: [], ignoradas: [], erro: 'Dados de OS incompletos' };
+  }
 
-    // Se a OS NÃO for FINALIZADA, ela NUNCA conclui planos preventivos!
-    if (os.status !== 'FINALIZADA') {
-      return;
-    }
+  // Se a OS NÃO for FINALIZADA, ela NUNCA conclui planos preventivos!
+  if (os.status !== 'FINALIZADA') {
+    return { sucesso: true, executadas: [], ignoradas: [] };
+  }
 
-    // Identificar IDs de preventivas explicitamente indicadas
-    const preventivasSolicitadas: string[] = [];
-    if (options?.preventivasIds && Array.isArray(options.preventivasIds)) {
-      preventivasSolicitadas.push(...options.preventivasIds.filter(Boolean));
-    }
+  // Identificar IDs de preventivas explicitamente indicadas
+  const preventivasSolicitadas: string[] = [];
+  if (options?.preventivasIds && Array.isArray(options.preventivasIds)) {
+    preventivasSolicitadas.push(...options.preventivasIds.filter(Boolean));
+  }
 
-    // Se nenhuma preventiva foi explicitamente indicada para conclusão nesta OS,
-    // não há nada a concluir. (A menção de strings ou componentes NÃO conclui planos)
-    if (preventivasSolicitadas.length === 0) {
-      return;
-    }
+  // Sem preventivas explicitamente selecionadas, não há nada a concluir
+  if (preventivasSolicitadas.length === 0) {
+    return { sucesso: true, executadas: [], ignoradas: [] };
+  }
 
-    const hoje = new Date();
-    const veiculo = await prisma.veiculo.findFirst({
+  const hoje = new Date();
+
+  // Função interna que executa as validações e alterações dentro do contexto transacional tx
+  const executarTransacao = async (tx: any): Promise<SincronizarPreventivasResult> => {
+    const veiculo = await tx.veiculo.findFirst({
       where: {
         id: os.veiculo_id,
         empresa_id: os.empresa_id
@@ -318,63 +325,41 @@ export async function sincronizarPreventivasAposOS(
     const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
     const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
 
+    const executadas: string[] = [];
+    const ignoradas: string[] = [];
+
     for (const prevId of preventivasSolicitadas) {
-      // 1. Validar existência, empresa, veículo e estado do plano
-      const plano = await prisma.preventiva.findFirst({
+      // 1. Validar existência, empresa, veículo e estado ativo do plano dentro de tx
+      const plano = await tx.preventiva.findFirst({
         where: {
           id: prevId,
           empresa_id: os.empresa_id,
           veiculo_id: os.veiculo_id,
-          ativo: true // Só conclui planos ativos
+          ativo: true
         }
       });
 
       if (!plano) {
         log('WARN', 'PREVENTIVAS', `Plano ${prevId} rejeitado para conclusão na OS ${os.id}: não encontrado, inativo ou veículo incompatível.`);
+        ignoradas.push(prevId);
         continue;
       }
 
       // 2. Proteção contra DUPLO AVANÇO (Idempotência persistente):
-      // Verificar se esta OS já concluiu este plano preventivo
-      let jaExecutadoPelaOS = false;
-
-      // Tentativa 2a: Verificar na tabela PreventivaExecucao
-      try {
-        const execucaoExistente = await (prisma as any).preventivaExecucao.findUnique({
-          where: {
-            empresa_os_prev_unique: {
-              empresa_id: os.empresa_id,
-              os_id: os.id,
-              preventiva_id: plano.id
-            }
-          }
-        });
-        if (execucaoExistente) {
-          jaExecutadoPelaOS = true;
-        }
-      } catch (err: any) {
-        // Se a tabela física PreventivaExecucao ainda não tiver sido migrada pelo DBA,
-        // checamos a persistência no AuditLog
-      }
-
-      // Tentativa 2b: Verificação de deduplicação no AuditLog
-      if (!jaExecutadoPelaOS) {
-        const auditLogExistente = await prisma.auditLog.findFirst({
-          where: {
+      // Verificar se esta OS já concluiu este plano preventivo dentro de tx
+      const execucaoExistente = await tx.preventivaExecucao.findUnique({
+        where: {
+          empresa_os_prev_unique: {
             empresa_id: os.empresa_id,
-            modulo: 'PREVENTIVA_EXECUCAO',
-            entidade: 'OrdemServico',
-            entidade_id: os.id,
-            acao: `CONCLUSAO_${plano.id}`
+            os_id: os.id,
+            preventiva_id: plano.id
           }
-        });
-        if (auditLogExistente) {
-          jaExecutadoPelaOS = true;
         }
-      }
+      });
 
-      if (jaExecutadoPelaOS) {
+      if (execucaoExistente) {
         log('INFO', 'PREVENTIVAS', `Plano ${plano.id} já foi concluído anteriormente pela OS ${os.id}. Duplo avanço evitado.`);
+        ignoradas.push(prevId);
         continue;
       }
 
@@ -401,64 +386,32 @@ export async function sincronizarPreventivasAposOS(
 
       const execucaoId = randomUUID();
 
-      // 4. Gravar execução na tabela PreventivaExecucao (se tabela estiver disponível)
-      try {
-        await (prisma as any).preventivaExecucao.create({
-          data: {
-            id: execucaoId,
-            empresa_id: os.empresa_id,
-            preventiva_id: plano.id,
-            veiculo_id: os.veiculo_id,
-            os_id: os.id,
-            data_conclusao: hoje,
-            km_conclusao: kmConclusao ? Math.round(Number(kmConclusao)) : null,
-            horimetro_conclusao: horimetroConclusao ? Number(horimetroConclusao) : null,
-            usuario_id: options?.usuario?.id || null,
-            usuario_nome: options?.usuario?.name || options?.usuario?.email || 'Mecânico/Sistema',
-            componente: plano.componente,
-            servico: plano.servico || plano.nome,
-            km_proximo_calculado: novoProximoKm,
-            horimetro_proximo_calculado: novoProximoHorimetro,
-            data_proxima_calculada: novaProximaData,
-            observacoes: options?.observacoes || `Executado via OS #${os.numero || os.id}`
-          }
-        });
-      } catch (err: any) {
-        // Tabela ainda pendente de migração no banco de produção
-      }
-
-      // 5. Registrar histórico imutável no AuditLog (garante retenção mesmo antes da migration)
-      await createAuditLog({
-        modulo: 'PREVENTIVA_EXECUCAO',
-        acao: `CONCLUSAO_${plano.id}`,
-        entidade: 'OrdemServico',
-        entidade_id: os.id,
-        usuario: options?.usuario?.name || options?.usuario?.email || 'Sistema',
-        empresa_id: os.empresa_id,
-        dados_antes: {
-          ciclo_anterior_km: plano.proximo_km,
-          ciclo_anterior_data: plano.proxima_data,
-          ciclo_anterior_horimetro: plano.proximo_horimetro,
-          ultimo_km: plano.ultimo_km,
-          ultima_data: plano.ultima_data
-        },
-        dados_depois: {
-          execucao_id: execucaoId,
+      // 4. Criar registro de execução histórica (ATÔMICO DENTRO DE tx)
+      // Se duas requisições concorrentes tentarem o mesmo registro simultaneamente,
+      // a restrição única PreventivaExecucao_empresa_os_prev_unique disparará P2002.
+      await tx.preventivaExecucao.create({
+        data: {
+          id: execucaoId,
+          empresa_id: os.empresa_id,
           preventiva_id: plano.id,
-          nome_plano: plano.nome || plano.servico || plano.componente,
+          veiculo_id: os.veiculo_id,
           os_id: os.id,
-          os_numero: os.numero,
-          km_conclusao: kmConclusao,
-          horimetro_conclusao: horimetroConclusao,
-          novo_proximo_km: novoProximoKm,
-          novo_proximo_horimetro: novoProximoHorimetro,
-          nova_proxima_data: novaProximaData,
-          data_conclusao: hoje.toISOString()
+          data_conclusao: hoje,
+          km_conclusao: kmConclusao ? Math.round(Number(kmConclusao)) : null,
+          horimetro_conclusao: horimetroConclusao ? Number(horimetroConclusao) : null,
+          usuario_id: options?.usuario?.id || null,
+          usuario_nome: options?.usuario?.name || options?.usuario?.email || 'Mecânico/Sistema',
+          componente: plano.componente,
+          servico: plano.servico || plano.nome,
+          km_proximo_calculado: novoProximoKm,
+          horimetro_proximo_calculado: novoProximoHorimetro,
+          data_proxima_calculada: novaProximaData,
+          observacoes: `Executado via OS #${os.numero || os.id}`
         }
       });
 
-      // 6. Atualizar plano Preventiva para o novo ciclo de forma limpa e consistente
-      await prisma.preventiva.update({
+      // 5. Atualizar o plano Preventiva para o novo ciclo (ATÔMICO DENTRO DE tx)
+      await tx.preventiva.update({
         where: { id: plano.id },
         data: {
           ultima_data: hoje,
@@ -475,82 +428,113 @@ export async function sincronizarPreventivasAposOS(
         }
       });
 
-      log('INFO', 'PREVENTIVAS', `Plano ${plano.id} avançado com sucesso para o próximo ciclo através da OS ${os.id}.`, {
-        novoProximoKm,
-        novoProximoHorimetro,
-        novaProximaData
-      }, options?.usuario?.name);
+      executadas.push(plano.id);
     }
-  } catch (error) {
-    console.error('Erro ao sincronizar preventivas após OS:', error);
+
+    return { sucesso: true, executadas, ignoradas };
+  };
+
+  try {
+    // Se o chamador já forneceu um tx (ex: rota de finalização em transação única), usa tx existente
+    if (options?.tx) {
+      return await executarTransacao(options.tx);
+    }
+
+    // Caso contrário, abre transação interativa própria garantindo atomicidade total
+    return await prisma.$transaction(async (tx) => {
+      return await executarTransacao(tx);
+    });
+  } catch (error: any) {
+    // Tratamento específico de concorrência: P2002 na constraint única composta
+    const isP2002 = error?.code === 'P2002' || (error?.message && error.message.includes('empresa_os_prev_unique'));
+    if (isP2002) {
+      log('INFO', 'PREVENTIVAS', `Concorrência detectada: a execução preventiva já foi concluída por outra requisição simultânea para esta OS (P2002). O plano não foi duplicado.`, {
+        osId: os.id,
+        preventivasSolicitadas
+      });
+      return {
+        sucesso: true,
+        executadas: [],
+        ignoradas: preventivasSolicitadas,
+        concorrente: true
+      };
+    }
+
+    // Se a tabela física PreventivaExecucao ainda não existe no ambiente remoto (migration pendente)
+    const isTableMissing = error?.code === 'P2021' || (error?.message && error.message.includes("doesn't exist"));
+    if (isTableMissing) {
+      log('ERROR', 'PREVENTIVAS', 'A tabela PreventivaExecucao ainda não foi aplicada no banco de dados. A integridade de preventivas requer a aplicação da migration 20261011120000_add_preventiva_execucao_historico.', {
+        error: error.message
+      });
+      return {
+        sucesso: false,
+        executadas: [],
+        ignoradas: preventivasSolicitadas,
+        erro: 'Tabela PreventivaExecucao pendente de migration no banco de dados.'
+      };
+    }
+
+    // Erros reais de conexão, timeout ou consistência são registrados e propagados
+    log('ERROR', 'PREVENTIVAS', 'Falha transacional ao sincronizar preventivas após OS', {
+      error: error?.message,
+      osId: os.id
+    });
+    return {
+      sucesso: false,
+      executadas: [],
+      ignoradas: preventivasSolicitadas,
+      erro: error?.message || 'Erro transacional ao sincronizar preventivas'
+    };
   }
 }
 
 /**
  * Recupera o histórico completo de execuções de um plano preventivo específico
+ * Busca diretamente da tabela relacional PreventivaExecucao (sem simulações em logs).
  */
 export async function obterHistoricoExecucoesPreventiva(preventivaId: string, empresaId: string) {
   try {
-    const execucoes: any[] = [];
-
-    // 1. Tentar ler da tabela PreventivaExecucao
-    try {
-      const dbExecs = await (prisma as any).preventivaExecucao.findMany({
-        where: {
-          preventiva_id: preventivaId,
-          empresa_id: empresaId
-        },
-        orderBy: {
-          data_conclusao: 'desc'
-        }
-      });
-      if (Array.isArray(dbExecs) && dbExecs.length > 0) {
-        return dbExecs;
-      }
-    } catch (e) {
-      // Tabela física ainda não aplicada em produção
-    }
-
-    // 2. Fallback resiliente: ler histórico do AuditLog
-    const auditLogs = await prisma.auditLog.findMany({
+    const dbExecs = await (prisma as any).preventivaExecucao.findMany({
       where: {
-        empresa_id: empresaId,
-        modulo: 'PREVENTIVA_EXECUCAO',
-        acao: `CONCLUSAO_${preventivaId}`
+        preventiva_id: preventivaId,
+        empresa_id: empresaId
       },
       orderBy: {
-        created_at: 'desc'
+        data_conclusao: 'desc'
       }
     });
 
-    for (const logItem of auditLogs) {
-      try {
-        const dados = typeof logItem.dados_depois === 'string'
-          ? JSON.parse(logItem.dados_depois)
-          : logItem.dados_depois;
-
-        execucoes.push({
-          id: dados?.execucao_id || logItem.id,
-          preventiva_id: preventivaId,
-          os_id: logItem.entidade_id,
-          os_numero: dados?.os_numero,
-          data_conclusao: dados?.data_conclusao ? new Date(dados.data_conclusao) : logItem.created_at,
-          km_conclusao: dados?.km_conclusao,
-          horimetro_conclusao: dados?.horimetro_conclusao,
-          usuario_nome: logItem.usuario,
-          km_proximo_calculado: dados?.novo_proximo_km,
-          horimetro_proximo_calculado: dados?.novo_proximo_horimetro,
-          data_proxima_calculada: dados?.nova_proxima_data ? new Date(dados.nova_proxima_data) : null,
-          created_at: logItem.created_at
-        });
-      } catch (e) {
-        // Ignora JSON malformado
-      }
+    return dbExecs || [];
+  } catch (e: any) {
+    if (e?.code === 'P2021' || (e?.message && e.message.includes("doesn't exist"))) {
+      log('WARN', 'PREVENTIVAS', 'Histórico de execuções indisponível: tabela PreventivaExecucao pendente de migration.');
+      return [];
     }
+    log('ERROR', 'PREVENTIVAS', 'Erro ao obter histórico de execuções de preventiva', { error: e?.message });
+    return [];
+  }
+}
 
-    return execucoes;
-  } catch (error) {
-    console.error('Erro ao obter histórico de preventivas:', error);
+/**
+ * Recupera as execuções de preventivas vinculadas a uma Ordem de Serviço específica
+ */
+export async function obterExecucoesPreventivasDaOS(osId: string, empresaId: string) {
+  try {
+    const execs = await (prisma as any).preventivaExecucao.findMany({
+      where: {
+        os_id: osId,
+        empresa_id: empresaId
+      },
+      orderBy: {
+        created_at: 'asc'
+      }
+    });
+    return execs || [];
+  } catch (e: any) {
+    if (e?.code === 'P2021' || (e?.message && e.message.includes("doesn't exist"))) {
+      return [];
+    }
+    log('ERROR', 'PREVENTIVAS', 'Erro ao obter execuções de preventivas da OS', { osId, error: e?.message });
     return [];
   }
 }

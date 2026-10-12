@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { z } from 'zod';
 import { OrdemServico_status as StatusOS } from '@prisma/client';
 import { notificarOSFinalizada, notificarEstoqueBaixo } from '@/lib/notificacoes';
-import { sincronizarPreventivasAposOS } from '@/lib/preventivas';
+import { sincronizarPreventivasAposOS, obterExecucoesPreventivasDaOS } from '@/lib/preventivas';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
@@ -372,13 +372,19 @@ export async function GET(
       };
     });
 
+    // Consultar execuções de preventivas vinculadas a esta OS com isolamento multiempresa
+    const preventivasExecucoes = await obterExecucoesPreventivasDaOS(id, user.empresa_id);
+    const preventivasIds = preventivasExecucoes.map((pe: any) => pe.preventiva_id);
+
     const ordem = {
       ...rest,
       cliente: Cliente,
       veiculo: Veiculo,
       mecanico: User,
       servicos: ServicoOS,
-      pecas_aplicadas: mappedPecas
+      pecas_aplicadas: mappedPecas,
+      preventivas_execucoes: preventivasExecucoes,
+      preventivas_ids: preventivasIds
     };
     
     console.log('OS API RESPONSE', ordem);

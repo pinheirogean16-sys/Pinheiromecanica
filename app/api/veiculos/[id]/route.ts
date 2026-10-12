@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { Veiculo_tipo } from '@prisma/client';
+import { validarEProcessarLeiturasVeiculo } from '@/lib/odometro-horimetro';
 
 const updateVeiculoSchema = z.object({
   placa: z.string().min(7).max(8).trim().transform(v => v.toUpperCase()).optional(),
@@ -15,7 +16,12 @@ const updateVeiculoSchema = z.object({
   tipo: z.nativeEnum(Veiculo_tipo).optional(),
   quilometragem: z.coerce.number().optional().nullable(),
   horimetro_atual: z.coerce.number().optional().nullable(),
-  cliente_id: z.string().min(1).optional()
+  cliente_id: z.string().min(1).optional(),
+  confirmar_salto_km: z.boolean().optional().default(false),
+  confirmar_salto_horimetro: z.boolean().optional().default(false),
+  autorizar_reducao_km: z.boolean().optional().default(false),
+  autorizar_reducao_horimetro: z.boolean().optional().default(false),
+  justificativa_ajuste_leitura: z.string().optional().nullable()
 });
 
 export async function GET(
@@ -109,12 +115,42 @@ export async function PUT(
       }
     }
 
+    // 1. Processar validação de odômetro e horímetro de forma protegida
+    if (body.quilometragem !== undefined || body.horimetro_atual !== undefined) {
+      const leiturasRes = await validarEProcessarLeiturasVeiculo({
+        veiculoId: id,
+        empresaId: user.empresa_id,
+        kmInformado: body.quilometragem,
+        horimetroInformado: body.horimetro_atual,
+        confirmarSaltoKm: body.confirmar_salto_km,
+        confirmarSaltoHorimetro: body.confirmar_salto_horimetro,
+        autorizarReducaoKm: body.autorizar_reducao_km,
+        autorizarReducaoHorimetro: body.autorizar_reducao_horimetro,
+        justificativa: body.justificativa_ajuste_leitura,
+        usuario: user,
+        contexto: 'EDICAO_VEICULO'
+      });
+
+      if (!leiturasRes.sucesso) {
+        return NextResponse.json({ error: leiturasRes.erro }, { status: 400 });
+      }
+    }
+
+    // 2. Whitelist explícita de campos cadastrais (impede injeção e mutação arbitrária de campos de sistema)
+    const updateData: any = {
+      updated_by: user?.name || user?.email || 'Sistema'
+    };
+
+    if (body.placa !== undefined) updateData.placa = body.placa;
+    if (body.modelo !== undefined) updateData.modelo = body.modelo;
+    if (body.marca !== undefined) updateData.marca = body.marca;
+    if (body.ano !== undefined) updateData.ano = body.ano;
+    if (body.tipo !== undefined) updateData.tipo = body.tipo;
+    if (body.cliente_id !== undefined) updateData.cliente_id = body.cliente_id;
+
     const veiculo = await prisma.veiculo.update({
       where: { id },
-      data: {
-        ...body,
-        updated_by: user?.name || user?.email || 'Sistema'
-      }
+      data: updateData
     });
 
     await createAuditLog({
@@ -123,6 +159,7 @@ export async function PUT(
       entidade: 'Veiculo',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
       dados_depois: veiculo
     });

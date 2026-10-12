@@ -15,6 +15,7 @@ import { parseHoras, formatHoras, roundDecimal } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
 import QuickPartModal, { QuickPartSuccessData } from '@/components/QuickPartModal';
+import PreventivaVinculoSelector from '@/components/PreventivaVinculoSelector';
 
 function sanitizeWorkOrderPayload(payload: any) {
   console.log("Payload Final OS", payload);
@@ -149,6 +150,18 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [localCidade, setLocalCidade] = useState('');
   const [localEstado, setLocalEstado] = useState('');
   const [localGps, setLocalGps] = useState('');
+
+  // Manutenção Preventiva & Leituras de Odômetro/Horímetro
+  const [preventivasVeiculo, setPreventivasVeiculo] = useState<any[]>([]);
+  const [selectedPreventivas, setSelectedPreventivas] = useState<string[]>([]);
+  const [preventivasExecutadas, setPreventivasExecutadas] = useState<any[]>([]);
+  const [kmVeiculo, setKmVeiculo] = useState<string>('');
+  const [horimetroVeiculo, setHorimetroVeiculo] = useState<string>('');
+  const [confirmarSaltoKm, setConfirmarSaltoKm] = useState(false);
+  const [confirmarSaltoHorimetro, setConfirmarSaltoHorimetro] = useState(false);
+  const [autorizarReducaoKm, setAutorizarReducaoKm] = useState(false);
+  const [autorizarReducaoHorimetro, setAutorizarReducaoHorimetro] = useState(false);
+  const [justificativaAjuste, setJustificativaAjuste] = useState('');
 
   // Métodos de Assinatura por Canvas
   const startDrawing = (e: any) => {
@@ -354,6 +367,30 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           setDiasEntreParcelas(data.dias_entre_parcelas || 28);
           if (data.data_vencimento_primeira) {
             setDataPrimeiraParcela(new Date(data.data_vencimento_primeira).toISOString().split('T')[0]);
+          }
+
+          // Hidratar preventivas e leituras de odômetro/horímetro
+          if (Array.isArray(data.preventivas_ids)) {
+            setSelectedPreventivas(data.preventivas_ids);
+          }
+          if (Array.isArray(data.preventivas_execucoes)) {
+            setPreventivasExecutadas(data.preventivas_execucoes);
+          }
+          if (data.veiculo?.quilometragem) {
+            setKmVeiculo(String(data.veiculo.quilometragem));
+          }
+          if (data.veiculo?.horimetro_atual) {
+            setHorimetroVeiculo(String(data.veiculo.horimetro_atual));
+          }
+          if (data.veiculo_id) {
+            fetch(`/api/preventivas?veiculo_id=${data.veiculo_id}`)
+              .then(res => res.json())
+              .then(pList => {
+                if (Array.isArray(pList)) {
+                  setPreventivasVeiculo(pList.filter((p: any) => p.ativo !== false));
+                }
+              })
+              .catch(console.error);
           }
           
           // Mapear serviços
@@ -783,7 +820,17 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           local_atendimento: tipoOS === 'CAMPO' ? localAtendimento : '',
           local_cidade: tipoOS === 'CAMPO' ? localCidade : '',
           local_estado: tipoOS === 'CAMPO' ? localEstado : '',
-          local_gps: tipoOS === 'CAMPO' ? localGps : ''
+          local_gps: tipoOS === 'CAMPO' ? localGps : '',
+
+          // Odômetro, Horímetro e Preventivas
+          km_veiculo: kmVeiculo ? parseInt(kmVeiculo) : undefined,
+          horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : undefined,
+          confirmar_salto_km: confirmarSaltoKm,
+          confirmar_salto_horimetro: confirmarSaltoHorimetro,
+          autorizar_reducao_km: autorizarReducaoKm,
+          autorizar_reducao_horimetro: autorizarReducaoHorimetro,
+          justificativa_ajuste_leitura: justificativaAjuste,
+          preventivas_ids: selectedPreventivas
         };
 
         console.log('ANTES SALVAR (AUTOSAVE)', {
@@ -964,7 +1011,17 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         local_atendimento: tipoOS === 'CAMPO' ? localAtendimento : '',
         local_cidade: tipoOS === 'CAMPO' ? localCidade : '',
         local_estado: tipoOS === 'CAMPO' ? localEstado : '',
-        local_gps: tipoOS === 'CAMPO' ? localGps : ''
+        local_gps: tipoOS === 'CAMPO' ? localGps : '',
+
+        // Odômetro, Horímetro e Preventivas
+        km_veiculo: kmVeiculo ? parseInt(kmVeiculo) : undefined,
+        horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : undefined,
+        confirmar_salto_km: confirmarSaltoKm,
+        confirmar_salto_horimetro: confirmarSaltoHorimetro,
+        autorizar_reducao_km: autorizarReducaoKm,
+        autorizar_reducao_horimetro: autorizarReducaoHorimetro,
+        justificativa_ajuste_leitura: justificativaAjuste,
+        preventivas_ids: selectedPreventivas
       };
 
       console.log('ANTES SALVAR', {
@@ -1157,6 +1214,58 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                   <p className="text-[10px] font-mono text-orange-500 font-bold">{ordem?.veiculo?.placa}</p>
                 </div>
               </div>
+
+              {/* MANUTENÇÃO PREVENTIVA & LEITURAS DE ODÔMETRO/HORÍMETRO */}
+              {ordem?.veiculo && (
+                <div className="space-y-4 pt-2">
+                  <PreventivaVinculoSelector
+                    veiculo={ordem.veiculo}
+                    kmVeiculo={kmVeiculo}
+                    setKmVeiculo={setKmVeiculo}
+                    horimetroVeiculo={horimetroVeiculo}
+                    setHorimetroVeiculo={setHorimetroVeiculo}
+                    selectedPreventivas={selectedPreventivas}
+                    setSelectedPreventivas={setSelectedPreventivas}
+                    confirmarSaltoKm={confirmarSaltoKm}
+                    setConfirmarSaltoKm={setConfirmarSaltoKm}
+                    confirmarSaltoHorimetro={confirmarSaltoHorimetro}
+                    setConfirmarSaltoHorimetro={setConfirmarSaltoHorimetro}
+                    autorizarReducaoKm={autorizarReducaoKm}
+                    setAutorizarReducaoKm={setAutorizarReducaoKm}
+                    autorizarReducaoHorimetro={autorizarReducaoHorimetro}
+                    setAutorizarReducaoHorimetro={setAutorizarReducaoHorimetro}
+                    justificativaAjuste={justificativaAjuste}
+                    setJustificativaAjuste={setJustificativaAjuste}
+                    preventivas={preventivasVeiculo}
+                  />
+
+                  {/* Histórico de Execuções já Concluídas nesta OS */}
+                  {preventivasExecutadas.length > 0 && (
+                    <div className="bg-zinc-950/80 border border-green-500/20 rounded-2xl p-4 space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-green-400 flex items-center gap-1.5">
+                        <Check size={14} className="text-green-500" />
+                        Planos Preventivos Concluídos nesta OS
+                      </span>
+                      <div className="space-y-1.5">
+                        {preventivasExecutadas.map((pe: any) => (
+                          <div key={pe.id} className="flex items-center justify-between p-2.5 bg-zinc-900/60 rounded-xl border border-zinc-800 text-[11px]">
+                            <div>
+                              <p className="font-bold text-white uppercase">{pe.servico || pe.componente}</p>
+                              <p className="text-[9px] text-zinc-500">
+                                Ciclo #{pe.ciclo_numero} • {new Date(pe.data_conclusao).toLocaleDateString('pt-BR')}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              {pe.km_conclusao && <p className="font-mono text-zinc-300 font-bold">{pe.km_conclusao.toLocaleString('pt-BR')} KM</p>}
+                              {pe.horimetro_conclusao && <p className="font-mono text-zinc-400">{pe.horimetro_conclusao} h</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2 pt-2">
                 <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Mecânico Atribuído</label>
