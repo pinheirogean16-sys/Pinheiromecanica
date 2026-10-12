@@ -318,6 +318,7 @@ export async function sincronizarPreventivasAposOS(
     kmVeiculo?: number | null;
     horimetroVeiculo?: number | null;
     tx?: any; // Suporte a cliente transacional externo
+    prismaClient?: any; // Suporte a cliente Prisma injetado (ex: testes de integração em banco isolado)
   }
 ): Promise<SincronizarPreventivasResult> {
   if (!os?.id || !os?.veiculo_id || !os?.empresa_id) {
@@ -378,14 +379,9 @@ export async function sincronizarPreventivasAposOS(
         }
 
         // 2. Proteção contra duplo avanço
-        const execucaoExistente = await (tx as any).preventivaExecucao.findUnique({
+        const execucaoExistente = await tx.preventivaExecucao.findUnique({
           where: {
             empresa_id_os_id_preventiva_id: {
-              empresa_id: os.empresa_id,
-              os_id: os.id,
-              preventiva_id: plano.id
-            },
-            empresa_os_prev_unique: {
               empresa_id: os.empresa_id,
               os_id: os.id,
               preventiva_id: plano.id
@@ -463,7 +459,7 @@ export async function sincronizarPreventivasAposOS(
 
           executadas.push(plano.id);
         } catch (innerErr: any) {
-          const isP2002 = innerErr?.code === 'P2002' || (innerErr?.message && innerErr.message.includes('empresa_os_prev_unique'));
+          const isP2002 = innerErr?.code === 'P2002' || (innerErr?.message && (innerErr.message.includes('empresa_os_prev_unique') || innerErr.message.includes('empresa_id_os_id_preventiva_id')));
           if (isP2002) {
             log('INFO', 'PREVENTIVAS', `Plano ${prevId} colidiu com P2002 em tx externa. Já registrado.`);
             ignoradas.push(prevId);
@@ -499,7 +495,8 @@ export async function sincronizarPreventivasAposOS(
   // Execução isolada (sem tx externa):
   // Cada preventiva é processada de forma atômica individual para que a colisão de concorrência
   // em um plano específico (P2002) NÃO aborte nem marque falsamente os outros planos como finalizados.
-  const veiculo = await prisma.veiculo.findFirst({
+  const dbClient = options?.prismaClient || prisma;
+  const veiculo = await dbClient.veiculo.findFirst({
     where: {
       id: os.veiculo_id,
       empresa_id: os.empresa_id
@@ -518,7 +515,7 @@ export async function sincronizarPreventivasAposOS(
       let planoInvalido = false;
       let jaExecutado = false;
 
-      await prisma.$transaction(async (tx) => {
+      await dbClient.$transaction(async (tx: any) => {
         // 1. Validar plano dentro de tx
         const plano = await tx.preventiva.findFirst({
           where: {
@@ -536,14 +533,9 @@ export async function sincronizarPreventivasAposOS(
         }
 
         // 2. Proteção contra duplo avanço
-        const execucaoExistente = await (tx as any).preventivaExecucao.findUnique({
+        const execucaoExistente = await tx.preventivaExecucao.findUnique({
           where: {
             empresa_id_os_id_preventiva_id: {
-              empresa_id: os.empresa_id,
-              os_id: os.id,
-              preventiva_id: plano.id
-            },
-            empresa_os_prev_unique: {
               empresa_id: os.empresa_id,
               os_id: os.id,
               preventiva_id: plano.id
@@ -625,7 +617,7 @@ export async function sincronizarPreventivasAposOS(
         executadas.push(prevId);
       }
     } catch (err: any) {
-      const isP2002 = err?.code === 'P2002' || (err?.message && err.message.includes('empresa_os_prev_unique'));
+      const isP2002 = err?.code === 'P2002' || (err?.message && (err.message.includes('empresa_os_prev_unique') || err.message.includes('empresa_id_os_id_preventiva_id')));
       if (isP2002) {
         // Concorrência atômica: outra requisição concluiu este plano específico.
         // Consideramos este plano concluído (sem duplo avanço) e CONTINUAMOS o processamento das demais!
@@ -684,10 +676,12 @@ export interface ResultadoConsultaExecucoes {
  */
 export async function obterHistoricoExecucoesPreventiva(
   preventivaId: string, 
-  empresaId: string
+  empresaId: string,
+  prismaClient?: any
 ): Promise<ResultadoConsultaExecucoes> {
   try {
-    const dbExecs = await (prisma as any).preventivaExecucao.findMany({
+    const db = prismaClient || prisma;
+    const dbExecs = await (db as any).preventivaExecucao.findMany({
       where: {
         preventiva_id: preventivaId,
         empresa_id: empresaId
@@ -731,10 +725,12 @@ export async function obterHistoricoExecucoesPreventiva(
  */
 export async function obterExecucoesPreventivasDaOS(
   osId: string, 
-  empresaId: string
+  empresaId: string,
+  prismaClient?: any
 ): Promise<ResultadoConsultaExecucoes> {
   try {
-    const execs = await (prisma as any).preventivaExecucao.findMany({
+    const db = prismaClient || prisma;
+    const execs = await (db as any).preventivaExecucao.findMany({
       where: {
         os_id: osId,
         empresa_id: empresaId
