@@ -38,11 +38,25 @@ export async function GET(
       return NextResponse.json({ error: 'Preventiva não encontrada' }, { status: 404 });
     }
 
-    const historico = await obterHistoricoExecucoesPreventiva(id, user.empresa_id);
+    const resultadoHistorico = await obterHistoricoExecucoesPreventiva(id, user.empresa_id);
+
+    if (resultadoHistorico.indisponivel) {
+      return NextResponse.json({
+        preventiva,
+        historico: [],
+        migration_pendente: resultadoHistorico.motivo === 'TABELA_INEXISTENTE',
+        indisponivel: true,
+        motivo: resultadoHistorico.motivo,
+        aviso: resultadoHistorico.erro,
+        erro: resultadoHistorico.erro
+      }, { status: resultadoHistorico.motivo === 'TABELA_INEXISTENTE' ? 200 : 503 });
+    }
 
     return NextResponse.json({
       preventiva,
-      historico
+      historico: resultadoHistorico.dados,
+      indisponivel: false,
+      migration_pendente: false
     });
   } catch (error: any) {
     log('ERROR', 'PREVENTIVAS_HISTORICO', 'Erro ao obter histórico de preventiva', { error }, 'sistema');

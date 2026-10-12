@@ -373,7 +373,8 @@ export async function GET(
     });
 
     // Consultar execuções de preventivas vinculadas a esta OS com isolamento multiempresa
-    const preventivasExecucoes = await obterExecucoesPreventivasDaOS(id, user.empresa_id);
+    const execsResult = await obterExecucoesPreventivasDaOS(id, user.empresa_id);
+    const preventivasExecucoes = execsResult.dados || [];
     const preventivasIds = preventivasExecucoes.map((pe: any) => pe.preventiva_id);
 
     const ordem = {
@@ -384,7 +385,10 @@ export async function GET(
       servicos: ServicoOS,
       pecas_aplicadas: mappedPecas,
       preventivas_execucoes: preventivasExecucoes,
-      preventivas_ids: preventivasIds
+      preventivas_ids: preventivasIds,
+      preventivas_historico_indisponivel: execsResult.indisponivel,
+      preventivas_historico_motivo: execsResult.motivo || null,
+      preventivas_historico_erro: execsResult.erro || null
     };
     
     console.log('OS API RESPONSE', ordem);
@@ -698,6 +702,20 @@ export async function PATCH(
 
       if (body.status === 'FINALIZADA') {
         await gerarMovimentacaoFinanceira(tx, ordem, user?.name || user?.email || 'Sistema');
+
+        // Sincronização atômica de preventivas dentro da transação de finalização
+        if (preventivasIds && preventivasIds.length > 0) {
+          const syncPrev = await sincronizarPreventivasAposOS(ordem, {
+            tx,
+            preventivasIds,
+            usuario: user,
+            kmVeiculo: leiturasRes.kmFinalAtualizar,
+            horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
+          });
+          if (!syncPrev.sucesso) {
+            throw new Error(syncPrev.erro || 'Falha ao sincronizar manutenções preventivas vinculadas à OS');
+          }
+        }
       }
 
       return ordem;
@@ -720,12 +738,6 @@ export async function PATCH(
         if (antes.status !== 'FINALIZADA') {
           await notificarOSFinalizada(result);
         }
-        await sincronizarPreventivasAposOS(result, {
-          preventivasIds,
-          usuario: user,
-          kmVeiculo: leiturasRes.kmFinalAtualizar,
-          horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
-        });
       }
 
       if (body.pecas && body.pecas.length > 0) {
@@ -1144,6 +1156,20 @@ export async function PUT(
       if (body.status === 'FINALIZADA') {
         console.log('[PUT OS] PASSO 9 - gerarMovimentacaoFinanceira');
         await gerarMovimentacaoFinanceira(tx, ordemFinal, user?.name || user?.email || 'Sistema');
+
+        // Sincronização atômica de preventivas dentro da transação de finalização
+        if (preventivasIds && preventivasIds.length > 0) {
+          const syncPrev = await sincronizarPreventivasAposOS(ordemFinal, {
+            tx,
+            preventivasIds,
+            usuario: user,
+            kmVeiculo: leiturasRes.kmFinalAtualizar,
+            horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
+          });
+          if (!syncPrev.sucesso) {
+            throw new Error(syncPrev.erro || 'Falha ao sincronizar manutenções preventivas vinculadas à OS');
+          }
+        }
       }
 
       return ordemFinal;
@@ -1171,12 +1197,6 @@ export async function PUT(
         if (antes.status !== 'FINALIZADA') {
           await notificarOSFinalizada(result);
         }
-        await sincronizarPreventivasAposOS(result, {
-          preventivasIds,
-          usuario: user,
-          kmVeiculo: leiturasRes.kmFinalAtualizar,
-          horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
-        });
       }
       if (body.pecas && body.pecas.length > 0) {
         for (const p of body.pecas) {

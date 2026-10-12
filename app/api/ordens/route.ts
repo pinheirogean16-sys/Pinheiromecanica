@@ -548,6 +548,21 @@ export async function POST(request: Request) {
             include: { Veiculo: true, Cliente: true }
           });
 
+          // Se a OS for criada já como FINALIZADA e houver preventivas vinculadas,
+          // a sincronização é atômica com a própria criação da OS
+          if (body.status === 'FINALIZADA' && preventivasIds && preventivasIds.length > 0) {
+            const syncPrev = await sincronizarPreventivasAposOS(updatedOrdem, {
+              tx,
+              preventivasIds,
+              usuario: user,
+              kmVeiculo: leiturasRes.kmFinalAtualizar,
+              horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
+            });
+            if (!syncPrev.sucesso) {
+              throw new Error(syncPrev.erro || 'Falha ao sincronizar manutenções preventivas vinculadas à OS');
+            }
+          }
+
           await createAuditLog({
             modulo: 'OS',
             acao: 'CRIAR',
@@ -579,12 +594,6 @@ export async function POST(request: Request) {
       await notificarNovaOS(result);
       if (result.status === 'FINALIZADA') {
         await notificarOSFinalizada(result);
-        await sincronizarPreventivasAposOS(result, {
-          preventivasIds,
-          usuario: user,
-          kmVeiculo: leiturasRes.kmFinalAtualizar,
-          horimetroVeiculo: leiturasRes.horimetroFinalAtualizar
-        });
       }
       if (body.pecas && body.pecas.length > 0) {
         for (const p of (body.pecas as any[])) {
