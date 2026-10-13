@@ -17,7 +17,7 @@ const STATIC_EXTENSIONS =
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Assets estáticos
+  // 1. Assets estáticos e internos
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/_vercel') ||
@@ -35,8 +35,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Apenas verifica existência do cookie (rápido)
-  // A validação real acontece em cada API via requireAuth()
+  // 3. Verifica apenas existência do cookie (rápido, sem decodificar)
+  // A validação real do JWT acontece em cada API via requireAuth()
   const token = request.cookies.get('auth-token')?.value;
 
   if (!token) {
