@@ -8,15 +8,7 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
 
   // ============================================================
-  // INSTRUMENTATION (para console override global)
-  // ============================================================
-  experimental: {
-    instrumentationHook: true,
-  },
-
-  // ============================================================
   // ESLINT (temporariamente desligado durante build)
-  // Motivo: config precisa ser ajustada com calma
   // O TypeScript continua sendo verificado
   // ============================================================
   eslint: {
