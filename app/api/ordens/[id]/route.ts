@@ -7,7 +7,7 @@ import { notificarOSFinalizada, notificarEstoqueBaixo } from '@/lib/notificacoes
 import { sincronizarPreventivasAposOS, obterExecucoesPreventivasDaOS } from '@/lib/preventivas';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
-import { apiError } from '@/lib/handle-api-error';
+import { apiError } from '@/lib/api-error';
 import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
 import { converterUnidade } from '@/lib/unidades';
