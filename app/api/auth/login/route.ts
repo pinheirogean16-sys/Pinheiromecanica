@@ -2,80 +2,140 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { signToken } from '@/lib/auth';
+import { log } from '@/lib/logger';
 
-// Rate limiting simples (em memória - para produção usar Redis)
+// ============================================================
+// RATE LIMITING
+// ⚠️ TODO: Migrar para Redis ou tabela no banco (multi-instância)
+// ============================================================
 const loginAttempts = new Map<string, { count: number; lockUntil: number }>();
 
+const MAX_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 5 * 60 * 1000; // 5 minutos
+
 export async function POST(request: Request) {
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown';
+
   try {
-    const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    
-    // Verificar rate limit
+    // ============================================================
+    // 1. Verificar rate limit
+    // ============================================================
     const attempt = loginAttempts.get(ip);
-    if (attempt) {
-      if (attempt.lockUntil > Date.now()) {
-        return NextResponse.json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' }, { status: 429 });
-      }
-      if (attempt.count >= 5) {
-        loginAttempts.set(ip, { count: attempt.count, lockUntil: Date.now() + 5 * 60 * 1000 });
-        return NextResponse.json({ error: 'Conta bloqueada por 5 minutos.' }, { status: 429 });
-      }
+
+    if (attempt && attempt.lockUntil > Date.now()) {
+      const minutesLeft = Math.ceil((attempt.lockUntil - Date.now()) / 60000);
+      return NextResponse.json(
+        { error: `Muitas tentativas. Tente novamente em ${minutesLeft} min.` },
+        { status: 429 }
+      );
     }
 
+    if (attempt && attempt.count >= MAX_ATTEMPTS && attempt.lockUntil <= Date.now()) {
+      loginAttempts.delete(ip);
+    }
+
+    // ============================================================
+    // 2. Validar entrada
+    // ============================================================
     const body = await request.json();
     const { email, password } = body;
-    
-    const user = await prisma.user.findUnique({ where: { email } });
-    
-    if (!user) {
-      const current = loginAttempts.get(ip) || { count: 0, lockUntil: 0 };
-      loginAttempts.set(ip, { count: current.count + 1, lockUntil: current.lockUntil });
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email e senha são obrigatórios' },
+        { status: 400 }
+      );
+    }
+
+    // ============================================================
+    // 3. Buscar usuário (SEMPRE filtra por ativo = true)
+    // ============================================================
+    const user = await prisma.user.findUnique({
+      where: { email: String(email).toLowerCase().trim() },
+    });
+
+    if (!user || !user.ativo) {
+      registrarTentativa(ip);
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
-    
+
+    // ============================================================
+    // 4. Validar senha
+    // ============================================================
     const validPassword = await bcrypt.compare(password, user.password_hash);
-    
+
     if (!validPassword) {
-      const current = loginAttempts.get(ip) || { count: 0, lockUntil: 0 };
-      loginAttempts.set(ip, { count: current.count + 1, lockUntil: current.lockUntil });
+      registrarTentativa(ip);
+      log('WARN', 'AUTH', 'Tentativa de login falhou', { email, ip });
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
-    
-    // Se sucesso, resetar tentativas
+
+    // ============================================================
+    // 5. Validar empresa (multi-tenancy)
+    // ============================================================
+    if (!user.empresa_id || user.empresa_id === 'default') {
+      log('ERROR', 'AUTH', 'Usuário sem empresa válida', { userId: user.id });
+      return NextResponse.json(
+        { error: 'Usuário sem empresa vinculada. Contate o administrador.' },
+        { status: 403 }
+      );
+    }
+
+    // ============================================================
+    // 6. Sucesso: limpar rate limit e gerar token
+    // ============================================================
     loginAttempts.delete(ip);
 
-    if (!user.empresa_id || user.empresa_id === 'default') {
-      return NextResponse.json({ error: 'Usuário sem empresa válida vinculada' }, { status: 403 });
-    }
-
-    const token = signToken({ 
-      id: user.id, 
-      email: user.email, 
-      name: user.name, 
+    const token = await signToken({
+      id: user.id,
+      email: user.email,
+      name: user.name,
       role: user.role,
-      empresa_id: user.empresa_id
+      empresa_id: user.empresa_id,
     });
-    
-    // Criar resposta E setar cookie
-    const response = NextResponse.json({ 
-      success: true, 
+
+    // ============================================================
+    // 7. Resposta + Cookie seguro
+    // ============================================================
+    const response = NextResponse.json({
+      success: true,
       redirect: '/dashboard',
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, empresa_id: user.empresa_id }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        empresa_id: user.empresa_id,
+      },
     });
-    
-    // Cookie com opções robustas e seguras
+
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 dias (igual ao JWT)
-      path: '/'
+      maxAge: 60 * 60 * 8, // 8 horas (alinha com o JWT)
+      path: '/',
     });
-    
+
+    log('INFO', 'AUTH', 'Login bem-sucedido', { userId: user.id, ip });
+
     return response;
-    
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    log('ERROR', 'AUTH', 'Erro interno no login', { error: error.message, ip });
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
+}
+
+function registrarTentativa(ip: string) {
+  const current = loginAttempts.get(ip) || { count: 0, lockUntil: 0 };
+  const newCount = current.count + 1;
+  const shouldLock = newCount >= MAX_ATTEMPTS;
+
+  loginAttempts.set(ip, {
+    count: newCount,
+    lockUntil: shouldLock ? Date.now() + LOCK_DURATION_MS : 0,
+  });
 }
