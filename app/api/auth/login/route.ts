@@ -51,13 +51,13 @@ export async function POST(request: Request) {
     }
 
     // ============================================================
-    // 3. Buscar usuário (SEMPRE filtra por ativo = true)
+    // 3. Buscar usuário
     // ============================================================
     const user = await prisma.user.findUnique({
       where: { email: String(email).toLowerCase().trim() },
     });
 
-    if (!user || !user.ativo) {
+    if (!user) {
       registrarTentativa(ip);
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
