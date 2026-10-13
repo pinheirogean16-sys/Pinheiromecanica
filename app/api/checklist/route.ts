@@ -1,7 +1,8 @@
-import { NextResponse, NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
-import * as crypto from "crypto";
+import { NextResponse, NextRequest } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/api-auth';
+import { log } from '@/lib/logger';
+import * as crypto from 'crypto';
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,26 +10,23 @@ export async function GET(req: NextRequest) {
     if (error) return error;
 
     const checklists = await prisma.checklist.findMany({
-      where: {
-        empresa_id: user.empresa_id
-      },
+      where: { empresa_id: user.empresa_id },
       include: {
         ChecklistItem: {
-          orderBy: {
-            ordem: "asc",
-          },
+          orderBy: { ordem: 'asc' },
         },
       },
-      orderBy: {
-        created_at: "desc",
-      },
+      orderBy: { created_at: 'desc' },
     });
 
     return NextResponse.json(checklists);
   } catch (error: any) {
-    console.error("[CHECKLIST GET ALL ERROR]", error);
+    log('ERROR', 'CHECKLIST', 'Erro ao listar checklists', {
+      error: error?.message,
+      stack: error?.stack,
+    });
     return NextResponse.json(
-      { error: "Erro ao buscar checklists", details: error?.message },
+      { error: 'Erro ao buscar checklists' },
       { status: 500 }
     );
   }
@@ -40,8 +38,6 @@ export async function POST(req: NextRequest) {
     if (error) return error;
 
     const body = await req.json();
-    console.log("[CHECKLIST CREATE INPUT]", JSON.stringify(body, null, 2));
-
     const { nome, descricao, categoria, ativo, itens } = body;
 
     if (!nome) {
@@ -53,22 +49,16 @@ export async function POST(req: NextRequest) {
 
     const checklistId = crypto.randomUUID();
 
-    // Map the array input 'itens' to relation 'ChecklistItem' in Prisma schema
     const checklistItemsData = Array.isArray(itens)
       ? itens.map((item: any, index: number) => ({
           id: item.id || crypto.randomUUID(),
-          descricao: item.descricao || "",
-          tipo: item.tipo || "TEXTO",
-          obrigatorio: typeof item.obrigatorio === "boolean" ? item.obrigatorio : true,
-          ordem: typeof item.ordem === "number" ? item.ordem : index,
+          descricao: item.descricao || '',
+          tipo: item.tipo || 'TEXTO',
+          obrigatorio:
+            typeof item.obrigatorio === 'boolean' ? item.obrigatorio : true,
+          ordem: typeof item.ordem === 'number' ? item.ordem : index,
         }))
       : [];
-
-    const updated_at = new Date();
-    
-    console.error('CHECKLIST BODY', JSON.stringify(body, null, 2));
-    console.error('CHECKLIST CATEGORIA', categoria);
-    console.error('CHECKLIST UPDATED_AT', updated_at);
 
     const createdChecklist = await prisma.checklist.create({
       data: {
@@ -76,9 +66,9 @@ export async function POST(req: NextRequest) {
         nome,
         descricao: descricao || null,
         categoria: categoria || null,
-        ativo: typeof ativo === "boolean" ? ativo : true,
+        ativo: typeof ativo === 'boolean' ? ativo : true,
         empresa_id: user.empresa_id,
-        updated_at,
+        updated_at: new Date(),
         ChecklistItem: {
           create: checklistItemsData,
         },
@@ -88,16 +78,20 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    log('INFO', 'CHECKLIST', 'Checklist criado', {
+      checklistId: createdChecklist.id,
+      itens: checklistItemsData.length,
+      userId: user.id,
+    });
+
     return NextResponse.json(createdChecklist, { status: 201 });
   } catch (error: any) {
-    console.error('CHECKLIST CREATE FULL ERROR', error);
-    console.error('CHECKLIST CREATE MESSAGE', error?.message);
-    console.error('CHECKLIST CREATE STACK', error?.stack);
-
+    log('ERROR', 'CHECKLIST', 'Erro ao criar checklist', {
+      error: error?.message,
+      stack: error?.stack,
+    });
     return NextResponse.json(
-      {
-        error: error?.message || 'Erro ao criar checklist'
-      },
+      { error: 'Erro ao criar checklist' },
       { status: 500 }
     );
   }
