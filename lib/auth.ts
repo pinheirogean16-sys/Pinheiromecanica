@@ -1,7 +1,21 @@
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import { User_role as Role } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'Pinheirodiesel2026@Seguro#ERP';
+// ============================================================
+// VALIDAÇÃO CRÍTICA: falha ao iniciar se JWT_SECRET não existir
+// ============================================================
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error(
+    '[FATAL] JWT_SECRET não definido. Configure a variável de ambiente antes de iniciar o sistema.'
+  );
+}
+
+const SECRET_KEY = new TextEncoder().encode(JWT_SECRET);
+
+// Access token curto + refresh token no banco
+const ACCESS_TOKEN_EXPIRES_IN = '8h'; // Reduzido de 7d para 8h
 
 export interface UserTokenPayload {
   id: string;
@@ -11,23 +25,53 @@ export interface UserTokenPayload {
   empresa_id: string;
 }
 
-export function signToken(payload: UserTokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: '7d' });
+// ============================================================
+// GERAR TOKEN
+// ============================================================
+export async function signToken(payload: UserTokenPayload): Promise<string> {
+  return await new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(ACCESS_TOKEN_EXPIRES_IN)
+    .setIssuer('pinheiro-diesel-pro')
+    .setAudience('erp-oficina')
+    .sign(SECRET_KEY);
 }
 
-export function verifyToken(token: string): UserTokenPayload | null {
+// ============================================================
+// VERIFICAR TOKEN
+// ============================================================
+export async function verifyToken(token: string): Promise<UserTokenPayload | null> {
   try {
-    const payload = jwt.verify(token, JWT_SECRET as string) as any;
+    const { payload } = await jwtVerify(token, SECRET_KEY, {
+      issuer: 'pinheiro-diesel-pro',
+      audience: 'erp-oficina',
+    });
+
     if (!payload || !payload.empresa_id || payload.empresa_id === 'default') {
       return null;
     }
-    return payload as UserTokenPayload;
-  } catch {
+
+    return {
+      id: payload.id as string,
+      email: payload.email as string,
+      name: payload.name as string,
+      role: payload.role as Role,
+      empresa_id: payload.empresa_id as string,
+    };
+  } catch (error) {
+    // Log só em dev para não poluir produção
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[auth] Token verification failed:', error);
+    }
     return null;
   }
 }
 
-export async function getSession() {
+// ============================================================
+// OBTER SESSÃO (via cookie)
+// ============================================================
+export async function getSession(): Promise<UserTokenPayload | null> {
   const { cookies } = await import('next/headers');
   const cookieStore = await cookies();
   const token = cookieStore.get('auth-token')?.value;
