@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
-import { apiError } from "@/lib/handle-api-error";
+import { apiError } from "@/lib/api-error";
 import * as crypto from "crypto";
 
 // ============================================================
