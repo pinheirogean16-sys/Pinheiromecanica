@@ -1,9 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 
-// ============================================================
-// TELEMETRIA (apenas em desenvolvimento)
-// Em produção não acumula dados e não expõe no window
-// ============================================================
 const isDev = process.env.NODE_ENV !== 'production';
 
 export interface QueryLogEntry {
@@ -21,37 +17,29 @@ export const dbTelemetry = {
   queriesLog: [] as QueryLogEntry[],
 };
 
-// ============================================================
-// Expor no window APENAS em dev + navegador
-// ============================================================
 if (isDev && typeof window !== 'undefined') {
   (window as any).__db_telemetry = dbTelemetry;
 }
 
-// ============================================================
-// Singleton do PrismaClient
-// ============================================================
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+// ⚡ OTIMIZAÇÃO: só erros em produção, sem 'query' nem 'warn'
 const basePrisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: isDev ? ['query', 'error', 'warn'] : ['error'],
+    log: isDev ? ['error', 'warn'] : ['error'],
   });
 
 if (isDev) {
   globalForPrisma.prisma = basePrisma;
 }
 
-// ============================================================
-// Cliente estendido com telemetria
-// ============================================================
 export const prisma = basePrisma.$extends({
   query: {
     async $allOperations({ model, operation, args, query }: any) {
-      // Em produção, apenas executa sem acumular telemetria
+      // ⚡ Em produção: apenas executa (zero overhead)
       if (!isDev) {
         return query(args);
       }
@@ -67,7 +55,6 @@ export const prisma = basePrisma.$extends({
           dbTelemetry.slowQueries++;
         }
 
-        // Ring buffer simples (limitado a 50 entries)
         dbTelemetry.queriesLog.unshift({
           model: model || 'Raw',
           operation,
