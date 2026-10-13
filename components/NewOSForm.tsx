@@ -13,6 +13,7 @@ import {
   ClipboardList
 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 
 export default function NewOSForm({ 
   initialClients, 
@@ -36,6 +37,9 @@ export default function NewOSForm({
   const selectedClient = initialClients.find(c => c.id === formData.clienteId);
   const vehicles = selectedClient?.veiculos || [];
 
+  // ============================================================
+  // SUBMIT — cria a OS com tratamento completo de erros
+  // ============================================================
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -45,12 +49,48 @@ export default function NewOSForm({
         body: JSON.stringify(formData),
       });
 
-      if (res.ok) {
-        router.push('/os');
-        router.refresh();
+      // Tenta ler o JSON da resposta (sucesso ou erro)
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Resposta sem corpo JSON — ignora
       }
-    } catch (err) {
-      console.error(err);
+
+      if (!res.ok) {
+        // ============================================================
+        // ERRO DA API (400, 401, 403, 500, etc.)
+        // ============================================================
+        const mensagem =
+          data?.error ||
+          data?.message ||
+          `Erro ${res.status}: ${res.statusText}`;
+
+        toast.error('Não foi possível criar a OS', {
+          description: mensagem,
+        });
+        return;
+      }
+
+      // ============================================================
+      // SUCESSO
+      // ============================================================
+      toast.success('OS criada com sucesso!', {
+        description: data?.numeroOS
+          ? `Ordem ${data.numeroOS} gerada.`
+          : 'Redirecionando...',
+      });
+
+      router.push('/os');
+      router.refresh();
+    } catch (err: any) {
+      // ============================================================
+      // ERRO DE REDE (sem internet, servidor fora do ar, etc.)
+      // ============================================================
+      toast.error('Falha de conexão', {
+        description:
+          'Não foi possível contatar o servidor. Verifique sua internet e tente novamente.',
+      });
     } finally {
       setLoading(false);
     }
