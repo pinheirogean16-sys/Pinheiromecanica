@@ -2,7 +2,11 @@ import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { log } from '@/lib/logger';
+import * as crypto from 'crypto';
 
+// ============================================================
+// GET — Buscar checklist por ID
+// ============================================================
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,6 +44,9 @@ export async function GET(
   }
 }
 
+// ============================================================
+// PUT — Atualizar checklist
+// ============================================================
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -64,7 +71,8 @@ export async function PUT(
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.checklistItem.deleteMany({ where: { checklistId: id } });
+      // ⚠️ Campo correto: checklist_id (snake_case do schema Prisma)
+      await tx.checklistItem.deleteMany({ where: { checklist_id: id } });
 
       return tx.checklist.update({
         where: { id },
@@ -112,6 +120,9 @@ export async function PUT(
   }
 }
 
+// ============================================================
+// DELETE — Deletar checklist
+// ============================================================
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
