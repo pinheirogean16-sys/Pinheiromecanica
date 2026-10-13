@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { log } from '@/lib/logger';
+import { apiError } from '@/lib/handle-api-error';
 import * as crypto from 'crypto';
 
 export async function GET(req: NextRequest) {
@@ -12,23 +13,14 @@ export async function GET(req: NextRequest) {
     const checklists = await prisma.checklist.findMany({
       where: { empresa_id: user.empresa_id },
       include: {
-        ChecklistItem: {
-          orderBy: { ordem: 'asc' },
-        },
+        ChecklistItem: { orderBy: { ordem: 'asc' } },
       },
       orderBy: { created_at: 'desc' },
     });
 
     return NextResponse.json(checklists);
   } catch (error: any) {
-    log('ERROR', 'CHECKLIST', 'Erro ao listar checklists', {
-      error: error?.message,
-      stack: error?.stack,
-    });
-    return NextResponse.json(
-      { error: 'Erro ao buscar checklists' },
-      { status: 500 }
-    );
+    return apiError(error, 'CHECKLIST', 'Erro ao buscar checklists');
   }
 }
 
@@ -69,13 +61,9 @@ export async function POST(req: NextRequest) {
         ativo: typeof ativo === 'boolean' ? ativo : true,
         empresa_id: user.empresa_id,
         updated_at: new Date(),
-        ChecklistItem: {
-          create: checklistItemsData,
-        },
+        ChecklistItem: { create: checklistItemsData },
       },
-      include: {
-        ChecklistItem: true,
-      },
+      include: { ChecklistItem: true },
     });
 
     log('INFO', 'CHECKLIST', 'Checklist criado', {
@@ -86,13 +74,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(createdChecklist, { status: 201 });
   } catch (error: any) {
-    log('ERROR', 'CHECKLIST', 'Erro ao criar checklist', {
-      error: error?.message,
-      stack: error?.stack,
-    });
-    return NextResponse.json(
-      { error: 'Erro ao criar checklist' },
-      { status: 500 }
-    );
+    return apiError(error, 'CHECKLIST', 'Erro ao criar checklist');
   }
 }
