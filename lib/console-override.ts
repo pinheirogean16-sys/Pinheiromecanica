@@ -1,45 +1,38 @@
-// ============================================================
-// CONSOLE OVERRIDE
-// Silencia console.log em produção e redireciona erros para o logger
-// ============================================================
-
 import { log } from './logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
-
 let initialized = false;
 
 export function initConsoleOverride() {
   if (initialized) return;
   initialized = true;
 
-  if (!isProduction) return; // Em dev, deixa o console normal
+  if (!isProduction) return;
 
-  // Silencia console.log e console.info em produção
+  // Silencia logs em produção
   console.log = () => {};
   console.info = () => {};
+  console.debug = () => {};
 
-  // Redireciona console.warn para o logger
+  // Warn: apenas strings, trunca mensagens longas
   console.warn = (...args: any[]) => {
-    log('WARN', 'CONSOLE', args.map(String).join(' '), {});
+    const msg = args
+      .map((a) => (typeof a === 'string' ? a : '[obj]'))
+      .join(' ')
+      .slice(0, 500);
+    log('WARN', 'CONSOLE', msg, {});
   };
 
-  // Redireciona console.error para o logger
+  // Error: só extrai a mensagem, sem stack trace
   console.error = (...args: any[]) => {
-    const mensagem = args
-      .map((a) => {
-        if (a instanceof Error) return a.message + '\n' + (a.stack || '');
-        if (typeof a === 'object') {
-          try {
-            return JSON.stringify(a);
-          } catch {
-            return String(a);
-          }
-        }
-        return String(a);
-      })
-      .join(' ');
+    const first = args[0];
+    const msg =
+      first instanceof Error
+        ? first.message
+        : typeof first === 'string'
+          ? first
+          : '[error]';
 
-    log('ERROR', 'CONSOLE', mensagem, {});
+    log('ERROR', 'CONSOLE', msg.slice(0, 1000), {});
   };
 }
