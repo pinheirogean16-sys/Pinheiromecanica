@@ -1,33 +1,33 @@
 {
-  "name": "Pinheiro Diesel Pro",
-  "short_name": "PinheiroPro",
-  "description": "Enterprise Diesel Management & Workshop Platform",
+  "name": "VEHLOX — Sistema de Gestão",
+  "short_name": "VEHLOX",
+  "description": "VEHLOX — Sistema de gestão para oficinas mecânicas de linha pesada",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#09090b",
-  "theme_color": "#ea580c",
+  "theme_color": "#f97316",
   "orientation": "any",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/vehlox-logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-384.png",
+      "src": "/vehlox-logo.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/vehlox-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-192-maskable.png",
+      "src": "/vehlox-logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
@@ -35,22 +35,28 @@
   ],
   "shortcuts": [
     {
+      "name": "Ordens de Serviço",
+      "short_name": "OS",
+      "url": "/os",
+      "icons": [{ "src": "/vehlox-logo.png", "sizes": "192x192" }]
+    },
+    {
       "name": "Central Financeira",
       "short_name": "Financeiro",
       "url": "/financeiro",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/vehlox-logo.png", "sizes": "192x192" }]
     },
     {
       "name": "Checklists de Inspeção",
       "short_name": "Checklist",
       "url": "/checklist",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/vehlox-logo.png", "sizes": "192x192" }]
     },
     {
-      "name": "Agenda de Elevadores",
+      "name": "Agenda",
       "short_name": "Agenda",
       "url": "/agenda",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/vehlox-logo.png", "sizes": "192x192" }]
     }
   ]
 }
