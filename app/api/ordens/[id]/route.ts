@@ -53,6 +53,62 @@ function serializeDecimals(obj: any): any {
 }
 
 // ============================================================
+// 🎯 HELPER: Recuperar preventivas vinculadas via fallback
+// Tenta 4 fontes diferentes se o frontend não enviou
+// ============================================================
+async function recuperarPreventivasFallback(
+  osId: string,
+  empresaId: string,
+  osData: any
+): Promise<string[]> {
+  const ids: string[] = [];
+
+  // 1. Execuções existentes na tabela PreventivaExecucao
+  try {
+    const execucoes = await prisma.preventivaExecucao.findMany({
+      where: { os_id: osId, empresa_id: empresaId },
+      select: { preventiva_id: true },
+    });
+    execucoes.forEach((e: any) => {
+      if (e.preventiva_id && !ids.includes(e.preventiva_id)) {
+        ids.push(e.preventiva_id);
+      }
+    });
+  } catch {}
+
+  // 2. Campo singular direto na OS (se existir)
+  if (ids.length === 0 && osData?.preventiva_id) {
+    ids.push(osData.preventiva_id);
+  }
+
+  // 3. Array de IDs direto na OS (se existir)
+  if (ids.length === 0 && Array.isArray(osData?.preventivas_ids)) {
+    osData.preventivas_ids.forEach((pid: string) => {
+      if (pid && !ids.includes(pid)) ids.push(pid);
+    });
+  }
+
+  // 4. JSON em observações (legado)
+  if (ids.length === 0 && osData?.observacoes) {
+    try {
+      const meta = typeof osData.observacoes === 'string'
+        ? JSON.parse(osData.observacoes)
+        : osData.observacoes;
+      if (Array.isArray(meta?.preventivas_ids)) {
+        meta.preventivas_ids.forEach((pid: string) => {
+          if (pid && !ids.includes(pid)) ids.push(pid);
+        });
+      }
+      if (meta?.preventiva_id && !ids.includes(meta.preventiva_id)) {
+        ids.push(meta.preventiva_id);
+      }
+    } catch {}
+  }
+
+  return ids;
+}
+
+// ============================================================
 // GERA MOVIMENTAÇÃO FINANCEIRA AO FINALIZAR OS
 // ============================================================
 async function gerarMovimentacaoFinanceira(tx: any, os: any, userId: string) {
@@ -481,10 +537,27 @@ export async function PATCH(
       }
     }
 
+    // ============================================================
+    // 🎯 PREVENTIVAS: Envio direto + Fallback robusto
+    // ============================================================
     const preventivasIds: string[] = [];
     if (Array.isArray(body.preventivas_ids)) preventivasIds.push(...body.preventivas_ids);
     if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
       preventivasIds.push(body.preventiva_id);
+    }
+
+    // Se o frontend não enviou, tenta recuperar do banco
+    if (preventivasIds.length === 0) {
+      const fallbackIds = await recuperarPreventivasFallback(id, user.empresa_id, antes);
+      preventivasIds.push(...fallbackIds);
+
+      if (preventivasIds.length > 0) {
+        log('INFO', 'OS', 'Preventivas recuperadas via fallback (PATCH)', {
+          osId: id,
+          preventivasIds,
+          status: body.status,
+        }, user?.name);
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -839,7 +912,7 @@ export async function PATCH(
       dados_depois: result,
     });
 
-    log('INFO', 'OS', 'OS atualizada (PATCH)', { id, status: body.status }, user?.name);
+    log('INFO', 'OS', 'OS atualizada (PATCH)', { id, status: body.status, preventivasIds }, user?.name);
 
     try {
       if (body.status === 'FINALIZADA' && antes.status !== 'FINALIZADA') {
@@ -958,10 +1031,27 @@ export async function PUT(
       }
     }
 
+    // ============================================================
+    // 🎯 PREVENTIVAS: Envio direto + Fallback robusto
+    // ============================================================
     const preventivasIds: string[] = [];
     if (Array.isArray(body.preventivas_ids)) preventivasIds.push(...body.preventivas_ids);
     if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
       preventivasIds.push(body.preventiva_id);
+    }
+
+    // Se o frontend não enviou, tenta recuperar do banco
+    if (preventivasIds.length === 0) {
+      const fallbackIds = await recuperarPreventivasFallback(id, user.empresa_id, antes);
+      preventivasIds.push(...fallbackIds);
+
+      if (preventivasIds.length > 0) {
+        log('INFO', 'OS', 'Preventivas recuperadas via fallback (PUT)', {
+          osId: id,
+          preventivasIds,
+          status: body.status,
+        }, user?.name);
+      }
     }
 
     const result = await prisma.$transaction(
@@ -1323,7 +1413,7 @@ export async function PUT(
       dados_depois: result,
     });
 
-    log('INFO', 'OS', 'OS atualizada (PUT)', { id }, user?.name);
+    log('INFO', 'OS', 'OS atualizada (PUT)', { id, preventivasIds }, user?.name);
 
     try {
       if (body.status === 'FINALIZADA' && antes.status !== 'FINALIZADA') {
