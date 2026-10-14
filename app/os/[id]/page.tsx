@@ -38,11 +38,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       if (res.ok) {
         const data = await res.json();
         setOrdem(data);
-      } else {
-        console.error('OS não encontrada');
       }
     } catch (error) {
-      console.error('Erro ao buscar OS:', error);
+      // Silencioso
     } finally {
       setLoading(false);
     }
@@ -55,7 +53,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     }
     setIsSigning(true);
     try {
-      // Geração de HASH SHA-256 de integridade genuíno e nativo
       const msg = `${resolvedParams.id}-${sigCliente}-${sigMecanico}-${sigSupervisor}-${Date.now()}`;
       const msgBuffer = new TextEncoder().encode(msg);
       const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
@@ -89,10 +86,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   };
 
   useEffect(() => {
-    const init = async () => {
-      await fetchOrdem();
-    };
-    init();
+    fetchOrdem();
   }, [fetchOrdem]);
 
   useEffect(() => {
@@ -122,7 +116,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       
       if (res.ok) {
         toast.success(data.message || 'Checklist removido!');
-        // Recarregar a lista de checklists
         const resp = await fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, { credentials: 'include' });
         const checklists = await resp.json();
         const mapped = (checklists || []).map((e: any) => ({
@@ -140,21 +133,75 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     }
   };
 
+  // ============================================================
+  // 🎯 HELPER: Extrai preventivas vinculadas à OS
+  // ============================================================
+  const extrairPreventivasVinculadas = (): string[] => {
+    if (!ordem) return [];
+    
+    const ids: string[] = [];
+    
+    // 1. Array direto na OS
+    if (Array.isArray(ordem.preventivas_ids)) {
+      ids.push(...ordem.preventivas_ids.filter(Boolean));
+    }
+    
+    // 2. Campo singular
+    if (ordem.preventiva_id && !ids.includes(ordem.preventiva_id)) {
+      ids.push(ordem.preventiva_id);
+    }
+    
+    // 3. Preventivas executadas
+    if (Array.isArray(ordem.preventivas_execucoes)) {
+      ordem.preventivas_execucoes.forEach((pe: any) => {
+        if (pe.preventiva_id && !ids.includes(pe.preventiva_id)) {
+          ids.push(pe.preventiva_id);
+        }
+      });
+    }
+    
+    // 4. JSON em observações (fallback legado)
+    if (ids.length === 0 && ordem.observacoes) {
+      try {
+        const meta = typeof ordem.observacoes === 'string' 
+          ? JSON.parse(ordem.observacoes) 
+          : ordem.observacoes;
+        if (Array.isArray(meta?.preventivas_ids)) {
+          meta.preventivas_ids.forEach((id: string) => {
+            if (id && !ids.includes(id)) ids.push(id);
+          });
+        }
+        if (meta?.preventiva_id && !ids.includes(meta.preventiva_id)) {
+          ids.push(meta.preventiva_id);
+        }
+      } catch {}
+    }
+    
+    return ids;
+  };
+
   const handleStatusChange = async (novoStatus: string) => {
     if (novoStatus === 'FINALIZADA') {
       try {
+        // 🎯 AQUI: envia preventivas_ids para o backend
+        const preventivasVinculadas = extrairPreventivasVinculadas();
+        
         const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'FINALIZADA' }),
-          credentials: 'include'
+          credentials: 'include',
+          body: JSON.stringify({ 
+            status: 'FINALIZADA',
+            preventivas_ids: preventivasVinculadas
+          })
         });
         if (res.ok) {
           toast.success('OS finalizada!');
-          fetchOrdem(); // recarregar dados
+          fetchOrdem();
           setShowFinalizarModal(false);
         } else {
-          toast.error('Erro ao finalizar');
+          const err = await res.json().catch(() => ({}));
+          toast.error(err.error || 'Erro ao finalizar');
         }
       } catch (err) {
         toast.error('Erro de conexão');
@@ -176,7 +223,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         toast.error('Erro ao atualizar status');
       }
     } catch (error) {
-      console.error('Erro ao atualizar status:', error);
       toast.error('Erro de conexão');
     }
   };
@@ -193,7 +239,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         router.push('/os');
       }
     } catch (error) {
-      console.error('Erro ao excluir OS:', error);
+      // Silencioso
     }
   };
 
@@ -222,6 +268,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const confirmFinalizar = async () => {
     setIsFinalizing(true);
     try {
+      // 🎯 AQUI: envia preventivas_ids junto com o parcelamento
+      const preventivasVinculadas = extrairPreventivasVinculadas();
+      
       const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -230,7 +279,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           status: 'FINALIZADA',
           forma_pagamento: formaPagamento,
           numero_parcelas: numParcelas,
-          dias_entre_parcelas: diasIntervalo
+          dias_entre_parcelas: diasIntervalo,
+          preventivas_ids: preventivasVinculadas
         })
       });
       if (res.ok) {
@@ -242,7 +292,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         toast.error(errorData.error || 'Erro ao finalizar OS');
       }
     } catch (error) {
-      console.error('Erro ao finalizar OS:', error);
       toast.error('Erro de conexão');
     } finally {
       setIsFinalizing(false);
@@ -306,18 +355,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         <div className="flex items-center gap-3 flex-wrap">
           {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (
             <Link href={`/os/viagem-print?id=${ordem.id}`}>
-              <button 
-                className="px-5 h-12 bg-orange-600 border border-orange-500 rounded-2xl flex items-center gap-3 hover:bg-orange-500 transition-all text-white font-black text-[10px] uppercase tracking-widest shadow-lg"
-              >
+              <button className="px-5 h-12 bg-orange-600 border border-orange-500 rounded-2xl flex items-center gap-3 hover:bg-orange-500 transition-all text-white font-black text-[10px] uppercase tracking-widest shadow-lg">
                 <Printer className="w-5 h-5 text-white" />
                 Relatório de Viagem
               </button>
             </Link>
           )}
           <Link href={`/os/${ordem.id}/imprimir`}>
-            <button 
-              className="px-5 h-12 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center gap-3 hover:bg-zinc-800 transition-all text-white font-black text-[10px] uppercase tracking-widest shadow-lg"
-            >
+            <button className="px-5 h-12 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center gap-3 hover:bg-zinc-800 transition-all text-white font-black text-[10px] uppercase tracking-widest shadow-lg">
               <Printer className="w-5 h-5 text-orange-500" />
               Imprimir DANFE
             </button>
@@ -457,13 +502,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           equipe = [];
         }
 
-        let comprovantes: Record<string, string> = {};
-        try {
-          comprovantes = typeof ordem.despesas_comprovantes === 'string' ? JSON.parse(ordem.despesas_comprovantes || '{}') : (ordem.despesas_comprovantes || {});
-        } catch (e) {
-          comprovantes = {};
-        }
-
         const totalDespesas = (
           (ordem.despesa_pedagio || 0) +
           (ordem.despesa_combustivel || 0) +
@@ -484,17 +522,12 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mt-0.5">Gestão de KM, Custos Extras e Viagem</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg px-2.5 py-1 uppercase tracking-widest">
-                  Ativo Externo
-                </span>
-              </div>
+              <span className="text-[10px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg px-2.5 py-1 uppercase tracking-widest">
+                Ativo Externo
+              </span>
             </div>
 
-            {/* Grid 4 Colunas Principais: Geo, Deslocamento, Custos, Mão obra */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              
-              {/* Local & GPS */}
               <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 text-zinc-500">
@@ -524,7 +557,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 )}
               </div>
 
-              {/* Controle de KM */}
               <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
                 <div className="flex items-center gap-2 text-zinc-500">
                   <Milestone className="w-4 h-4 text-orange-500" />
@@ -552,7 +584,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 </div>
               </div>
 
-              {/* Despesas de Campo */}
               <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-5 space-y-4">
                 <div className="flex items-center gap-2 text-zinc-500">
                   <Receipt className="w-4 h-4 text-orange-500" />
@@ -611,7 +642,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 </div>
               </div>
 
-              {/* Mão de Obra Externa */}
               <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
                 <div className="flex items-center gap-2 text-zinc-500">
                   <Users className="w-4 h-4 text-orange-500" />
@@ -645,10 +675,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   </div>
                 )}
               </div>
-
             </div>
 
-            {/* Timeline da Viagem */}
             {timeline.length > 0 && (
               <div className="border-t border-zinc-800/80 pt-6">
                 <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
@@ -675,9 +703,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         );
       })()}
 
-      {/* Serviços e Peças (Grid Duas Colunas) */}
+      {/* Serviços e Peças */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Serviços */}
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="p-6 bg-zinc-800/20 border-b border-zinc-800">
             <h3 className="text-sm font-black text-white tracking-widest uppercase flex items-center gap-3">
@@ -702,7 +729,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           )}
         </div>
 
-        {/* Peças */}
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="p-6 bg-zinc-800/20 border-b border-zinc-800">
             <h3 className="text-sm font-black text-white tracking-widest uppercase flex items-center gap-3">
@@ -842,7 +868,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* ASSINATURA DIGITAL CORPORATIVA */}
+      {/* ASSINATURA DIGITAL */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-6">
         <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
           <ShieldCheck className="text-emerald-400 w-5 h-5" />
@@ -853,7 +879,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
 
         {ordem?.assinatura_hash ? (
-          /* DOCUMENTO JÁ ASSINADO */
           <div className="bg-black/60 border border-emerald-500/20 p-6 rounded-2xl space-y-4 relative overflow-hidden">
             <div className="absolute right-[-15px] top-[-15px] text-emerald-500/5 rotate-12">
               <ShieldCheck className="w-40 h-40" />
@@ -901,12 +926,10 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         ) : (
-          /* PAINEL DE ASSINATURA EDITÁVEL */
           <div className="space-y-6">
             <p className="text-xs text-zinc-400 font-medium">As assinaturas e o visto de conformidade podem ser colhidos diretamente na tela do tablet ou celular pelo técnico, cliente e equipe supervisora.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Cliente Name */}
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">1. Firma do Cliente</label>
                 <input 
@@ -924,7 +947,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 )}
               </div>
 
-              {/* Tecnico Name */}
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">2. Firma do Técnico / Mecânico</label>
                 <input 
@@ -942,7 +964,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 )}
               </div>
 
-              {/* Supervisor Name */}
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">3. Visto de Supervisão / Engenharia</label>
                 <input 
@@ -992,12 +1013,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 onClick={() => setShowFinalizarModal(false)}
                 className="w-10 h-10 bg-zinc-800 border border-zinc-700 rounded-xl flex items-center justify-center text-zinc-400 hover:text-white transition-all"
               >
-                <Eye className="w-5 h-5 rotate-45" /> {/* Use X icon if available, or just rotate Eye/Plus */}
+                <Eye className="w-5 h-5 rotate-45" />
               </button>
             </div>
             
             <div className="p-8 space-y-8">
-              {/* Opções de Pagamento */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
                   <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">Forma de Pagamento</label>
@@ -1048,7 +1068,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 )}
               </div>
 
-              {/* Preview das Parcelas */}
               {formaPagamento === 'PARCELADO' && numParcelas > 1 && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between text-zinc-500 border-b border-zinc-800 pb-2">
@@ -1071,7 +1090,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 </div>
               )}
 
-              {/* Resumo Final */}
               <div className="bg-orange-600/5 p-6 rounded-2xl border border-orange-500/10 flex items-center justify-between group overflow-hidden relative">
                 <div className="relative z-10">
                   <p className="text-[10px] font-mono uppercase tracking-widest text-orange-500 font-extrabold mb-1">Total a Consolidar</p>
@@ -1082,7 +1100,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 </div>
               </div>
 
-              {/* Botões de Ação */}
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <button 
                   onClick={() => setShowFinalizarModal(false)}
