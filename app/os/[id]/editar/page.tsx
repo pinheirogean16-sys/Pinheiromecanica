@@ -18,7 +18,6 @@ import QuickPartModal, { QuickPartSuccessData } from '@/components/QuickPartModa
 import PreventivaVinculoSelector from '@/components/PreventivaVinculoSelector';
 
 function sanitizeWorkOrderPayload(payload: any) {
-  console.log("Payload Final OS", payload);
   const servicosValidos = (payload.servicos || [])
     .map((s: any) => ({
       id: s.id,
@@ -277,11 +276,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           fetch(`/api/ordens/${id}`, { signal: controller.signal })
         ]);
 
-        console.log('Editar OS Basics:', {
-          mecanicos: mRes?.status,
-          ordem: oRes?.status
-        });
-
         // Aborta se outra requisição iniciou após esta
         if (requestId !== lastRequestId.current) return;
 
@@ -325,7 +319,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                 if (meta.assinaturaCampo) setAssinaturaCampo(meta.assinaturaCampo);
               }
             } catch (err) {
-              console.log('observacoes não é JSON ou está em formato de texto customizado:', data.observacoes);
+              // Observações em formato texto — ignora parse JSON
             }
           }
 
@@ -390,7 +384,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                   setPreventivasVeiculo(pList.filter((p: any) => p.ativo !== false));
                 }
               })
-              .catch(console.error);
+              .catch(() => {});
           }
           
           // Mapear serviços
@@ -406,7 +400,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           
           // Mapear peças vindas da API
           const rawPecas = data.pecas || data.pecas_aplicadas || data.itens || [];
-          console.log('PECAS RECEBIDAS', rawPecas);
           
           const apiPecasMapped = rawPecas.map((p: any) => {
             const defaultUnit = p.unidade || p.peca?.unidadeMedida || 'un';
@@ -426,12 +419,12 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             };
           });
 
-          // Limpa rascunho anterior de peças local ao carregar a página inicialmente do banco (evita rascunhos corruptos antigos de sobrescrever os dados corretos)
+          // Limpa rascunho anterior de peças local ao carregar a página inicialmente do banco
           if (typeof window !== 'undefined') {
             try {
               localStorage.removeItem('os-draft-' + id);
             } catch (err) {
-              console.error('Erro ao limpar rascunho:', err);
+              // Ignora erro de localStorage
             }
           }
 
@@ -441,13 +434,11 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         }
       } catch (err: any) { 
         if (err.name !== 'AbortError') {
-          console.error(err);
           toast.error('Erro de conexão com o servidor');
         }
       } finally {
         if (requestId === lastRequestId.current) {
           setFetching(false);
-          // Habilita a escuta do autosave após o delay para a sincronização de estados dos inputs
           setTimeout(() => {
             isLoadedRef.current = true;
           }, 400);
@@ -461,7 +452,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     };
   }, [id]);
 
-  // Busca de peças dinâmica com Debounce e AbortController (Otimizado para Hostinger Business)
+  // Busca de peças dinâmica com Debounce e AbortController
   useEffect(() => {
     if (!pecaSearchTerm || pecaSearchTerm.trim().length < 2) {
       return;
@@ -482,7 +473,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         }
       } catch (err: any) {
         if (err.name !== 'AbortError') {
-          console.error('Erro ao pesquisar peças:', err);
           setAvailablePecas([]);
         }
       } finally {
@@ -530,7 +520,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     setServicos(prev => prev.filter(s => s.id !== sid));
   }, []);
 
-  // Lógica de Peças Memoizada com Adição e Atualização Consistente
+  // Lógica de Peças Memoizada
   const addPeca = useCallback((pecaRef: any) => {
     const defaultUnit = pecaRef.unidadeMedida || 'un';
     const compativeis = obterUnidadesCompativeis(defaultUnit);
@@ -639,7 +629,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
               const ratio = converterUnidade(1, targetUnit, originalUnit);
               updated.valor_unit = Number((updated.original_preco_venda * ratio).toFixed(2));
             } catch (err) {
-              console.error('Falha ao converter preço unitário:', err);
+              // Conversão falhou — mantém valor
             }
           } else {
             updated.valor_unit = updated.original_preco_venda;
@@ -662,33 +652,13 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     if (typeof window !== 'undefined' && isLoadedRef.current) {
       try {
         localStorage.setItem('os-draft-' + id, JSON.stringify(pecas));
-        console.log('Saved parts to Local Storage draft safely:', pecas);
       } catch (err) {
-        console.error('Failed to save draft to localStorage', err);
+        // Ignora erro de localStorage
       }
     }
   }, [pecas, id]);
 
-  // LOGS DE MONITORAMENTO E AUDITORIA EXIGIDOS
-  useEffect(() => {
-    if (fetching) return;
-    console.log('PECAS STATE', pecas);
-    console.log('FORM VALUES', {
-      status,
-      diagnostico,
-      previsao,
-      desconto,
-      selectedMecanico,
-      observacoes,
-      tipoOS,
-      formaPagamento,
-      numParcelas,
-      servicos,
-      pecas
-    });
-  }, [fetching, status, diagnostico, previsao, desconto, selectedMecanico, observacoes, tipoOS, formaPagamento, numParcelas, servicos, pecas]);
-
-  // Cálculos Memoizados de Alta Performance e À Prova de Loops
+  // Cálculos Memoizados de Alta Performance
   const totalServicos = useMemo(() => {
     return servicos.reduce((acc, s) => acc + (parseFloat(s.valor_total) || 0), 0);
   }, [servicos]);
@@ -796,7 +766,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           dias_entre_parcelas: formaPagamento === 'BOLETO PARCELADO' ? diasEntreParcelas : null,
           data_vencimento_primeira: (formaPagamento === 'BOLETO PARCELADO' || formaPagamento === 'PARCELADO') && dataPrimeiraParcela ? new Date(dataPrimeiraParcela).toISOString() : null,
 
-          // Campos de Atendimento Externo e Logística de Campo
           tipo_atendimento: tipoOS === 'CAMPO' ? 'CAMPO' : 'OFICINA',
           km_saida: tipoOS === 'CAMPO' ? kmSaida : 0,
           km_retorno: tipoOS === 'CAMPO' ? kmRetorno : 0,
@@ -822,7 +791,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           local_estado: tipoOS === 'CAMPO' ? localEstado : '',
           local_gps: tipoOS === 'CAMPO' ? localGps : '',
 
-          // Odômetro, Horímetro e Preventivas
           km_veiculo: kmVeiculo ? parseInt(kmVeiculo) : undefined,
           horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : undefined,
           confirmar_salto_km: confirmarSaltoKm,
@@ -833,16 +801,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           preventivas_ids: selectedPreventivas
         };
 
-        console.log('ANTES SALVAR (AUTOSAVE)', {
-          checklistOficina,
-          checklistEntrega: undefined,
-          servicos,
-          pecas_aplicadas: pecas,
-          despesas: totalDespesas
-        });
-
         const sanitizedPayload = sanitizeWorkOrderPayload(rawPayload);
-        console.log('PAYLOAD ENVIADO', sanitizedPayload);
 
         const res = await fetch(`/api/ordens/${id}`, {
           method: 'PUT',
@@ -850,18 +809,8 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           body: JSON.stringify(sanitizedPayload)
         });
 
-        let responseData = null;
-        try {
-          const clonedRes = res.clone();
-          responseData = await clonedRes.json();
-        } catch (e: any) {
-          console.error('Falha ao parsear JSON no autosave response:', e);
-        }
-        console.log('RESPOSTA API (AUTOSAVE)', responseData);
-
         if (res.ok) {
           setAutosaveStatus('saved');
-          // Limpa o rascunho de peças local se salvou com sucesso na API
           if (typeof window !== 'undefined') {
             localStorage.removeItem('os-draft-' + id);
           }
@@ -869,7 +818,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           setAutosaveStatus('error');
         }
       } catch (err) {
-        console.error('Erro de background autosave:', err);
         setAutosaveStatus('error');
       }
     }, 800);
@@ -929,7 +877,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           setLocalGps(`${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`);
         },
         (err) => {
-          console.error(err);
           alert('Não foi possível obter a geolocalização automática.');
         }
       );
@@ -987,7 +934,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         dias_entre_parcelas: formaPagamento === 'BOLETO PARCELADO' ? diasEntreParcelas : null,
         data_vencimento_primeira: (formaPagamento === 'BOLETO PARCELADO' || formaPagamento === 'PARCELADO') && dataPrimeiraParcela ? new Date(dataPrimeiraParcela).toISOString() : null,
 
-        // Campos de Atendimento Externo e Logística de Campo
         tipo_atendimento: tipoOS === 'CAMPO' ? 'CAMPO' : 'OFICINA',
         km_saida: tipoOS === 'CAMPO' ? kmSaida : 0,
         km_retorno: tipoOS === 'CAMPO' ? kmRetorno : 0,
@@ -1013,7 +959,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         local_estado: tipoOS === 'CAMPO' ? localEstado : '',
         local_gps: tipoOS === 'CAMPO' ? localGps : '',
 
-        // Odômetro, Horímetro e Preventivas
         km_veiculo: kmVeiculo ? parseInt(kmVeiculo) : undefined,
         horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : undefined,
         confirmar_salto_km: confirmarSaltoKm,
@@ -1024,16 +969,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         preventivas_ids: selectedPreventivas
       };
 
-      console.log('ANTES SALVAR', {
-        checklistOficina,
-        checklistEntrega: undefined,
-        servicos,
-        pecas_aplicadas: pecas,
-        despesas: totalDespesas
-      });
-
       const sanitizedPayload = sanitizeWorkOrderPayload(rawPayload);
-      console.log('PAYLOAD ENVIADO', sanitizedPayload);
 
       const res = await fetch(`/api/ordens/${id}`, {
         method: 'PUT',
@@ -1041,15 +977,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         body: JSON.stringify(sanitizedPayload)
       });
       
-      let responseData = null;
-      try {
-        const clonedRes = res.clone();
-        responseData = await clonedRes.json();
-      } catch (e: any) {
-        console.error('Falha ao parsear JSON no save response:', e);
-      }
-      console.log('RESPOSTA API', responseData);
-
       if (res.ok) {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('os-draft-' + id);
@@ -1057,7 +984,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         toast.success('Ordem de Serviço atualizada com sucesso!');
         router.push(`/os/${id}`);
       } else {
-        const error = responseData || { error: 'Falha ao atualizar OS' };
+        const error = await res.json().catch(() => ({ error: 'Falha ao atualizar OS' }));
         toast.error(`Erro: ${error.error || 'Falha ao atualizar OS'}`);
       }
     } catch (err) { 
@@ -1087,13 +1014,13 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             <ChevronLeft size={18} />
           </Link>
           <div className="flex flex-col">
-            <h1 className="text-xl font-black text-white uppercase tracking-tighter italic">OFICINA PRO <span className="text-zinc-700 mx-2">|</span> EDITAR OS #{ordem?.numero}</h1>
+            <h1 className="text-xl font-black text-white uppercase tracking-tighter italic">VEHLOX <span className="text-zinc-700 mx-2">|</span> EDITAR OS #{ordem?.numero}</h1>
             <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.3em] leading-none mt-1">ATUALIZAÇÃO DE REGISTRO TÉCNICO</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Indicador de Autosave Premium */}
+          {/* Indicador de Autosave */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950/40 border border-zinc-900 rounded-xl h-10">
             {autosaveStatus === 'saving' ? (
               <>
@@ -1149,12 +1076,20 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* ============================================================
+          GRID PRINCIPAL — RESPONSIVO
+          - Mobile: 1 coluna
+          - Tablet (lg): 2 colunas
+          - Desktop grande (2xl): 3 colunas
+          ============================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-12 gap-6 items-start">
         
-        {/* COLUNA 1: DADOS FIXOS */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* ============================================================
+            COLUNA 1: DADOS FIXOS
+            ============================================================ */}
+        <div className="lg:col-span-1 2xl:col-span-4 space-y-6 min-w-0">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-7 space-y-6 shadow-xl">
-            {/* Escolha Obrigatória de Tipo de OS - Sem Reload e Mantendo Peças e Serviços Intactos */}
+            {/* Escolha de Tipo de OS */}
             <div className="space-y-2">
               <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">TIPO DE ATENDIMENTO</label>
               <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-inner">
@@ -1199,23 +1134,23 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             
             <div className="space-y-4 pt-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1">
+                <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1 min-w-0">
                   <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest flex items-center gap-1">
-                    <User size={10} /> Cliente Responsável
+                    <User size={10} /> Cliente
                   </p>
                   <p className="text-xs font-black text-white uppercase truncate">{ordem?.cliente?.nome}</p>
                 </div>
 
-                <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1">
+                <div className="p-4 bg-zinc-950/50 border border-zinc-800 rounded-2xl space-y-1 min-w-0">
                   <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest flex items-center gap-1">
-                    <Car size={10} /> Veículo em Manutenção
+                    <Car size={10} /> Veículo
                   </p>
                   <p className="text-xs font-black text-white uppercase truncate">{ordem?.veiculo?.marca} {ordem?.veiculo?.modelo}</p>
                   <p className="text-[10px] font-mono text-orange-500 font-bold">{ordem?.veiculo?.placa}</p>
                 </div>
               </div>
 
-              {/* MANUTENÇÃO PREVENTIVA & LEITURAS DE ODÔMETRO/HORÍMETRO */}
+              {/* MANUTENÇÃO PREVENTIVA & LEITURAS */}
               {ordem?.veiculo && (
                 <div className="space-y-4 pt-2">
                   <PreventivaVinculoSelector
@@ -1239,23 +1174,22 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     preventivas={preventivasVeiculo}
                   />
 
-                  {/* Histórico de Execuções já Concluídas nesta OS */}
                   {preventivasExecutadas.length > 0 && (
                     <div className="bg-zinc-950/80 border border-green-500/20 rounded-2xl p-4 space-y-2">
                       <span className="text-[10px] font-black uppercase tracking-wider text-green-400 flex items-center gap-1.5">
                         <Check size={14} className="text-green-500" />
-                        Planos Preventivos Concluídos nesta OS
+                        Planos Preventivos Concluídos
                       </span>
                       <div className="space-y-1.5">
                         {preventivasExecutadas.map((pe: any) => (
                           <div key={pe.id} className="flex items-center justify-between p-2.5 bg-zinc-900/60 rounded-xl border border-zinc-800 text-[11px]">
-                            <div>
-                              <p className="font-bold text-white uppercase">{pe.servico || pe.componente}</p>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white uppercase truncate">{pe.servico || pe.componente}</p>
                               <p className="text-[9px] text-zinc-500">
                                 Ciclo #{pe.ciclo_numero} • {new Date(pe.data_conclusao).toLocaleDateString('pt-BR')}
                               </p>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex-shrink-0">
                               {pe.km_conclusao && <p className="font-mono text-zinc-300 font-bold">{pe.km_conclusao.toLocaleString('pt-BR')} KM</p>}
                               {pe.horimetro_conclusao && <p className="font-mono text-zinc-400">{pe.horimetro_conclusao} h</p>}
                             </div>
@@ -1297,7 +1231,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                 <div className="space-y-4 pt-4 border-t border-zinc-800/60 animate-in fade-in slide-in-from-top-1 duration-300">
                   <div className="flex items-center gap-2 mb-1">
                     <Wrench className="w-4 h-4 text-blue-500" />
-                    <span className="text-[10px] text-white font-black tracking-widest uppercase">CONTRÔLE DE BOX & PRODUTIVIDADE</span>
+                    <span className="text-[10px] text-white font-black tracking-widest uppercase">CONTROLE DE BOX & PRODUTIVIDADE</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -1350,7 +1284,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Checklist Industrial de Oficina de Caminhões Pesados */}
                   <div className="bg-zinc-950/70 border border-zinc-900 rounded-xl p-4 space-y-3">
                     <p className="text-[8px] text-zinc-600 font-bold uppercase tracking-widest border-b border-zinc-900 pb-2">CHECKLIST TÉCNICO DE ENTRADA</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -1377,7 +1310,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Testes Adicionais */}
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -1444,21 +1376,21 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       <input 
                         type="text" 
                         placeholder="COORDENADAS GPS..." 
-                        className="flex-1 bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white font-mono outline-none focus:border-amber-500" 
+                        className="flex-1 min-w-0 bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white font-mono outline-none focus:border-amber-500" 
                         value={localGps} 
                         onChange={(e) => setLocalGps(e.target.value)} 
                       />
                       <button 
                         type="button" 
                         onClick={capturarGps} 
-                        className="bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-4 transition text-[9px] font-black uppercase"
+                        className="bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-4 transition text-[9px] font-black uppercase flex-shrink-0"
                       >
                         📍 GPS
                       </button>
                     </div>
                   </div>
 
-                  {/* Informações de Veículo de Apoio e Cronograma */}
+                  {/* Veículo de Apoio e Cronograma */}
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-950">
                     <div className="space-y-1">
                       <label className="text-[8px] text-zinc-650 uppercase font-bold">Veículo de Apoio</label>
@@ -1507,34 +1439,28 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                   <div className="space-y-3 pt-3 border-t border-zinc-950">
                     <p className="text-[8px] font-black text-zinc-650 uppercase">2. Painel Logístico de KM Rodados ({kmTotal} KM total)</p>
                     
-                    {/* Grid de Cards de UX Profissional (Responsivo) */}
-                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 my-3">
-                      {/* KM Ida */}
-                      <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 flex flex-col justify-between space-y-1">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 space-y-1">
                         <span className="text-[8px] text-zinc-500 font-extrabold uppercase tracking-widest">KM Ida</span>
                         <p className="text-sm font-bold text-white font-mono">{kmSaida} <span className="text-[9px] text-zinc-600">KM</span></p>
                       </div>
 
-                      {/* KM Volta */}
-                      <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 flex flex-col justify-between space-y-1">
+                      <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 space-y-1">
                         <span className="text-[8px] text-zinc-500 font-extrabold uppercase tracking-widest">KM Volta</span>
                         <p className="text-sm font-bold text-white font-mono">{kmRetorno} <span className="text-[9px] text-zinc-600">KM</span></p>
                       </div>
 
-                      {/* Total Rodado */}
-                      <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-3 flex flex-col justify-between space-y-1 animate-pulse">
+                      <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-3 space-y-1">
                         <span className="text-[8px] text-emerald-500 font-extrabold uppercase tracking-widest">Total Rodado</span>
                         <p className="text-sm font-black text-emerald-400 font-mono">{kmTotal} <span className="text-[9px] text-emerald-600">KM</span></p>
                       </div>
 
-                      {/* Valor/KM */}
-                      <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 flex flex-col justify-between space-y-1">
+                      <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 space-y-1">
                         <span className="text-[8px] text-zinc-500 font-extrabold uppercase tracking-widest">Valor / KM</span>
                         <p className="text-xs font-bold text-white font-mono">{formatCurrency(parseFloat(valorKm as any) || 0)}</p>
                       </div>
 
-                      {/* Total Deslocamento */}
-                      <div className="bg-amber-950/20 border border-amber-500/20 rounded-2xl p-3 flex flex-col justify-between space-y-1 col-span-2 lg:col-span-1">
+                      <div className="bg-amber-950/20 border border-amber-500/20 rounded-2xl p-3 space-y-1 col-span-2">
                         <span className="text-[8px] text-amber-500 font-extrabold uppercase tracking-widest">Custo Deslocamento</span>
                         <p className="text-xs font-black text-amber-400 font-mono">{formatCurrency(totalDeslocamento)}</p>
                       </div>
@@ -1568,7 +1494,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         type="number" 
                         placeholder="Valor por KM" 
                         step="0.01" 
-                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono/5" 
+                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
                         value={valorKm || ''} 
                         onChange={(e) => setValorKm(parseFloat(e.target.value) || 0)} 
                       />
@@ -1663,7 +1589,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Levantamento Fotográfico do Técnico em Campo (Opcional p/ Evitar Erros) */}
+                  {/* Fotos de Campo */}
                   <div className="space-y-3 pt-3 border-t border-zinc-950">
                     <p className="text-[8px] font-black text-zinc-650 uppercase">5. Registro Fotográfico de Campo</p>
                     <label className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-850 hover:border-amber-500 border-dashed rounded-xl p-4 cursor-pointer transition select-none">
@@ -1697,7 +1623,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     )}
                   </div>
 
-                  {/* Assinatura de Aceite Técnico Formal do Cliente */}
+                  {/* Assinatura Digital */}
                   <div className="space-y-3 pt-2 border-t border-zinc-950">
                     <div className="flex items-center justify-between">
                       <p className="text-[8px] font-black text-zinc-650 uppercase">6. Assinatura Digital do Motorista</p>
@@ -1715,7 +1641,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         ref={canvasRef}
                         width={500}
                         height={220}
-                        className="w-full h-[180px] sm:h-[220px] bg-zinc-950 cursor-crosshair blockTouchScroll touch-none overflow-hidden select-none"
+                        className="w-full h-[180px] sm:h-[220px] bg-zinc-950 cursor-crosshair block touch-none overflow-hidden select-none"
                         onMouseDown={startDrawing}
                         onMouseMove={draw}
                         onMouseUp={stopDrawing}
@@ -1740,24 +1666,24 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             <h3 className="text-[10px] font-black text-white uppercase tracking-widest italic flex items-center gap-2">
               <Info size={14} className={tipoOS === 'CAMPO' ? 'text-amber-500' : 'text-blue-500'} /> RESUMO GERAL
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
                 <p className="text-[8px] text-zinc-600 uppercase font-black">Serviços</p>
-                <p className="text-xs font-bold text-white font-mono">{formatCurrency(totalServicos)}</p>
+                <p className="text-xs font-bold text-white font-mono truncate">{formatCurrency(totalServicos)}</p>
               </div>
-              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805">
+              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
                 <p className="text-[8px] text-zinc-600 uppercase font-black">Peças</p>
-                <p className="text-xs font-bold text-white font-mono">{formatCurrency(totalPecas)}</p>
+                <p className="text-xs font-bold text-white font-mono truncate">{formatCurrency(totalPecas)}</p>
               </div>
               {tipoOS === 'CAMPO' && (
                 <>
-                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805">
+                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
                     <p className="text-[8px] text-zinc-600 uppercase font-black">Deslocamento</p>
-                    <p className="text-xs font-bold text-amber-500 font-mono">{formatCurrency(totalDeslocamento)}</p>
+                    <p className="text-xs font-bold text-amber-500 font-mono truncate">{formatCurrency(totalDeslocamento)}</p>
                   </div>
-                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805">
+                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
                     <p className="text-[8px] text-zinc-600 uppercase font-black">Diárias/Hosp</p>
-                    <p className="text-xs font-bold text-amber-500 font-mono">{formatCurrency(totalDespesas + maoObraExternaTotal)}</p>
+                    <p className="text-xs font-bold text-amber-500 font-mono truncate">{formatCurrency(totalDespesas + maoObraExternaTotal)}</p>
                   </div>
                 </>
               )}
@@ -1765,22 +1691,24 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        {/* COLUNA 2: SERVIÇOS E DIAGNÓSTICO */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* ============================================================
+            COLUNA 2: SERVIÇOS E DIAGNÓSTICO
+            ============================================================ */}
+        <div className="lg:col-span-1 2xl:col-span-4 space-y-6 min-w-0">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
             <div className="p-6 sm:p-8 border-b border-zinc-800/50 bg-zinc-900/50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                 <div className="p-2 bg-orange-600/10 text-orange-500 rounded-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                 <div className="p-2 bg-orange-600/10 text-orange-500 rounded-xl flex-shrink-0">
                    <Wrench size={18} />
                  </div>
-                 <div>
+                 <div className="min-w-0">
                     <h2 className="text-base font-black text-white uppercase italic tracking-tight">MANUTENÇÃO / SERVIÇOS</h2>
-                    <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em]">Escopo de Trabalho e Mão de Obra</p>
+                    <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em]">Escopo de Trabalho</p>
                  </div>
               </div>
               <button 
                 onClick={addServico}
-                className="p-3 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl border border-zinc-800 transition shadow-lg cursor-pointer"
+                className="p-3 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl border border-zinc-800 transition shadow-lg cursor-pointer flex-shrink-0"
               >
                 <Plus size={18} />
               </button>
@@ -2043,18 +1971,20 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        {/* COLUNA 3: PEÇAS E FECHAMENTO */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* ============================================================
+            COLUNA 3: PEÇAS E FECHAMENTO
+            ============================================================ */}
+        <div className="lg:col-span-2 2xl:col-span-4 space-y-6 min-w-0">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-900/50 flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <Package size={18} className="text-orange-500 flex-shrink-0" />
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Requisição de Peças</h2>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Almoxarifado e insumos</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap self-start sm:self-auto">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setIsQuickPartModalOpen(true)}
@@ -2114,11 +2044,11 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                             }}
                             className="w-full p-4 text-left flex items-center justify-between hover:bg-zinc-800/50 transition-colors border-b border-zinc-800 last:border-0"
                           >
-                            <div className="flex flex-col">
-                              <span className="text-xs font-black text-white uppercase">{p.descricao}</span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-black text-white uppercase truncate">{p.descricao}</span>
                               <span className="text-[9px] text-zinc-650 font-bold tracking-widest mt-1">CÓD: {p.codigo || 'S/ COD'} • ESTOQUE: {p.quantidade} {p.unidadeMedida || 'un'}</span>
                             </div>
-                            <span className="text-[10px] font-black text-green-500 font-mono italic">{formatCurrency(p.preco_venda)}</span>
+                            <span className="text-[10px] font-black text-green-500 font-mono italic flex-shrink-0">{formatCurrency(p.preco_venda)}</span>
                           </button>
                         ))
                       )}
@@ -2140,7 +2070,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         key={p.id} 
                         className="p-4 bg-zinc-950 border border-zinc-900 rounded-2xl md:flex md:items-center md:justify-between group/item hover:border-zinc-700 transition-all border-l-2 border-l-zinc-800 hover:border-l-orange-500 flex flex-col gap-4 md:gap-0"
                       >
-                        <div className="space-y-2 w-full md:w-auto">
+                        <div className="space-y-2 w-full md:w-auto md:flex-1 min-w-0">
                           <p className="text-[11px] font-black text-zinc-200 uppercase tracking-tight break-all">{p.descricao}</p>
                           <div className="flex flex-wrap items-center gap-3">
                              <input 
@@ -2185,7 +2115,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                              <span className="text-[9px] text-zinc-600 font-bold uppercase tracking-tighter">✕ {formatCurrency(p.valor_unit)}</span>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t border-zinc-900/60 pt-3 md:border-0 md:pt-0 font-mono">
+                        <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t border-zinc-900/60 pt-3 md:border-0 md:pt-0 font-mono flex-shrink-0">
                           <span className="text-[8px] font-black text-zinc-500 md:hidden uppercase tracking-wider">Subtotal Item</span>
                           <div className="flex items-center gap-4">
                             <p className="text-sm font-black text-green-400 tracking-tighter tabular-nums">{formatCurrency(p.valor_total)}</p>
@@ -2285,7 +2215,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         />
                       </div>
 
-                      {/* Preview das Parcelas */}
                       <div className="mt-4 space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
                         <div className="flex items-center justify-between border-b border-zinc-800 pb-1 mb-2">
                           <h4 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Simulação de Parcelas</h4>
@@ -2321,10 +2250,12 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                  </div>
                </div>
 
-               <div className="pt-6 flex justify-between items-end border-t border-zinc-800">
-                  <div className="space-y-1">
+               <div className="pt-6 flex justify-between items-end border-t border-zinc-800 gap-3">
+                  <div className="space-y-1 min-w-0">
                      <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em] font-mono leading-none italic">VALOR ATUALIZADO</p>
-                     <p className="text-4xl font-black text-white tracking-tighter tabular-nums italic drop-shadow-lg">{formatCurrency(totalGeral)}</p>
+                     <p className="text-3xl 2xl:text-4xl font-black text-white tracking-tighter tabular-nums italic drop-shadow-lg break-all">
+                       {formatCurrency(totalGeral)}
+                     </p>
                   </div>
                </div>
 
@@ -2346,7 +2277,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
       </div>
 
       {/* Sticky Bottom Bar for Mobile only */}
-      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-900 p-4 z-50 md:hidden flex items-center justify-between gap-3 pb-safe pb-5">
+      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-900 p-4 z-50 md:hidden flex items-center justify-between gap-3 pb-safe">
         <button
           type="button"
           onClick={handleSubmit}
@@ -2358,7 +2289,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         </button>
       </div>
 
-      {/* Modal de Almoxarifado / Adicionar Peças do Estoque */}
+      {/* Modais */}
       <StockPartsModal
         isOpen={isStockModalOpen}
         onClose={() => setIsStockModalOpen(false)}
@@ -2369,7 +2300,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         isEditing={true}
       />
 
-      {/* Modal de Cadastro Rápido de Peças */}
       <QuickPartModal
         isOpen={isQuickPartModalOpen}
         onClose={() => setIsQuickPartModalOpen(false)}
