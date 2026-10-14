@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Lock, User, Building, Mail, CreditCard, ChevronRight } from 'lucide-react';
+import { Lock, User, Building, Mail, CreditCard, ChevronRight, KeyRound } from 'lucide-react';
 import Link from 'next/link';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
+    invite_token: '',
     empresa_nome: '',
     cnpj: '',
     nome_admin: '',
@@ -20,16 +21,16 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
+
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success) {
         setSuccess(true);
         setTimeout(() => {
@@ -79,11 +80,35 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Dados da Empresa */}
+            {/* Código de Convite */}
             <div className="md:col-span-2">
+              <h2 className="text-[10px] font-mono uppercase text-orange-500 tracking-[0.2em] mb-4">Código de Convite</h2>
+            </div>
+
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-mono uppercase text-zinc-500 tracking-wider">Código de Acesso</label>
+              <div className="relative">
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  name="invite_token"
+                  type="text"
+                  required
+                  value={formData.invite_token}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 pl-10 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 text-sm focus:outline-none focus:border-orange-500/50 transition-all font-mono"
+                  placeholder="Código fornecido pelo administrador"
+                />
+              </div>
+              <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-wider">
+                Necessário para liberar o cadastro. Solicite ao administrador do sistema.
+              </p>
+            </div>
+
+            {/* Dados da Empresa */}
+            <div className="md:col-span-2 pt-2">
               <h2 className="text-[10px] font-mono uppercase text-orange-500 tracking-[0.2em] mb-4">Dados da Oficina</h2>
             </div>
-            
+
             <div className="space-y-2">
               <label className="text-xs font-mono uppercase text-zinc-500 tracking-wider">Nome da Oficina</label>
               <div className="relative">
@@ -160,13 +185,16 @@ export default function RegisterPage() {
                   name="senha"
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
                   value={formData.senha}
                   onChange={handleChange}
                   className="w-full px-4 py-3 pl-10 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 text-sm focus:outline-none focus:border-orange-500/50 transition-all font-mono"
-                  placeholder="••••••••"
+                  placeholder="Mínimo 8 caracteres"
                 />
               </div>
+              <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-wider">
+                Mínimo de 8 caracteres.
+              </p>
             </div>
           </div>
 
