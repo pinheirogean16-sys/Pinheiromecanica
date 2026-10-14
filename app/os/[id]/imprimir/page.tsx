@@ -8,7 +8,7 @@ import { formatHoras } from '@/lib/utils';
 import { BRANDING } from '@/lib/branding';
 
 // ============================================================
-// HELPER — Número por extenso (para o total)
+// HELPER — Número por extenso
 // ============================================================
 function numeroPorExtenso(valor: number): string {
   const unidades = ['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove'];
@@ -52,7 +52,7 @@ function numeroPorExtenso(valor: number): string {
   } else if (reais < 1000000) {
     const mil = Math.floor(reais / 1000);
     const resto = reais % 1000;
-    texto = converteGrupo(mil) + (mil === 1 ? ' mil' : ' mil');
+    texto = converteGrupo(mil) + ' mil';
     if (resto > 0) texto += ' e ' + converteGrupo(resto);
   } else {
     const milhao = Math.floor(reais / 1000000);
@@ -70,22 +70,27 @@ function numeroPorExtenso(valor: number): string {
   return texto;
 }
 
+// ============================================================
+// HELPER — Extrai observações úteis (ignora JSON interno)
+// ============================================================
+function extrairObservacoes(obs: any): string | null {
+  if (!obs || typeof obs !== 'string') return null;
+
+  const trimmed = obs.trim();
+  if (!trimmed) return null;
+
+  // Se começa com { ou [ é JSON interno da OS — ignora
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return null;
+
+  return trimmed;
+}
+
 export default function ImprimirOSPage() {
   const params = useParams();
   const id = params?.id;
   const [os, setOs] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [company, setCompany] = useState<any>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('companyData');
-        return saved ? JSON.parse(saved) : null;
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [company, setCompany] = useState<any>(null);
 
   useEffect(() => {
     const fetchCompany = async () => {
@@ -167,6 +172,8 @@ export default function ImprimirOSPage() {
     ? 'ATENDIMENTO EXTERNO / CAMPO'
     : 'OFICINA';
 
+  const observacoesLimpa = extrairObservacoes(os.observacoes);
+
   return (
     <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-mono text-black">
       {/* ============================================================
@@ -241,16 +248,16 @@ export default function ImprimirOSPage() {
             CABEÇALHO — DADOS DA EMPRESA + LOGO VEHLOX
             ============================================================ */}
         <div className="flex border-b-2 border-black pb-4 mb-4 avoid-break">
-          {/* Logo */}
+          {/* Logo — AUMENTADA */}
           <div className="w-1/3 flex items-center justify-center border-r border-black pr-4">
             {logo ? (
               <img
                 src={logo}
                 alt={BRANDING.name}
-                className="max-h-24 max-w-full object-contain"
+                className="max-h-32 max-w-full object-contain"
               />
             ) : (
-              <div className="text-xl font-black italic uppercase leading-none text-center">
+              <div className="text-2xl font-black italic uppercase leading-none text-center">
                 {BRANDING.name}
               </div>
             )}
@@ -274,6 +281,7 @@ export default function ImprimirOSPage() {
             </p>
             <p className="text-[10px] leading-tight">
               {company?.endereco || 'Endereço não configurado'}
+              {company?.numero ? `, ${company.numero}` : ''}
               {company?.cidade ? ` - ${company.cidade}` : ''}
               {company?.uf ? `/${company.uf}` : ''}
             </p>
@@ -504,13 +512,13 @@ export default function ImprimirOSPage() {
             <p className="text-[10px] italic leading-relaxed text-zinc-800 whitespace-pre-wrap">
               {os.diagnostico || 'Nenhuma observação adicional foi registrada para este serviço.'}
             </p>
-            {os.observacoes && (
+            {observacoesLimpa && (
               <>
                 <p className="text-[10px] font-black uppercase mt-2 mb-1">
                   OBSERVAÇÕES ADICIONAIS
                 </p>
                 <p className="text-[10px] italic leading-relaxed text-zinc-800 whitespace-pre-wrap">
-                  {os.observacoes}
+                  {observacoesLimpa}
                 </p>
               </>
             )}
@@ -599,9 +607,9 @@ export default function ImprimirOSPage() {
         )}
 
         {/* ============================================================
-            ASSINATURAS
+            ASSINATURAS — espaço reduzido
             ============================================================ */}
-        <div className="grid grid-cols-2 gap-16 pt-16 pb-6 px-8 avoid-break">
+        <div className="grid grid-cols-2 gap-16 pt-12 pb-4 px-8 avoid-break">
           <div className="border-t border-black pt-2 text-center text-[10px]">
             <p className="font-black uppercase">RESPONSÁVEL PELA OFICINA</p>
             <p className="text-[9px] text-zinc-600 mt-0.5">
