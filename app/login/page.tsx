@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Lock, User, Wrench } from 'lucide-react';
+import { Lock, User } from 'lucide-react';
 import { BRANDING } from '@/lib/branding';
 
 export default function LoginPage() {
@@ -60,10 +61,17 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md p-6 lg:p-8 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-2xl lg:rounded-3xl shadow-2xl relative z-10"
       >
-        {/* Header com logo */}
+        {/* Header com logo VEHLOX */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-900/40">
-            <Wrench className="w-10 h-10 text-white" />
+          <div className="w-24 h-24 mx-auto mb-5 rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center shadow-lg shadow-orange-900/20">
+            <Image
+              src={BRANDING.logo.url}
+              alt={BRANDING.logo.alt}
+              width={96}
+              height={96}
+              className="object-contain p-2"
+              priority
+            />
           </div>
           <h1 className="text-3xl font-black text-white mb-1 tracking-tight uppercase">
             {BRANDING.name}
