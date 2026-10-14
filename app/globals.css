@@ -138,4 +138,56 @@ select:-webkit-autofill {
   -webkit-text-fill-color: hsl(var(--foreground));
   -webkit-box-shadow: 0 0 0px 1000px hsl(var(--card)) inset;
   transition: background-color 5000s ease-in-out 0s;
+ /* ============================================================
+   CORREÇÕES GLOBAIS DE TEMA
+   Força contraste adequado entre light/dark
+   ============================================================ */
+
+@layer base {
+  /* LIGHT MODE — Correções automáticas */
+  :root:not(.dark) {
+    /* Cards e superfícies com fundo escuro ficam claros */
+    --tw-bg-opacity: 1;
+  }
+
+  /* Torna textos claros em fundo claro legíveis */
+  :root:not(.dark) .text-white,
+  :root:not(.dark) .text-zinc-50,
+  :root:not(.dark) .text-zinc-100,
+  :root:not(.dark) .text-zinc-200 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  :root:not(.dark) .text-zinc-300,
+  :root:not(.dark) .text-zinc-400 {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Zera opacidade de fundos escuros */
+  :root:not(.dark) .bg-zinc-950,
+  :root:not(.dark) .bg-zinc-950\/50,
+  :root:not(.dark) .bg-zinc-950\/80,
+  :root:not(.dark) .bg-zinc-900,
+  :root:not(.dark) .bg-zinc-900\/50,
+  :root:not(.dark) .bg-zinc-900\/40,
+  :root:not(.dark) .bg-zinc-900\/30,
+  :root:not(.dark) .bg-zinc-800 {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  /* Bordas escuras viram claras */
+  :root:not(.dark) .border-zinc-900,
+  :root:not(.dark) .border-zinc-800,
+  :root:not(.dark) .border-zinc-800\/50,
+  :root:not(.dark) .border-zinc-800\/40 {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  /* Placeholders legíveis */
+  :root:not(.dark) .placeholder-zinc-800,
+  :root:not(.dark) .placeholder-zinc-700,
+  :root:not(.dark) .placeholder-zinc-600 {
+    color: hsl(var(--muted-foreground) / 0.5) !important;
+  }
+}
 }
