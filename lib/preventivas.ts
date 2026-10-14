@@ -17,17 +17,11 @@ export interface AvaliacaoPreventivaResult {
   motivo_vencimento?: string[];
 }
 
-/**
- * Calcula o status de um plano preventivo com suporte a Data, Quilometragem (KM) e Horímetro.
- * Regra: Quando combina múltiplos critérios, vence pelo critério que atingir o limite PRIMEIRO.
- * Se o plano estiver inativo (ativo = false), o status retornado é estritamente 'DESATIVADO'.
- */
 export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPreventivaResult {
   const v = veiculo || p.Veiculo || p.veiculo;
   const kmAtual = Number(v?.quilometragem ?? p.km_atual ?? 0);
   const horimetroAtual = Number(v?.horimetro_atual ?? p.horimetro_atual ?? 0);
 
-  // 0. Planos desativados não são vencidos nem próximos
   if (p.ativo === false) {
     return {
       status: 'DESATIVADO',
@@ -56,7 +50,6 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
   let diasRestantes: number | null = null;
   const motivos: string[] = [];
 
-  // 1. Verificação por KM (se proximo_km ou km_limite configurado)
   const kmLimite = p.proximo_km ?? p.km_limite;
   const antecedenciaKm = p.antecedencia_km !== null && p.antecedencia_km !== undefined 
     ? Number(p.antecedencia_km) 
@@ -72,7 +65,6 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
     }
   }
 
-  // 2. Verificação por Horímetro (se proximo_horimetro configurado)
   const proximoHorimetro = p.proximo_horimetro;
   const antecedenciaHoras = p.antecedencia_horas !== null && p.antecedencia_horas !== undefined
     ? Number(p.antecedencia_horas)
@@ -88,7 +80,6 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
     }
   }
 
-  // 3. Verificação por Data (se proxima_data ou data_limite configurada)
   const dataAlvo = p.proxima_data || p.data_limite;
   const antecedenciaDias = p.antecedencia_dias !== null && p.antecedencia_dias !== undefined
     ? Number(p.antecedencia_dias)
@@ -131,23 +122,14 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
   };
 }
 
-// Mutex in-memory por tenant com token exclusivo para evitar cancelamento de bloqueio ativo
 const notificationLocks = new Map<string, { timestamp: number; lockToken: string }>();
 
-/**
- * Notifica administradores e líderes sobre preventivas vencidas ou próximas.
- * Utiliza deduplicação persistente no banco (NotificacaoDeduplicacao) com restrição única
- * por (empresa_id, dedup_key), garantindo imunidade a concorrência entre múltiplas instâncias.
- * O novo ciclo produz nova dedup_key, liberando novos alertas legítimos.
- */
 export async function notificarPreventivasPendentes(empresa_id: string) {
   if (!empresa_id || empresa_id === 'default') return;
 
   const now = Date.now();
   const lastLock = notificationLocks.get(empresa_id);
 
-  // Se já existe processamento em andamento ou executado há menos de 15 segundos
-  // RETORNA IMEDIATAMENTE - SEM EXECUTAR O FINALLY QUE LIMPARIA O LOCK DO PROCESSADOR ATUAL!
   if (lastLock && now - lastLock.timestamp < 15000) {
     return;
   }
@@ -159,7 +141,7 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
     const preventivas = await prisma.preventiva.findMany({
       where: {
         empresa_id,
-        ativo: true // Planos inativos NUNCA geram notificação
+        ativo: true
       },
       include: {
         Veiculo: {
@@ -181,7 +163,6 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
         const dedupTag = `[PREV:${p.id}:${avaliacao.status}:${cicloKm}:${cicloData}]`;
         const dedupKey = `PREV_${p.id}_${avaliacao.status}_${cicloKm}_${cicloData}_${hojeYMD}`;
 
-        // 1. Tentar registrar a chave persistente com restrição de unicidade
         let lockAdquirido = false;
         try {
           await (prisma as any).notificacaoDeduplicacao.create({
@@ -193,21 +174,15 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
           });
           lockAdquirido = true;
         } catch (err: any) {
-          // Violação de constraint única (P2002 no Prisma ou ER_DUP_ENTRY no MySQL):
-          // Outra requisição/instância já gerou a notificação deste ciclo hoje.
           if (err.code === 'P2002' || (err.message && (err.message.includes('unique') || err.message.includes('dedup_unique')))) {
             continue;
           }
 
-          // Se a tabela física NotificacaoDeduplicacao ainda não foi migrada pelo DBA (P2021)
           if (err.code === 'P2021' || (err.message && err.message.includes("doesn't exist"))) {
-            // REGRA DE INTEGRIDADE: Eliminar fallback que enviaria sem deduplicação persistente.
-            // Sem a tabela de deduplicação física, não enviamos para evitar disparos concorrentes entre instâncias.
             log('WARN', 'PREVENTIVAS_NOTIF', 'Alertas preventivos suspensos: tabela NotificacaoDeduplicacao pendente de migration no banco de dados.');
             continue;
           }
 
-          // Erro real de banco (conexão, timeout, etc.) -> registrar e não ignorar silenciosamente
           log('ERROR', 'PREVENTIVAS_NOTIF', 'Erro de banco ao verificar deduplicação de notificação', {
             error: err.message,
             empresa_id,
@@ -260,9 +235,6 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
           });
         }
 
-        // Se o envio falhou (retornou null, lista vazia ou lançou erro),
-        // remove o registro de NotificacaoDeduplicacao para garantir que uma nova tentativa
-        // seja executada no próximo ciclo e o alerta não seja perdido.
         if (!envioSucesso && lockAdquirido) {
           try {
             await (prisma as any).notificacaoDeduplicacao.deleteMany({
@@ -271,18 +243,15 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
                 dedup_key: dedupKey
               }
             });
-            log('INFO', 'PREVENTIVAS_NOTIF', 'Chave de deduplicação liberada para permitir nova tentativa de envio', {
-              empresa_id,
-              dedupKey
-            });
           } catch {}
         }
       }
     }
   } catch (error) {
-    console.error('Erro ao verificar notificações de preventivas:', error);
+    log('ERROR', 'PREVENTIVAS_NOTIF', 'Erro ao verificar notificações de preventivas', {
+      error: error instanceof Error ? error.message : String(error)
+    });
   } finally {
-    // SÓ remove o lock se ele ainda pertencer à chamada atual (token idêntico)
     const activeLock = notificationLocks.get(empresa_id);
     if (activeLock?.lockToken === currentLockToken) {
       notificationLocks.delete(empresa_id);
@@ -298,18 +267,6 @@ export interface SincronizarPreventivasResult {
   erro?: string;
 }
 
-/**
- * Conclui explicitamente os planos preventivos selecionados quando uma Ordem de Serviço é FINALIZADA.
- * REQUISITOS OBRIGATÓRIOS DE INTEGRIDADE:
- * 1. OS deve estar estritamente no status FINALIZADA.
- * 2. Planos devem ser explicitamente vinculados (sem conclusão automática por substring).
- * 3. Validação de tenant (empresa_id) e vínculo com o veículo da OS.
- * 4. Proteção contra duplo avanço: se a OS já concluiu o plano, ignora com idempotência.
- * 5. Atomicidade: inserção de PreventivaExecucao e avanço de Preventiva ocorrem dentro
- *    da MESMA transação Prisma interativa tx.
- * 6. Tratamento de concorrência: violação P2002 na chave (empresa_id, os_id, preventiva_id)
- *    aborta a transação e impede duplo avanço.
- */
 export async function sincronizarPreventivasAposOS(
   os: any,
   options?: {
@@ -317,33 +274,32 @@ export async function sincronizarPreventivasAposOS(
     usuario?: any;
     kmVeiculo?: number | null;
     horimetroVeiculo?: number | null;
-    tx?: any; // Suporte a cliente transacional externo
-    prismaClient?: any; // Suporte a cliente Prisma injetado (ex: testes de integração em banco isolado)
+    tx?: any;
+    prismaClient?: any;
   }
 ): Promise<SincronizarPreventivasResult> {
   if (!os?.id || !os?.veiculo_id || !os?.empresa_id) {
     return { sucesso: false, executadas: [], ignoradas: [], erro: 'Dados de OS incompletos' };
   }
 
-  // Se a OS NÃO for FINALIZADA, ela NUNCA conclui planos preventivos!
   if (os.status !== 'FINALIZADA') {
     return { sucesso: true, executadas: [], ignoradas: [] };
   }
 
-  // Identificar IDs de preventivas explicitamente indicadas
   const preventivasSolicitadas: string[] = [];
   if (options?.preventivasIds && Array.isArray(options.preventivasIds)) {
     preventivasSolicitadas.push(...options.preventivasIds.filter(Boolean));
   }
 
-  // Sem preventivas explicitamente selecionadas, não há nada a concluir
   if (preventivasSolicitadas.length === 0) {
     return { sucesso: true, executadas: [], ignoradas: [] };
   }
 
   const hoje = new Date();
 
-  // Se o chamador já forneceu um tx externo (ex: transação atômica da finalização de OS)
+  // ============================================================
+  // EXECUÇÃO COM TX EXTERNA (atômica com a OS)
+  // ============================================================
   if (options?.tx) {
     try {
       const tx = options.tx;
@@ -354,6 +310,7 @@ export async function sincronizarPreventivasAposOS(
         }
       });
 
+      // 🎯 PRIORIDADE: kmConclusao > veiculo.quilometragem > plano.ultimo_km
       const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
       const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
 
@@ -362,7 +319,6 @@ export async function sincronizarPreventivasAposOS(
       let houveConcorrencia = false;
 
       for (const prevId of preventivasSolicitadas) {
-        // 1. Validar plano
         const plano = await tx.preventiva.findFirst({
           where: {
             id: prevId,
@@ -378,7 +334,6 @@ export async function sincronizarPreventivasAposOS(
           continue;
         }
 
-        // 2. Proteção contra duplo avanço
         const execucaoExistente = await tx.preventivaExecucao.findUnique({
           where: {
             empresa_id_os_id_preventiva_id: {
@@ -395,9 +350,14 @@ export async function sincronizarPreventivasAposOS(
           continue;
         }
 
-        // 3. Projeção de ciclos
-        const kmBase = kmConclusao ? Number(kmConclusao) : Number(plano.ultimo_km ?? veiculo?.quilometragem ?? 0);
-        const horimetroBase = horimetroConclusao ? Number(horimetroConclusao) : Number(plano.ultimo_horimetro ?? veiculo?.horimetro_atual ?? 0);
+        // 🎯 CÁLCULO CORRIGIDO: prioriza km do veículo sobre ultimo_km antigo
+        const kmBase = kmConclusao
+          ? Number(kmConclusao)
+          : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
+
+        const horimetroBase = horimetroConclusao
+          ? Number(horimetroConclusao)
+          : Number(veiculo?.horimetro_atual ?? plano.ultimo_horimetro ?? 0);
 
         let novoProximoKm: number | null = plano.proximo_km;
         if (plano.intervalo_km && plano.intervalo_km > 0) {
@@ -417,7 +377,6 @@ export async function sincronizarPreventivasAposOS(
         }
 
         try {
-          // 4. Inserir PreventivaExecucao (atômico com tx)
           await tx.preventivaExecucao.create({
             data: {
               id: randomUUID(),
@@ -426,8 +385,8 @@ export async function sincronizarPreventivasAposOS(
               veiculo_id: os.veiculo_id,
               os_id: os.id,
               data_conclusao: hoje,
-              km_conclusao: kmConclusao ? Math.round(Number(kmConclusao)) : null,
-              horimetro_conclusao: horimetroConclusao ? Number(horimetroConclusao) : null,
+              km_conclusao: kmBase ? Math.round(Number(kmBase)) : null,
+              horimetro_conclusao: horimetroBase ? Number(horimetroBase) : null,
               usuario_id: options?.usuario?.id || null,
               usuario_nome: options?.usuario?.name || options?.usuario?.email || 'Mecânico/Sistema',
               componente: plano.componente,
@@ -439,13 +398,12 @@ export async function sincronizarPreventivasAposOS(
             }
           });
 
-          // 5. Atualizar Preventiva (atômico com tx)
           await tx.preventiva.update({
             where: { id: plano.id },
             data: {
               ultima_data: hoje,
-              ultimo_km: kmConclusao ? Math.round(Number(kmConclusao)) : plano.ultimo_km,
-              ultimo_horimetro: horimetroConclusao ? Number(horimetroConclusao) : plano.ultimo_horimetro,
+              ultimo_km: kmBase ? Math.round(Number(kmBase)) : plano.ultimo_km,
+              ultimo_horimetro: horimetroBase ? Number(horimetroBase) : plano.ultimo_horimetro,
               proxima_data: novaProximaData,
               proximo_km: novoProximoKm,
               proximo_horimetro: novoProximoHorimetro,
@@ -492,9 +450,9 @@ export async function sincronizarPreventivasAposOS(
     }
   }
 
-  // Execução isolada (sem tx externa):
-  // Cada preventiva é processada de forma atômica individual para que a colisão de concorrência
-  // em um plano específico (P2002) NÃO aborte nem marque falsamente os outros planos como finalizados.
+  // ============================================================
+  // EXECUÇÃO ISOLADA (sem tx externa)
+  // ============================================================
   const dbClient = options?.prismaClient || prisma;
   const veiculo = await dbClient.veiculo.findFirst({
     where: {
@@ -503,6 +461,7 @@ export async function sincronizarPreventivasAposOS(
     }
   });
 
+  // 🎯 PRIORIDADE: kmConclusao > veiculo.quilometragem > plano.ultimo_km
   const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
   const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
 
@@ -516,7 +475,6 @@ export async function sincronizarPreventivasAposOS(
       let jaExecutado = false;
 
       await dbClient.$transaction(async (tx: any) => {
-        // 1. Validar plano dentro de tx
         const plano = await tx.preventiva.findFirst({
           where: {
             id: prevId,
@@ -532,7 +490,6 @@ export async function sincronizarPreventivasAposOS(
           return;
         }
 
-        // 2. Proteção contra duplo avanço
         const execucaoExistente = await tx.preventivaExecucao.findUnique({
           where: {
             empresa_id_os_id_preventiva_id: {
@@ -549,9 +506,14 @@ export async function sincronizarPreventivasAposOS(
           return;
         }
 
-        // 3. Projeção de ciclos
-        const kmBase = kmConclusao ? Number(kmConclusao) : Number(plano.ultimo_km ?? veiculo?.quilometragem ?? 0);
-        const horimetroBase = horimetroConclusao ? Number(horimetroConclusao) : Number(plano.ultimo_horimetro ?? veiculo?.horimetro_atual ?? 0);
+        // 🎯 CÁLCULO CORRIGIDO: prioriza km do veículo sobre ultimo_km antigo
+        const kmBase = kmConclusao
+          ? Number(kmConclusao)
+          : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
+
+        const horimetroBase = horimetroConclusao
+          ? Number(horimetroConclusao)
+          : Number(veiculo?.horimetro_atual ?? plano.ultimo_horimetro ?? 0);
 
         let novoProximoKm: number | null = plano.proximo_km;
         if (plano.intervalo_km && plano.intervalo_km > 0) {
@@ -570,7 +532,6 @@ export async function sincronizarPreventivasAposOS(
           novaProximaData = d;
         }
 
-        // 4. Inserir PreventivaExecucao (atômico)
         await tx.preventivaExecucao.create({
           data: {
             id: randomUUID(),
@@ -579,8 +540,8 @@ export async function sincronizarPreventivasAposOS(
             veiculo_id: os.veiculo_id,
             os_id: os.id,
             data_conclusao: hoje,
-            km_conclusao: kmConclusao ? Math.round(Number(kmConclusao)) : null,
-            horimetro_conclusao: horimetroConclusao ? Number(horimetroConclusao) : null,
+            km_conclusao: kmBase ? Math.round(Number(kmBase)) : null,
+            horimetro_conclusao: horimetroBase ? Number(horimetroBase) : null,
             usuario_id: options?.usuario?.id || null,
             usuario_nome: options?.usuario?.name || options?.usuario?.email || 'Mecânico/Sistema',
             componente: plano.componente,
@@ -592,13 +553,12 @@ export async function sincronizarPreventivasAposOS(
           }
         });
 
-        // 5. Atualizar Preventiva (atômico)
         await tx.preventiva.update({
           where: { id: plano.id },
           data: {
             ultima_data: hoje,
-            ultimo_km: kmConclusao ? Math.round(Number(kmConclusao)) : plano.ultimo_km,
-            ultimo_horimetro: horimetroConclusao ? Number(horimetroConclusao) : plano.ultimo_horimetro,
+            ultimo_km: kmBase ? Math.round(Number(kmBase)) : plano.ultimo_km,
+            ultimo_horimetro: horimetroBase ? Number(horimetroBase) : plano.ultimo_horimetro,
             proxima_data: novaProximaData,
             proximo_km: novoProximoKm,
             proximo_horimetro: novoProximoHorimetro,
@@ -619,9 +579,7 @@ export async function sincronizarPreventivasAposOS(
     } catch (err: any) {
       const isP2002 = err?.code === 'P2002' || (err?.message && (err.message.includes('empresa_os_prev_unique') || err.message.includes('empresa_id_os_id_preventiva_id')));
       if (isP2002) {
-        // Concorrência atômica: outra requisição concluiu este plano específico.
-        // Consideramos este plano concluído (sem duplo avanço) e CONTINUAMOS o processamento das demais!
-        log('INFO', 'PREVENTIVAS', `Concorrência detectada no plano ${prevId} (P2002): já registrado por requisição paralela. O plano não foi duplicado.`);
+        log('INFO', 'PREVENTIVAS', `Concorrência detectada no plano ${prevId} (P2002): já registrado.`);
         ignoradas.push(prevId);
         concorrenciaDetectada = true;
         continue;
@@ -629,7 +587,7 @@ export async function sincronizarPreventivasAposOS(
 
       const isTableMissing = err?.code === 'P2021' || (err?.message && err.message.includes("doesn't exist"));
       if (isTableMissing) {
-        log('ERROR', 'PREVENTIVAS', 'A tabela PreventivaExecucao ainda não foi aplicada no banco de dados. A integridade de preventivas requer a aplicação da migration 20261011120000_add_preventiva_execucao_historico.', {
+        log('ERROR', 'PREVENTIVAS', 'A tabela PreventivaExecucao ainda não foi aplicada no banco de dados.', {
           error: err.message
         });
         return {
@@ -669,11 +627,6 @@ export interface ResultadoConsultaExecucoes {
   erro?: string;
 }
 
-/**
- * Recupera o histórico completo de execuções de um plano preventivo específico
- * Busca diretamente da tabela relacional PreventivaExecucao (sem simulações em logs).
- * Diferencia histórico vazio legítimo de indisponibilidade por ausência da tabela ou erro de banco.
- */
 export async function obterHistoricoExecucoesPreventiva(
   preventivaId: string, 
   empresaId: string,
@@ -699,13 +652,13 @@ export async function obterHistoricoExecucoesPreventiva(
   } catch (e: any) {
     const isTableMissing = e?.code === 'P2021' || (e?.message && e.message.includes("doesn't exist"));
     if (isTableMissing) {
-      log('WARN', 'PREVENTIVAS', 'Histórico de execuções indisponível: tabela PreventivaExecucao pendente de migration.');
+      log('WARN', 'PREVENTIVAS', 'Histórico indisponível: tabela PreventivaExecucao pendente de migration.');
       return {
         sucesso: false,
         dados: [],
         indisponivel: true,
         motivo: 'TABELA_INEXISTENTE',
-        erro: 'Histórico indisponível: tabela PreventivaExecucao pendente de migration no banco de dados.'
+        erro: 'Histórico indisponível: tabela PreventivaExecucao pendente de migration.'
       };
     }
     log('ERROR', 'PREVENTIVAS', 'Erro ao obter histórico de execuções de preventiva', { error: e?.message });
@@ -714,15 +667,11 @@ export async function obterHistoricoExecucoesPreventiva(
       dados: [],
       indisponivel: true,
       motivo: 'ERRO_BANCO',
-      erro: e?.message || 'Erro ao consultar histórico de execuções'
+      erro: e?.message || 'Erro ao consultar histórico'
     };
   }
 }
 
-/**
- * Recupera as execuções de preventivas vinculadas a uma Ordem de Serviço específica
- * Diferencia lista vazia legítima de indisponibilidade por ausência da tabela ou falha de banco.
- */
 export async function obterExecucoesPreventivasDaOS(
   osId: string, 
   empresaId: string,
@@ -752,7 +701,7 @@ export async function obterExecucoesPreventivasDaOS(
         dados: [],
         indisponivel: true,
         motivo: 'TABELA_INEXISTENTE',
-        erro: 'Tabela PreventivaExecucao pendente de migration no banco de dados.'
+        erro: 'Tabela PreventivaExecucao pendente de migration.'
       };
     }
     log('ERROR', 'PREVENTIVAS', 'Erro ao obter execuções de preventivas da OS', { osId, error: e?.message });
@@ -761,7 +710,7 @@ export async function obterExecucoesPreventivasDaOS(
       dados: [],
       indisponivel: true,
       motivo: 'ERRO_BANCO',
-      erro: e?.message || 'Erro ao consultar execuções de preventivas da OS'
+      erro: e?.message || 'Erro ao consultar execuções'
     };
   }
 }
