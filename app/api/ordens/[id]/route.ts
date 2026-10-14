@@ -53,8 +53,7 @@ function serializeDecimals(obj: any): any {
 }
 
 // ============================================================
-// 🎯 HELPER: Recuperar preventivas vinculadas via fallback
-// Tenta 4 fontes diferentes se o frontend não enviou
+// HELPER: Recuperar preventivas vinculadas via fallback
 // ============================================================
 async function recuperarPreventivasFallback(
   osId: string,
@@ -63,7 +62,6 @@ async function recuperarPreventivasFallback(
 ): Promise<string[]> {
   const ids: string[] = [];
 
-  // 1. Execuções existentes na tabela PreventivaExecucao
   try {
     const execucoes = await prisma.preventivaExecucao.findMany({
       where: { os_id: osId, empresa_id: empresaId },
@@ -76,19 +74,16 @@ async function recuperarPreventivasFallback(
     });
   } catch {}
 
-  // 2. Campo singular direto na OS (se existir)
   if (ids.length === 0 && osData?.preventiva_id) {
     ids.push(osData.preventiva_id);
   }
 
-  // 3. Array de IDs direto na OS (se existir)
   if (ids.length === 0 && Array.isArray(osData?.preventivas_ids)) {
     osData.preventivas_ids.forEach((pid: string) => {
       if (pid && !ids.includes(pid)) ids.push(pid);
     });
   }
 
-  // 4. JSON em observações (legado)
   if (ids.length === 0 && osData?.observacoes) {
     try {
       const meta = typeof osData.observacoes === 'string'
@@ -215,6 +210,13 @@ const preprocessInteger = (val: any) => {
   return isNaN(parsed) ? null : parsed;
 };
 
+// A06: preprocess específico para quantidade — aceita fracionados, sem forçar mínimo 1
+const preprocessQuantidade = (val: any) => {
+  if (val === null || val === undefined || val === '') return 1;
+  const n = Number(val);
+  return isNaN(n) ? 1 : n;
+};
+
 // ============================================================
 // SCHEMAS
 // ============================================================
@@ -224,7 +226,7 @@ const updateOsSchema = z
     status: z.nativeEnum(StatusOS).optional(),
     diagnostico: z.string().optional().nullable(),
     observacoes: z.string().optional().nullable(),
-    desconto: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+    desconto: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
     mecanico_id: z
       .string()
       .optional()
@@ -236,24 +238,24 @@ const updateOsSchema = z
     data_vencimento_primeira: z.string().optional().nullable(),
 
     tipo_atendimento: z.string().optional().nullable().default('OFICINA'),
-    km_saida: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    km_retorno: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    km_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    valor_km: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    total_deslocamento: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+    km_saida: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    km_retorno: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    km_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    valor_km: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    total_deslocamento: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
 
-    despesa_pedagio: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    despesa_combustivel: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    despesa_hospedagem: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    despesa_alimentacao: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    despesa_diaria_tecnica: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    despesa_guincho: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    despesa_outros: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+    despesa_pedagio: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    despesa_combustivel: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    despesa_hospedagem: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    despesa_alimentacao: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    despesa_diaria_tecnica: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    despesa_guincho: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    despesa_outros: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
     despesas_comprovantes: z.string().optional().nullable().default('{}'),
 
-    mao_obra_externa_horas: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    mao_obra_externa_valor: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    mao_obra_externa_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+    mao_obra_externa_horas: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    mao_obra_externa_valor: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    mao_obra_externa_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
     mao_obra_equipe: z.string().optional().nullable().default('[]'),
 
     local_atendimento: z.string().optional().nullable().default(''),
@@ -273,9 +275,9 @@ const updateOsSchema = z
             .optional()
             .default('Serviço')
             .transform((v) => (v ? v.trim() : 'Serviço')),
-          horas: z.preprocess(preprocessNumber, z.number().optional().default(1)),
-          valor_hora: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-          valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+          horas: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(1)),
+          valor_hora: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+          valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
         })
       )
       .optional()
@@ -285,13 +287,11 @@ const updateOsSchema = z
         z.object({
           pecaId: z.string().optional().nullable(),
           peca_id: z.string().optional().nullable(),
-          quantidade: z.preprocess(
-            preprocessNumber,
-            z.number().optional().default(1).transform((v) => Math.max(1, v))
-          ),
+          // A06: aceita quantidade fracionada (ex: 0.5 litro de óleo)
+          quantidade: z.preprocess(preprocessQuantidade, z.number().positive()),
           unidade: z.string().optional().nullable().default('un'),
-          valor_unit: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-          valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+          valor_unit: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+          valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
           origem: z.string().optional().nullable().default('OFICINA'),
         })
       )
@@ -301,7 +301,7 @@ const updateOsSchema = z
         pecas.map((p) => ({ ...p, pecaId: p.peca_id || p.pecaId }))
       ),
     centro_custo: z.string().optional().nullable(),
-    custo_km: z.preprocess(preprocessNumber, z.number().optional()),
+    custo_km: z.preprocess(preprocessNumber, z.number().nonnegative().optional()),
     assinatura_cliente: z.string().optional().nullable(),
     assinatura_mecanico: z.string().optional().nullable(),
     assinatura_supervisor: z.string().optional().nullable(),
@@ -332,28 +332,28 @@ const putOsSchema = z.object({
   data_previsao: z.string().optional().nullable().default(''),
   status: z.nativeEnum(StatusOS),
   observacoes: z.string().optional().nullable().default(''),
-  desconto: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+  desconto: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
   forma_pagamento: z.string().optional().nullable().default('DINHEIRO'),
   numero_parcelas: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
   dias_entre_parcelas: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
   data_vencimento_primeira: z.string().optional().nullable(),
   tipo_atendimento: z.string().optional().nullable().default('OFICINA'),
-  km_saida: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  km_retorno: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  km_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  valor_km: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  total_deslocamento: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_pedagio: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_combustivel: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_hospedagem: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_alimentacao: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_diaria_tecnica: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_guincho: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_outros: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+  km_saida: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  km_retorno: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  km_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  valor_km: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  total_deslocamento: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_pedagio: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_combustivel: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_hospedagem: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_alimentacao: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_diaria_tecnica: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_guincho: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_outros: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
   despesas_comprovantes: z.string().optional().nullable().default('{}'),
-  mao_obra_externa_horas: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  mao_obra_externa_valor: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  mao_obra_externa_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+  mao_obra_externa_horas: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  mao_obra_externa_valor: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  mao_obra_externa_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
   mao_obra_equipe: z.string().optional().nullable().default('[]'),
   local_atendimento: z.string().optional().nullable().default(''),
   local_cidade: z.string().optional().nullable().default(''),
@@ -370,9 +370,9 @@ const putOsSchema = z.object({
           .optional()
           .default('Serviço')
           .transform((v) => (v ? v.trim() : 'Serviço')),
-        horas: z.preprocess(preprocessNumber, z.number().optional().default(1)),
-        valor_hora: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-        valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+        horas: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(1)),
+        valor_hora: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+        valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
       })
     )
     .optional()
@@ -382,13 +382,11 @@ const putOsSchema = z.object({
       z.object({
         pecaId: z.string().optional().nullable(),
         peca_id: z.string().optional().nullable(),
-        quantidade: z.preprocess(
-          preprocessNumber,
-          z.number().optional().default(1).transform((v) => Math.max(1, v))
-        ),
+        // A06: aceita quantidade fracionada (ex: 0.5 litro de óleo)
+        quantidade: z.preprocess(preprocessQuantidade, z.number().positive()),
         unidade: z.string().optional().nullable().default('un'),
-        valor_unit: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-        valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+        valor_unit: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+        valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
         origem: z.string().optional().nullable().default('OFICINA'),
       })
     )
@@ -398,7 +396,7 @@ const putOsSchema = z.object({
       pecas.map((p) => ({ ...p, pecaId: p.peca_id || p.pecaId }))
     ),
   centro_custo: z.string().optional().nullable().default('OFICINA'),
-  custo_km: z.preprocess(preprocessNumber, z.number().optional().default(1.5)),
+  custo_km: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(1.5)),
   assinatura_cliente: z.string().optional().nullable(),
   assinatura_mecanico: z.string().optional().nullable(),
   assinatura_supervisor: z.string().optional().nullable(),
@@ -436,7 +434,8 @@ export async function GET(
       include: {
         Cliente: true,
         Veiculo: true,
-        User: true,
+        // C09: nunca incluir password_hash — apenas campos públicos do usuário
+        User: { select: { id: true, name: true, email: true } },
         ServicoOS: true,
         PecaAplicada: { include: { Peca: true } },
       },
@@ -537,16 +536,12 @@ export async function PATCH(
       }
     }
 
-    // ============================================================
-    // 🎯 PREVENTIVAS: Envio direto + Fallback robusto
-    // ============================================================
     const preventivasIds: string[] = [];
     if (Array.isArray(body.preventivas_ids)) preventivasIds.push(...body.preventivas_ids);
     if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
       preventivasIds.push(body.preventiva_id);
     }
 
-    // Se o frontend não enviou, tenta recuperar do banco
     if (preventivasIds.length === 0) {
       const fallbackIds = await recuperarPreventivasFallback(id, user.empresa_id, antes);
       preventivasIds.push(...fallbackIds);
@@ -900,7 +895,9 @@ export async function PATCH(
       }
 
       return ordem;
-    });
+    },
+    // M05: timeout explícito também no PATCH (era só no PUT)
+    { timeout: 15000 });
 
     await createAuditLog({
       modulo: 'OS',
@@ -1031,16 +1028,12 @@ export async function PUT(
       }
     }
 
-    // ============================================================
-    // 🎯 PREVENTIVAS: Envio direto + Fallback robusto
-    // ============================================================
     const preventivasIds: string[] = [];
     if (Array.isArray(body.preventivas_ids)) preventivasIds.push(...body.preventivas_ids);
     if (body.preventiva_id && !preventivasIds.includes(body.preventiva_id)) {
       preventivasIds.push(body.preventiva_id);
     }
 
-    // Se o frontend não enviou, tenta recuperar do banco
     if (preventivasIds.length === 0) {
       const fallbackIds = await recuperarPreventivasFallback(id, user.empresa_id, antes);
       preventivasIds.push(...fallbackIds);
