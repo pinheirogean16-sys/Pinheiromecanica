@@ -2,15 +2,31 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, ClipboardList, ClipboardCheck, Users, Truck, 
-  Package, DollarSign, Settings, Menu, X,
-  ChevronLeft, ChevronRight, Calendar, FileText, ChevronDown,
-  Building2, Palette, PenTool as Tool, ShieldAlert
+import {
+  LayoutDashboard,
+  ClipboardList,
+  ClipboardCheck,
+  Users,
+  Truck,
+  Package,
+  DollarSign,
+  Settings,
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  FileText,
+  ChevronDown,
+  Building2,
+  PenTool as Tool,
+  ShieldAlert,
 } from 'lucide-react';
 
 import { checkPermission } from '@/lib/rbac';
+import { BRANDING } from '@/lib/branding';
 
 interface MenuItem {
   href: string;
@@ -24,7 +40,7 @@ interface MenuGroup {
   id: string;
   label: string;
   icon: any;
-  href?: string; // For direct links
+  href?: string;
   items?: MenuItem[];
   modulo?: string;
   acao?: string;
@@ -37,7 +53,7 @@ const sidebarGroups: MenuGroup[] = [
     icon: LayoutDashboard,
     href: '/dashboard',
     modulo: 'dashboard',
-    acao: 'visualizar'
+    acao: 'visualizar',
   },
   {
     id: 'oficina',
@@ -49,7 +65,7 @@ const sidebarGroups: MenuGroup[] = [
       { href: '/preventivas', label: 'Preventivas', icon: ShieldAlert, modulo: 'preventivas', acao: 'visualizar' },
       { href: '/agenda', label: 'Agenda', icon: Calendar, modulo: 'agenda', acao: 'visualizar' },
       { href: '/checklist', label: 'Checklist', icon: ClipboardCheck, modulo: 'checklist', acao: 'visualizar' },
-    ]
+    ],
   },
   {
     id: 'cadastros',
@@ -59,7 +75,7 @@ const sidebarGroups: MenuGroup[] = [
       { href: '/clientes', label: 'Clientes', icon: Users, modulo: 'clientes', acao: 'visualizar' },
       { href: '/fornecedores', label: 'Fornecedores', icon: Truck, modulo: 'fornecedores', acao: 'visualizar' },
       { href: '/veiculos', label: 'Veículos', icon: Truck, modulo: 'veiculos', acao: 'visualizar' },
-    ]
+    ],
   },
   {
     id: 'estoque',
@@ -68,7 +84,7 @@ const sidebarGroups: MenuGroup[] = [
     items: [
       { href: '/estoque', label: 'Consultar Estoque', icon: Package, modulo: 'estoque', acao: 'visualizar' },
       { href: '/estoque/importar-nfe', label: 'Importar NF-e', icon: FileText, modulo: 'nfe', acao: 'visualizar' },
-    ]
+    ],
   },
   {
     id: 'financeiro',
@@ -76,7 +92,7 @@ const sidebarGroups: MenuGroup[] = [
     icon: DollarSign,
     href: '/financeiro',
     modulo: 'financeiro',
-    acao: 'visualizar'
+    acao: 'visualizar',
   },
   {
     id: 'configuracoes',
@@ -85,9 +101,9 @@ const sidebarGroups: MenuGroup[] = [
     items: [
       { href: '/configuracoes', label: 'Empresa', icon: Building2, modulo: 'configuracoes', acao: 'visualizar' },
       { href: '/mecanicos', label: 'Usuários', icon: Users, modulo: 'usuarios', acao: 'visualizar' },
-      { href: '/configuracoes', label: 'Aparência', icon: Palette, modulo: 'configuracoes', acao: 'visualizar' },
-    ]
-  }
+      // ✅ Removido item "Aparência"
+    ],
+  },
 ];
 
 export default function Sidebar() {
@@ -97,20 +113,6 @@ export default function Sidebar() {
   const [isMobile, setIsMobile] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>([]);
   const [user, setUser] = useState<any>(null);
-  const [logo, setLogo] = useState<string | null>(null);
-  const [nomeSistema, setNomeSistema] = useState('Pinheiro Diesel');
-  
-  const [corPrincipal, setCorPrincipal] = useState('#F97316');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setTimeout(() => {
-        setCorPrincipal(localStorage.getItem('corPrincipal') || '#F97316');
-        setLogo(localStorage.getItem('logo'));
-        setNomeSistema(localStorage.getItem('nomeSistema') || 'Pinheiro Diesel');
-      }, 0);
-    }
-  }, []);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -134,33 +136,26 @@ export default function Sidebar() {
         setIsCollapsed(true);
       }
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Initialize open groups based on current pathname
   useEffect(() => {
-    const activeGroup = sidebarGroups.find(group => 
-      group.items?.some(item => pathname === item.href)
+    const activeGroup = sidebarGroups.find((group) =>
+      group.items?.some((item) => pathname === item.href)
     );
     if (activeGroup) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOpenGroups(prev => {
+      setOpenGroups((prev) => {
         if (prev.includes(activeGroup.id)) return prev;
-        return [activeGroup.id]; // Only keep the active group open on navigation
+        return [activeGroup.id];
       });
     }
   }, [pathname]);
 
   if (pathname === '/login') return null;
-
-  const handleMobileNavigation = () => {
-    if (isMobile) {
-      setIsMobileOpen(false);
-    }
-  };
 
   const toggleGroup = (id: string) => {
     if (isCollapsed && !isMobile) {
@@ -168,99 +163,131 @@ export default function Sidebar() {
       setOpenGroups([id]);
       return;
     }
-    setOpenGroups(prev => 
-      prev.includes(id) ? prev.filter(g => g !== id) : [id] // Opens only 1 at a time as per "Apenas 1 grupo aberto por vez (ou manter múltiplos abertos, você escolhe)"
+    setOpenGroups((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [id]
     );
   };
 
-  // Filter groups and items based on user role
-  const filteredGroups = sidebarGroups.map(group => {
-    // If group is a direct link
-    if (group.href) {
-      const hasAccess = group.modulo && group.acao 
-        ? checkPermission(user, group.modulo, group.acao)
-        : true;
-      return hasAccess ? group : null;
-    }
+  const filteredGroups = sidebarGroups
+    .map((group) => {
+      if (group.href) {
+        const hasAccess =
+          group.modulo && group.acao
+            ? checkPermission(user, group.modulo, group.acao)
+            : true;
+        return hasAccess ? group : null;
+      }
 
-    // If group has sub-items
-    const accessibleItems = group.items?.filter(item => {
-      return item.modulo && item.acao 
-        ? checkPermission(user, item.modulo, item.acao)
-        : true;
-    });
+      const accessibleItems = group.items?.filter((item) => {
+        return item.modulo && item.acao
+          ? checkPermission(user, item.modulo, item.acao)
+          : true;
+      });
 
-    if (accessibleItems && accessibleItems.length > 0) {
-      return { ...group, items: accessibleItems };
-    }
+      if (accessibleItems && accessibleItems.length > 0) {
+        return { ...group, items: accessibleItems };
+      }
 
-    return null;
-  }).filter(Boolean) as MenuGroup[];
+      return null;
+    })
+    .filter(Boolean) as MenuGroup[];
 
   const getSidebarContent = (isMobileView: boolean) => {
     const collapsed = !isMobileView && isCollapsed;
+
     return (
       <>
-        {/* Cabeçalho */}
-        <div className={`p-6 border-b border-zinc-900 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
+        {/* Cabeçalho com logo VEHLOX */}
+        <div
+          className={`p-5 border-b flex items-center transition-colors border-zinc-200 dark:border-zinc-900 ${
+            collapsed ? 'justify-center' : 'justify-between'
+          }`}
+        >
           {!collapsed && (
-            <div className="flex items-center gap-3">
-              {logo && (
-                <img 
-                  src={logo} 
-                  alt="Logo" 
-                  className="h-10 w-10 rounded-xl object-contain bg-zinc-900 p-2 flex-shrink-0 border border-zinc-800" 
-                  referrerPolicy="no-referrer"
+            <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
+              <div className="h-11 w-11 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
+                <Image
+                  src={BRANDING.logo.url}
+                  alt={BRANDING.logo.alt}
+                  width={44}
+                  height={44}
+                  className="object-contain"
+                  priority
                 />
-              )}
-              <div className="min-w-0">
-                <h1 className="text-sm font-black text-white uppercase tracking-widest leading-tight truncate">
-                  {nomeSistema.toUpperCase()}
-                </h1>
-                <p className="text-[9px] text-zinc-600 font-mono font-black uppercase tracking-widest truncate">SISTEMA ERP v1.0</p>
               </div>
-            </div>
+              <div className="min-w-0">
+                <h1 className="text-base font-black text-zinc-900 dark:text-white uppercase tracking-tight leading-none">
+                  {BRANDING.name}
+                </h1>
+                <p className="text-[9px] text-zinc-500 dark:text-zinc-600 font-mono font-bold uppercase tracking-widest mt-0.5 truncate">
+                  {BRANDING.slogan}
+                </p>
+              </div>
+            </Link>
           )}
-          {!isMobileView && (
+          {!collapsed && !isMobileView && (
             <button
-              onClick={() => setIsCollapsed(!collapsed)}
-              className="p-2.5 hover:bg-zinc-900 rounded-xl transition-all text-zinc-600 hover:text-white border border-transparent hover:border-zinc-800 cursor-pointer"
+              onClick={() => setIsCollapsed(true)}
+              className="p-2 rounded-lg transition-all text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              aria-label="Recolher menu"
             >
-              {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+              <ChevronLeft size={18} />
             </button>
           )}
           {isMobileView && (
             <button
               onClick={() => setIsMobileOpen(false)}
-              className="p-2.5 hover:bg-zinc-900 rounded-xl transition-all text-zinc-600 hover:text-white border border-transparent hover:border-zinc-800 cursor-pointer"
+              className="p-2 rounded-lg transition-all text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              aria-label="Fechar menu"
             >
               <X size={18} />
             </button>
           )}
         </div>
 
+        {/* Botão de expandir quando colapsado */}
+        {collapsed && !isMobileView && (
+          <button
+            onClick={() => setIsCollapsed(false)}
+            className="mx-auto mt-3 p-2 rounded-lg transition-all text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+            aria-label="Expandir menu"
+          >
+            <ChevronRight size={18} />
+          </button>
+        )}
+
         {/* Navegação */}
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto custom-scrollbar">
           {filteredGroups.map((group) => {
             const Icon = group.icon;
             const isGroupOpen = openGroups.includes(group.id);
-            const hasActiveChild = group.items?.some(item => pathname === item.href);
-            const isDirectActive = group.href && pathname === group.href;
+            const hasActiveChild = group.items?.some(
+              (item) => pathname === item.href || pathname.startsWith(item.href + '/')
+            );
+            const isDirectActive =
+              group.href &&
+              (pathname === group.href || pathname.startsWith(group.href + '/'));
 
             if (group.href) {
               return (
-                <Link key={group.id} href={group.href} onClick={() => isMobileView && setIsMobileOpen(false)}>
-                  <div 
-                    style={isDirectActive ? { 
-                      backgroundColor: corPrincipal + '10', 
-                      borderColor: corPrincipal + '20',
-                      color: corPrincipal 
-                    } : { 
-                      color: '#52525b' 
-                    }}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-[10px] font-black hover:text-white hover:bg-zinc-900 border border-transparent uppercase tracking-[0.2em] shadow-inner ${
-                      collapsed ? 'justify-center' : ''
-                    }`}
+                <Link
+                  key={group.id}
+                  href={group.href}
+                  onClick={() => isMobileView && setIsMobileOpen(false)}
+                >
+                  <div
+                    className={`
+                      flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all
+                      text-[11px] font-bold uppercase tracking-wider
+                      ${
+                        collapsed ? 'justify-center' : ''
+                      }
+                      ${
+                        isDirectActive
+                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-500 border border-orange-500/20'
+                          : 'text-zinc-600 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 border border-transparent'
+                      }
+                    `}
                   >
                     <Icon className="w-5 h-5 flex-shrink-0" />
                     {!collapsed && <span className="flex-1 truncate">{group.label}</span>}
@@ -272,59 +299,65 @@ export default function Sidebar() {
             return (
               <div key={group.id} className="space-y-1">
                 <button
-                  onClick={() => {
-                    if (collapsed) {
-                      setIsCollapsed(false);
-                      setOpenGroups([group.id]);
-                    } else {
-                      setOpenGroups(prev => prev.includes(group.id) ? prev.filter(g => g !== group.id) : [group.id]);
+                  onClick={() => toggleGroup(group.id)}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all
+                    text-[11px] font-bold uppercase tracking-wider cursor-pointer
+                    ${
+                      hasActiveChild
+                        ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white'
+                        : 'text-zinc-600 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900'
                     }
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-[10px] font-black border border-transparent uppercase tracking-[0.2em] cursor-pointer ${
-                    hasActiveChild ? 'text-white bg-zinc-900 shadow-inner border-zinc-800/50' : 'text-zinc-600 hover:text-white hover:bg-zinc-900'
-                  } ${collapsed ? 'justify-center' : ''}`}
+                    ${collapsed ? 'justify-center' : ''}
+                  `}
                 >
                   <Icon className="w-5 h-5 flex-shrink-0" />
                   {!collapsed && (
                     <>
                       <span className="flex-1 text-left truncate">{group.label}</span>
-                      <ChevronDown 
-                        size={14} 
-                        className={`transition-transform duration-300 flex-shrink-0 ${isGroupOpen ? 'rotate-180' : 'rotate-0'}`} 
+                      <ChevronDown
+                        size={14}
+                        className={`transition-transform duration-300 flex-shrink-0 ${
+                          isGroupOpen ? 'rotate-180' : 'rotate-0'
+                        }`}
                       />
                     </>
                   )}
                 </button>
 
-                {/* Submenu */}
                 {!collapsed && (
-                  <div 
+                  <div
                     className="overflow-hidden transition-all duration-300 ease-in-out"
-                    style={{ 
-                      maxHeight: isGroupOpen ? `${(group.items?.length || 0) * 44}px` : '0px',
-                      opacity: isGroupOpen ? 1 : 0
+                    style={{
+                      maxHeight: isGroupOpen
+                        ? `${(group.items?.length || 0) * 44}px`
+                        : '0px',
+                      opacity: isGroupOpen ? 1 : 0,
                     }}
                   >
-                    <div className="pl-6 space-y-1 py-2">
+                    <div className="pl-5 space-y-0.5 py-1">
                       {group.items?.map((item) => {
                         const SubIcon = item.icon;
-                        const isSubActive = pathname === item.href;
+                        const isSubActive =
+                          pathname === item.href ||
+                          pathname.startsWith(item.href + '/');
 
                         return (
-                          <Link 
-                            key={item.href} 
-                            href={item.href} 
+                          <Link
+                            key={item.href}
+                            href={item.href}
                             onClick={() => isMobileView && setIsMobileOpen(false)}
                           >
-                            <div 
-                              style={isSubActive ? { 
-                                color: corPrincipal 
-                              } : { 
-                                color: '#3f3f46' 
-                              }}
-                              className={`flex items-center gap-3 px-4 py-2 rounded-xl transition-all text-[9px] font-black hover:text-white hover:bg-zinc-900/50 uppercase tracking-[0.15em] ${
-                                isSubActive ? 'bg-zinc-900 font-bold' : ''
-                              }`}
+                            <div
+                              className={`
+                                flex items-center gap-3 px-3 py-2 rounded-lg transition-all
+                                text-[10px] font-semibold uppercase tracking-wider
+                                ${
+                                  isSubActive
+                                    ? 'text-orange-600 dark:text-orange-500 bg-orange-500/5 font-bold'
+                                    : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900/50'
+                                }
+                              `}
                             >
                               <SubIcon className="w-4 h-4 flex-shrink-0" />
                               <span className="truncate">{item.label}</span>
@@ -340,19 +373,26 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Rodapé */}
-        <div className={`p-6 border-t border-zinc-900 ${collapsed ? 'flex justify-center' : ''}`}>
-          <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-            <div 
-              style={{ backgroundColor: corPrincipal }}
-              className="w-10 h-10 rounded-2xl flex items-center justify-center text-white font-black flex-shrink-0 shadow-lg shadow-black/40 rotate-3 group-hover:rotate-0 transition-transform"
-            >
-              {user?.name?.[0] || 'U'}
+        {/* Rodapé com usuário */}
+        <div
+          className={`p-4 border-t transition-colors border-zinc-200 dark:border-zinc-900 ${
+            collapsed ? 'flex justify-center' : ''
+          }`}
+        >
+          <div
+            className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}
+          >
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-black flex-shrink-0 bg-orange-500">
+              {user?.name?.[0]?.toUpperCase() || 'U'}
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-black text-white uppercase tracking-widest truncate">{user?.name || 'Usuário'}</p>
-                <p className="text-[9px] text-zinc-600 font-mono uppercase truncate tracking-widest mt-0.5">{user?.role || 'Acesso'}</p>
+                <p className="text-[11px] font-bold text-zinc-900 dark:text-white uppercase tracking-wide truncate">
+                  {user?.name || 'Usuário'}
+                </p>
+                <p className="text-[9px] text-zinc-500 dark:text-zinc-600 font-mono uppercase truncate tracking-wider mt-0.5">
+                  {user?.role || 'Acesso'}
+                </p>
               </div>
             )}
           </div>
@@ -363,23 +403,29 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Botão de Menu para Celulares (visível apenas abaixo de lg) */}
+      {/* Botão hambúrguer mobile */}
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="fixed top-3 left-4 z-40 p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white lg:hidden shadow-lg cursor-pointer"
+        className="fixed top-3 left-4 z-40 p-2.5 rounded-xl lg:hidden shadow-lg transition-colors bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-400 hover:text-orange-600"
         aria-label="Menu"
       >
         <Menu size={18} />
       </button>
 
-      {/* Drawer de Navegação do Celular */}
-      <div className={`lg:hidden fixed inset-0 z-50 pointer-events-none transition-all duration-300 ${isMobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 delay-100'}`}>
+      {/* Drawer mobile */}
+      <div
+        className={`lg:hidden fixed inset-0 z-50 pointer-events-none transition-all duration-300 ${
+          isMobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 delay-100'
+        }`}
+      >
         <div
-          className={`fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300 ${isMobileOpen ? 'opacity-100' : 'opacity-0'}`}
+          className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+            isMobileOpen ? 'opacity-100' : 'opacity-0'
+          }`}
           onClick={() => setIsMobileOpen(false)}
         />
         <aside
-          className={`fixed top-0 left-0 h-full w-72 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-transform duration-300 shadow-2xl ${
+          className={`fixed top-0 left-0 h-full w-72 flex flex-col transition-transform duration-300 shadow-2xl bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-900 ${
             isMobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -387,9 +433,9 @@ export default function Sidebar() {
         </aside>
       </div>
 
-      {/* Sidebar Desktop (visível apenas do lg para cima) */}
+      {/* Sidebar desktop */}
       <aside
-        className={`hidden lg:flex flex-col bg-zinc-950 border-r border-zinc-900 transition-all duration-300 ${
+        className={`hidden lg:flex flex-col transition-all duration-300 bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-900 ${
           isCollapsed ? 'w-20' : 'w-64 lg:w-72'
         }`}
       >
