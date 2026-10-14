@@ -1,18 +1,18 @@
 'use client';
 
-import { memo, useState, useEffect, useCallback, useMemo } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import { 
   User, Shield, Settings, Plus, Edit, Trash2, 
-  Key, Save, X, Check, AlertTriangle, 
+  Key, Save, Check, AlertTriangle, 
   ShieldCheck, Wrench, Briefcase, UserCheck, Package,
-  Palette, Upload, Building2, Landmark, FileText,
+  Building2, Landmark, FileText,
   ChevronRight, History
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
 import { TableVirtualizer } from '@/components/TableVirtualizer';
 
-type Tab = 'usuarios' | 'perfil' | 'sistema' | 'aparencia' | 'empresa' | 'logs';
+type Tab = 'usuarios' | 'perfil' | 'sistema' | 'empresa' | 'logs';
 
 // Componente de Linha Memoizado
 const UserRow = memo(({ 
@@ -62,35 +62,6 @@ export default function ConfiguracoesPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Estados de Aparência
-  const [corPrincipal, setCorPrincipal] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('corPrincipal') || '#F97316';
-    }
-    return '#F97316';
-  });
-
-  const [logoPreview, setLogoPreview] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('logo') || '';
-    }
-    return '';
-  });
-
-  const [nomeSistema, setNomeSistema] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('nomeSistema') || 'Pinheiro Diesel Pro';
-    }
-    return 'Pinheiro Diesel Pro';
-  });
-
-  const [faviconPreview, setFaviconPreview] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('favicon') || '';
-    }
-    return '';
-  });
-
   // Estado da Empresa
   const [companyData, setCompanyData] = useState<any>({
     nome_fantasia: '',
@@ -124,7 +95,6 @@ export default function ConfiguracoesPage() {
         const data = await res.json();
         if (data.id) {
           setCompanyData(data);
-          if (data.logo_url) setLogoPreview(data.logo_url);
         }
       }
     } catch (error) {
@@ -157,7 +127,6 @@ export default function ConfiguracoesPage() {
       });
       if (res.ok) {
         toast.success('Dados da empresa salvos com sucesso!');
-        // Fallback para localStorage para compatibilidade com partes que ainda usam
         localStorage.setItem('companyData', JSON.stringify({
           nomeFantasia: companyData.nome_fantasia,
           razaoSocial: companyData.razao_social,
@@ -177,71 +146,6 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const toastId = toast.loading('Enviando logo...');
-      
-      try {
-        const res = await fetch('/api/upload/logo', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (res.ok) {
-          const { url } = await res.json();
-          setLogoPreview(url);
-          setCompanyData((prev: any) => ({ ...prev, logo_url: url }));
-          localStorage.setItem('logo', url);
-          toast.success('Logo enviada com sucesso!', { id: toastId });
-        } else {
-          toast.error('Erro no upload da logo', { id: toastId });
-        }
-      } catch (error) {
-        toast.error('Erro de conexão no upload', { id: toastId });
-      }
-    }
-  };
-
-  const handleFaviconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setFaviconPreview(base64);
-        localStorage.setItem('favicon', base64);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const aplicarTema = useCallback(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--cor-principal', corPrincipal);
-    // Atualizar favicon
-    if (faviconPreview) {
-      const link = document.querySelector("link[rel*='icon']") as HTMLLinkElement;
-      if (link) link.href = faviconPreview;
-    }
-  }, [corPrincipal, faviconPreview]);
-
-  const handleSalvarAparencia = () => {
-    localStorage.setItem('corPrincipal', corPrincipal);
-    localStorage.setItem('nomeSistema', nomeSistema);
-    localStorage.setItem('logo', logoPreview);
-    localStorage.setItem('favicon', faviconPreview);
-    toast.success('Aparência salva com sucesso!');
-    aplicarTema();
-  };
-
-  useEffect(() => {
-    aplicarTema();
-  }, [aplicarTema]);
-  
   const [usersData, setUsersData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
   const [usersPage, setUsersPage] = useState(1);
   
@@ -502,21 +406,6 @@ export default function ConfiguracoesPage() {
               <ChevronRight className={`w-3 h-3 transition-transform ${activeTab === 'sistema' ? 'rotate-90' : ''}`} />
             </button>
           )}
-          {currentUser?.role === 'ADMIN' && (
-            <button 
-              onClick={() => setActiveTab('aparencia')} 
-              className={`w-full flex items-center justify-between gap-3 px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 shadow-lg ${
-                activeTab === 'aparencia' 
-                  ? 'bg-orange-600 border-orange-500 text-white shadow-orange-950/20' 
-                  : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <div className="flex items-center gap-3 truncate">
-                <Palette className="w-4 h-4 flex-shrink-0" /> Aparência
-              </div>
-              <ChevronRight className={`w-3 h-3 transition-transform ${activeTab === 'aparencia' ? 'rotate-90' : ''}`} />
-            </button>
-          )}
         </aside>
 
         <main className="flex-1">
@@ -559,7 +448,6 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
 
-              {/* Pagination */}
               <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
                 <Pagination 
                   page={usersPage} 
@@ -586,7 +474,6 @@ export default function ConfiguracoesPage() {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                {/* Dados Cadastrais */}
                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-6 shadow-2xl relative overflow-hidden group">
                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                     <Building2 className="w-24 h-24" />
@@ -630,7 +517,6 @@ export default function ConfiguracoesPage() {
                   </div>
                 </div>
 
-                {/* Dados Técnicos e Fiscais */}
                 <div className="space-y-8">
                    <div className="bg-zinc-900/40 border border-zinc-900 rounded-3xl p-8 space-y-6 shadow-2xl">
                     <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-800/50">
@@ -823,7 +709,7 @@ export default function ConfiguracoesPage() {
                   <div className="space-y-5">
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Namespace do Sistema</label>
-                      <input type="text" className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all" defaultValue="PINHEIRO DIESEL PRO" />
+                      <input type="text" className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all" defaultValue="VEHLOX" />
                     </div>
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Hardcoded ID (CNPJ)</label>
@@ -867,169 +753,6 @@ export default function ConfiguracoesPage() {
                   Efetivar Parametrização Global
                 </button>
               </div>
-            </div>
-          )}
-
-          {activeTab === 'aparencia' && currentUser?.role === 'ADMIN' && (
-            <div className="space-y-8 animate-in fade-in duration-500">
-              <div>
-                <h1 className="text-3xl font-black text-white uppercase tracking-tight italic">Estética de Interface</h1>
-                <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Personalização cromática e branding da instância</p>
-              </div>
-
-              {/* Cor Principal */}
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-6 shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-all">
-                  <Palette className="w-20 h-20" />
-                </div>
-                <h3 className="text-xs font-black text-white uppercase tracking-[0.2em] flex items-center gap-3">
-                   Cromia Estrutural
-                </h3>
-                <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">Defina a cor de ênfase para botões, indicadores de estado e links</p>
-                
-                <div className="flex flex-wrap gap-4">
-                  {[
-                    { nome: 'Industrial Laranja', cor: '#F97316' },
-                    { nome: 'Cobalto Deep', cor: '#2563EB' },
-                    { nome: 'Alerta Carmesim', cor: '#DC2626' },
-                    { nome: 'Bosque Esmeralda', cor: '#16A34A' },
-                    { nome: 'Nebulosa Violeta', cor: '#7C3AED' },
-                    { nome: 'Ambar Solar', cor: '#F59E0B' },
-                    { nome: 'Glacial Ciano', cor: '#06B6D4' },
-                  ].map(({ nome, cor }) => (
-                    <button
-                      key={cor}
-                      onClick={() => setCorPrincipal(cor)}
-                      className="flex items-center gap-3 px-5 py-3 rounded-xl border transition-all active:scale-95 shadow-lg group/btn"
-                      style={{
-                        borderColor: corPrincipal === cor ? cor : '#18181b',
-                        backgroundColor: corPrincipal === cor ? cor + '15' : '#09090b'
-                      }}
-                    >
-                      <div className="w-4 h-4 rounded-full border-2 border-white/10 shadow-lg" style={{ backgroundColor: cor }} />
-                      <span className="text-[10px] font-black uppercase tracking-widest transition-colors" style={{ color: corPrincipal === cor ? cor : '#52525b' }}>
-                        {nome}
-                      </span>
-                      {corPrincipal === cor && <div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: cor }} />}
-                    </button>
-                  ))}
-                </div>
-                
-                <div className="flex items-center gap-4 pt-4 border-t border-zinc-900">
-                  <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-widest">Input Hexadecimal:</span>
-                  <div className="flex items-center gap-3 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5">
-                    <input 
-                      type="color" 
-                      value={corPrincipal}
-                      onChange={(e) => setCorPrincipal(e.target.value)}
-                      className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent overflow-hidden"
-                    />
-                    <span className="text-[11px] text-zinc-400 font-mono font-black uppercase tracking-widest">{corPrincipal}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Logo */}
-                <div className="bg-zinc-900/40 border border-zinc-900 rounded-3xl p-8 space-y-6 shadow-2xl">
-                  <h3 className="text-xs font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-900">
-                    <Upload className="w-4 h-4 text-orange-600" /> Assinatura Visual (Logo)
-                  </h3>
-                  
-                  <div className="space-y-6">
-                    <div className="w-full h-32 bg-zinc-950/80 border border-zinc-900 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner group">
-                      {logoPreview ? (
-                        <img src={logoPreview} alt="Logo" className="max-w-[80%] max-h-[80%] object-contain transition-transform group-hover:scale-105" />
-                      ) : (
-                        <div className="flex flex-col items-center gap-2">
-                          <Package className="w-8 h-8 text-zinc-900" />
-                          <span className="text-zinc-800 text-[10px] font-black uppercase tracking-[0.3em]">No Branding Assets</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <label className="flex-1 px-6 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all flex items-center justify-center gap-3 active:scale-95 shadow-lg">
-                        <Upload className="w-4 h-4 text-orange-600" />
-                        Injetar Arquivo
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={handleLogoUpload}
-                        />
-                      </label>
-                      {logoPreview && (
-                        <button 
-                          onClick={() => { setLogoPreview(''); localStorage.removeItem('logo'); }}
-                          className="p-4 bg-red-950/20 border border-red-900/30 text-red-600 rounded-xl hover:bg-red-900/40 transition-colors shadow-lg"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Nome do Sistema */}
-                <div className="bg-zinc-900/40 border border-zinc-900 rounded-3xl p-8 shadow-2xl flex flex-col">
-                   <h3 className="text-xs font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-900 mb-6">
-                    <Settings className="w-4 h-4 text-orange-600" /> Identificador da Instância
-                  </h3>
-                  
-                  <div className="space-y-6 flex-1">
-                    <div>
-                      <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Namespace de Aplicação</label>
-                       <input 
-                        type="text" 
-                        value={nomeSistema}
-                        onChange={(e) => setNomeSistema(e.target.value)}
-                        className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-5 text-sm text-white focus:border-orange-600 outline-none font-black uppercase tracking-[0.2em] shadow-inner"
-                        placeholder="EX: PINHEIRO DIESEL PRO"
-                      />
-                    </div>
-                    <div className="p-4 bg-orange-600/5 border border-orange-600/10 rounded-xl">
-                      <p className="text-[9px] text-zinc-500 font-mono uppercase leading-relaxed italic">Este nome será exibido nos componentes de Header e nos metadados de título da janela do navegador.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-               <div className="bg-zinc-900/40 border border-zinc-900 rounded-3xl p-8 space-y-6 shadow-2xl">
-                <h3 className="text-xs font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-900">
-                  <Palette className="w-4 h-4 text-orange-600" /> Browser Metadata (Favicon)
-                </h3>
-                <div className="flex items-center gap-8">
-                  <div className="w-16 h-16 bg-zinc-950/80 border border-zinc-900 rounded-xl flex items-center justify-center overflow-hidden shadow-inner group">
-                    {faviconPreview ? (
-                      <img src={faviconPreview} alt="Favicon" className="w-8 h-8 object-contain transition-transform group-hover:rotate-12" />
-                    ) : (
-                      <span className="text-zinc-900 text-[8px] font-black uppercase tracking-widest italic">ICO</span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="inline-flex px-8 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all items-center gap-3 active:scale-95 shadow-lg">
-                      <Upload className="w-4 h-4 text-orange-600" />
-                      Capturar Recursos de Icone
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
-                        onChange={handleFaviconUpload}
-                      />
-                    </label>
-                    <p className="text-[9px] text-zinc-600 font-mono font-black uppercase tracking-widest mt-4">Recomendação: 32x32px .PNG ou .ICO</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Botão Salvar */}
-              <button 
-                onClick={handleSalvarAparencia}
-                className="w-full py-6 bg-orange-600 hover:bg-orange-500 text-white rounded-3xl font-black text-xs uppercase tracking-[0.4em] transition-all shadow-2xl shadow-orange-950/40 flex items-center justify-center gap-4 active:scale-[0.98] border border-orange-400/20"
-              >
-                <Check className="w-5 h-5" />
-                Instanciar Matriz de Estilos
-              </button>
             </div>
           )}
         </main>
@@ -1087,7 +810,7 @@ export default function ConfiguracoesPage() {
               )}
 
               <div className="flex gap-4 pt-6">
-                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 px-8 py-5 rounded-2xl border border-zinc-800 text-zinc-600 hover:text-white hover:bg-zinc-800 transition-all font-black text-[10px] uppercase tracking-widest">AbortarOperacao</button>
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 px-8 py-5 rounded-2xl border border-zinc-800 text-zinc-600 hover:text-white hover:bg-zinc-800 transition-all font-black text-[10px] uppercase tracking-widest">Abortar Operacao</button>
                 <button type="submit" className="flex-[2] bg-orange-600 hover:bg-orange-500 text-white py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] shadow-xl shadow-orange-950/40 transition-all active:scale-95 group flex items-center justify-center gap-3">
                   <Check className="w-4 h-4" /> Finalizar Protocolo
                 </button>
