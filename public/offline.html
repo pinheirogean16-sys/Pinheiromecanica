@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pinheiro Diesel Pro - Modo Desconectado</title>
+  <title>VEHLOX — Modo Desconectado</title>
   <style>
     body {
       background-color: #09090b;
@@ -25,9 +25,25 @@
       padding: 40px;
       max-width: 440px;
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
     }
-    .icon {
-      font-size: 48px;
+    .logo {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 20px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      box-shadow: 0 10px 25px -5px rgba(249, 115, 22, 0.4);
+    }
+    .logo img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      filter: brightness(0) invert(1);
     }
     h1 {
       font-size: 20px;
@@ -47,9 +63,9 @@
       margin-bottom: 24px;
     }
     .badge {
-      background-color: #1e1b4b;
-      border: 1px solid #3730a3;
-      color: #818cf8;
+      background-color: #431407;
+      border: 1px solid #9a3412;
+      color: #fb923c;
       font-size: 9px;
       font-weight: 900;
       letter-spacing: 0.2em;
@@ -60,7 +76,7 @@
     }
     .btn {
       display: block;
-      background-color: #ea580c;
+      background-color: #f97316;
       color: white;
       text-decoration: none;
       padding: 14px 28px;
@@ -73,17 +89,28 @@
       transition: background-color 0.2s;
     }
     .btn:hover {
-      background-color: #f97316;
+      background-color: #ea580c;
+    }
+    .footer {
+      margin-top: 32px;
+      font-size: 9px;
+      color: #52525b;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
     }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">⚡</div>
+    <div class="logo">
+      <img src="/vehlox-logo.png" alt="VEHLOX" onerror="this.replaceWith(document.createTextNode('VX'))">
+    </div>
     <h1>Conexão Interrompida</h1>
     <p>O sinal no fosso de serviço está oscilando. Os checklist e rascunhos locais permanecem salvos em segurança.</p>
     <div class="badge">Sincronizador Autônomo Ativo</div>
     <a href="/" class="btn">Restabelecer Conexão</a>
   </div>
+  <div class="footer">VEHLOX • Sistema de Gestão para Oficinas</div>
 </body>
 </html>
