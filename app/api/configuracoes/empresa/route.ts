@@ -65,12 +65,22 @@ export async function PUT(request: Request) {
       where: { id: 'config_empresa' }
     });
 
+    const agora = new Date();
+
+    // ============================================================
+    // 🎯 FIX: incluir updated_at no create
+    // O schema Prisma exige esse campo no INSERT
+    // ============================================================
     const config = await prisma.configuracaoEmpresa.upsert({
       where: { id: 'config_empresa' },
-      update: body as any,
+      update: {
+        ...(body as any),
+        updated_at: agora
+      },
       create: {
         id: 'config_empresa',
-        ...body
+        ...(body as any),
+        updated_at: agora
       } as any
     });
 
