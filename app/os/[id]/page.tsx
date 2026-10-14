@@ -19,13 +19,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true);
   const [checklistsExecutados, setChecklistsExecutados] = useState<any[]>([]);
   
-  // Assinaturas States
   const [sigCliente, setSigCliente] = useState('');
   const [sigMecanico, setSigMecanico] = useState('');
   const [sigSupervisor, setSigSupervisor] = useState('');
   const [isSigning, setIsSigning] = useState(false);
   
-  // Parcelamento States
   const [showFinalizarModal, setShowFinalizarModal] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
   const [numParcelas, setNumParcelas] = useState(1);
@@ -73,13 +71,13 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       });
 
       if (res.ok) {
-        toast.success('Documento formalizado e integrado via hash de segurança (SHA-256)!');
+        toast.success('Documento formalizado via hash SHA-256!');
         fetchOrdem();
       } else {
         toast.error('Erro ao registrar homologação digital');
       }
     } catch (err) {
-      toast.error('Erro de conexão ao motor de segurança');
+      toast.error('Erro de conexão');
     } finally {
       setIsSigning(false);
     }
@@ -134,24 +132,21 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   };
 
   // ============================================================
-  // 🎯 HELPER: Extrai preventivas vinculadas à OS
+  // 🎯 Extrai preventivas vinculadas à OS (múltiplas fontes)
   // ============================================================
   const extrairPreventivasVinculadas = (): string[] => {
     if (!ordem) return [];
     
     const ids: string[] = [];
     
-    // 1. Array direto na OS
     if (Array.isArray(ordem.preventivas_ids)) {
       ids.push(...ordem.preventivas_ids.filter(Boolean));
     }
     
-    // 2. Campo singular
     if (ordem.preventiva_id && !ids.includes(ordem.preventiva_id)) {
       ids.push(ordem.preventiva_id);
     }
     
-    // 3. Preventivas executadas
     if (Array.isArray(ordem.preventivas_execucoes)) {
       ordem.preventivas_execucoes.forEach((pe: any) => {
         if (pe.preventiva_id && !ids.includes(pe.preventiva_id)) {
@@ -160,7 +155,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       });
     }
     
-    // 4. JSON em observações (fallback legado)
     if (ids.length === 0 && ordem.observacoes) {
       try {
         const meta = typeof ordem.observacoes === 'string' 
@@ -183,7 +177,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const handleStatusChange = async (novoStatus: string) => {
     if (novoStatus === 'FINALIZADA') {
       try {
-        // 🎯 AQUI: envia preventivas_ids para o backend
         const preventivasVinculadas = extrairPreventivasVinculadas();
         
         const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
@@ -192,7 +185,10 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           credentials: 'include',
           body: JSON.stringify({ 
             status: 'FINALIZADA',
-            preventivas_ids: preventivasVinculadas
+            preventivas_ids: preventivasVinculadas,
+            // 🎯 Envia km/horímetro atuais do veículo
+            km_veiculo: ordem?.veiculo?.quilometragem,
+            horimetro_veiculo: ordem?.veiculo?.horimetro_atual
           })
         });
         if (res.ok) {
@@ -268,7 +264,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const confirmFinalizar = async () => {
     setIsFinalizing(true);
     try {
-      // 🎯 AQUI: envia preventivas_ids junto com o parcelamento
       const preventivasVinculadas = extrairPreventivasVinculadas();
       
       const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
@@ -280,7 +275,10 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           forma_pagamento: formaPagamento,
           numero_parcelas: numParcelas,
           dias_entre_parcelas: diasIntervalo,
-          preventivas_ids: preventivasVinculadas
+          preventivas_ids: preventivasVinculadas,
+          // 🎯 Envia km/horímetro atuais do veículo
+          km_veiculo: ordem?.veiculo?.quilometragem,
+          horimetro_veiculo: ordem?.veiculo?.horimetro_atual
         })
       });
       if (res.ok) {
@@ -383,7 +381,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
 
       <FluxoOficinaTracker currentStatus={ordem.status} />
 
-      {/* Barra de Ações de Status */}
       {proximoStatus[ordem.status] && (
         <div className="bg-orange-600/10 border border-orange-500/20 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -405,9 +402,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Grid de Informações */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Cliente */}
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center gap-3 text-zinc-500 border-b border-zinc-800/50 pb-4">
             <User className="w-4 h-4" />
@@ -427,7 +422,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        {/* Veículo */}
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center gap-3 text-zinc-500 border-b border-zinc-800/50 pb-4">
             <Truck className="w-4 h-4" />
@@ -455,7 +449,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           </Link>
         </div>
 
-        {/* Mecânico */}
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center gap-3 text-zinc-500 border-b border-zinc-800/50 pb-4">
             <Wrench className="w-4 h-4" />
@@ -475,7 +468,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Diagnóstico Técnico */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-8 shadow-xl space-y-4">
         <div className="flex items-center gap-3 text-zinc-500 border-b border-zinc-800/50 pb-4">
           <FileText className="w-4 h-4" />
@@ -486,7 +478,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </p>
       </div>
 
-      {/* Seção de Atendimento Externo e Logística de Campo */}
       {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (() => {
         let timeline: any[] = [];
         try {
@@ -703,7 +694,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         );
       })()}
 
-      {/* Serviços e Peças */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="p-6 bg-zinc-800/20 border-b border-zinc-800">
@@ -754,7 +744,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Checklists Executados */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="p-6 bg-zinc-800/20 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-sm font-black text-white tracking-widest uppercase flex items-center gap-3">
@@ -805,7 +794,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
-      {/* Consolidação Financeira */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-8 shadow-2xl">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-8">
           <div className="flex flex-col sm:flex-row gap-6 sm:gap-12 w-full sm:w-auto">
@@ -868,13 +856,12 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* ASSINATURA DIGITAL */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-6">
         <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
           <ShieldCheck className="text-emerald-400 w-5 h-5" />
           <div>
             <h3 className="text-md font-black tracking-widest text-white uppercase italic">Homologação Digital Integrada</h3>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Assinatura corporativa com integridade certificada por hash SHA-256</p>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Assinatura corporativa com hash SHA-256</p>
           </div>
         </div>
 
@@ -887,7 +874,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
               <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-black text-emerald-400 rounded-2xl uppercase tracking-widest inline-flex items-center gap-1.5 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                Documento Certificado e Criptografado
+                Documento Certificado
               </span>
               <span className="text-[10px] font-mono text-zinc-500 font-bold uppercase">
                 Timestamp: {new Date(ordem.assinatura_timestamp).toLocaleString('pt-BR')}
@@ -899,27 +886,24 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 <div className="bg-zinc-950 border border-zinc-900 p-4 rounded-xl text-center space-y-1">
                   <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">Cliente</span>
                   <span className="block text-lg font-black text-emerald-400 font-mono tracking-tight uppercase italic">{ordem.assinatura_cliente}</span>
-                  <span className="block text-[8px] italic text-zinc-500 font-serif">Assinado eletronicamente</span>
                 </div>
               )}
               {ordem.assinatura_mecanico && (
                 <div className="bg-zinc-950 border border-zinc-900 p-4 rounded-xl text-center space-y-1">
-                  <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">Mecânico Responsável</span>
+                  <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">Mecânico</span>
                   <span className="block text-lg font-black text-emerald-400 font-mono tracking-tight uppercase italic">{ordem.assinatura_mecanico}</span>
-                  <span className="block text-[8px] italic text-zinc-500 font-serif">Membro da equipe técnica</span>
                 </div>
               )}
               {ordem.assinatura_supervisor && (
                 <div className="bg-zinc-950 border border-zinc-900 p-4 rounded-xl text-center space-y-1">
-                  <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">Supervisor da Oficina</span>
+                  <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">Supervisor</span>
                   <span className="block text-lg font-black text-emerald-400 font-mono tracking-tight uppercase italic">{ordem.assinatura_supervisor}</span>
-                  <span className="block text-[8px] italic text-zinc-500 font-serif">Visto de qualidade geral</span>
                 </div>
               )}
             </div>
 
             <div className="bg-zinc-950 border border-zinc-900 p-4 rounded-xl space-y-1">
-              <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">HASH SHA-256 de Integridade</span>
+              <span className="block text-[8px] font-mono uppercase text-zinc-500 tracking-widest">HASH SHA-256</span>
               <span className="block text-[10px] text-zinc-400 font-mono font-bold uppercase tracking-widest break-all select-all">
                 {ordem.assinatura_hash}
               </span>
@@ -927,55 +911,55 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           </div>
         ) : (
           <div className="space-y-6">
-            <p className="text-xs text-zinc-400 font-medium">As assinaturas e o visto de conformidade podem ser colhidos diretamente na tela do tablet ou celular pelo técnico, cliente e equipe supervisora.</p>
+            <p className="text-xs text-zinc-400 font-medium">As assinaturas podem ser colhidas diretamente na tela do tablet ou celular pelo técnico, cliente e supervisor.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">1. Firma do Cliente</label>
                 <input 
                   type="text" 
-                  placeholder="DIGITE O NOME COMPLETO..."
+                  placeholder="DIGITE O NOME..."
                   value={sigCliente}
                   onChange={(e) => setSigCliente(e.target.value)}
                   className="w-full bg-black border border-zinc-850 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
                 />
                 {sigCliente && (
                   <div className="p-3 bg-black/40 border border-dashed border-zinc-800 rounded-xl text-center select-none">
-                    <span className="block text-[8px] font-mono text-zinc-600 uppercase tracking-widest mb-1">Visualização da Firma Digital</span>
+                    <span className="block text-[8px] font-mono text-zinc-600 uppercase tracking-widest mb-1">Preview</span>
                     <span className="text-lg font-bold font-mono text-orange-400 italic tracking-tight uppercase block">{sigCliente}</span>
                   </div>
                 )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">2. Firma do Técnico / Mecânico</label>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">2. Firma do Técnico</label>
                 <input 
                   type="text" 
-                  placeholder="DIGITE O NOME DO OPERADOR..."
+                  placeholder="DIGITE O NOME..."
                   value={sigMecanico}
                   onChange={(e) => setSigMecanico(e.target.value)}
                   className="w-full bg-black border border-zinc-850 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
                 />
                 {sigMecanico && (
                   <div className="p-3 bg-black/40 border border-dashed border-zinc-800 rounded-xl text-center select-none">
-                    <span className="block text-[8px] font-mono text-zinc-600 uppercase tracking-widest mb-1">Visualização da Firma Digital</span>
+                    <span className="block text-[8px] font-mono text-zinc-600 uppercase tracking-widest mb-1">Preview</span>
                     <span className="text-lg font-bold font-mono text-orange-400 italic tracking-tight uppercase block">{sigMecanico}</span>
                   </div>
                 )}
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">3. Visto de Supervisão / Engenharia</label>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">3. Visto Supervisor</label>
                 <input 
                   type="text" 
-                  placeholder="NOME DO CONTROLADOR / SUPERVISOR..."
+                  placeholder="DIGITE O NOME..."
                   value={sigSupervisor}
                   onChange={(e) => setSigSupervisor(e.target.value)}
                   className="w-full bg-black border border-zinc-850 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
                 />
                 {sigSupervisor && (
                   <div className="p-3 bg-black/40 border border-dashed border-zinc-800 rounded-xl text-center select-none">
-                    <span className="block text-[8px] font-mono text-zinc-600 uppercase tracking-widest mb-1">Visualização da Firma Digital</span>
+                    <span className="block text-[8px] font-mono text-zinc-600 uppercase tracking-widest mb-1">Preview</span>
                     <span className="text-lg font-bold font-mono text-orange-400 italic tracking-tight uppercase block">{sigSupervisor}</span>
                   </div>
                 )}
@@ -1000,7 +984,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
   
-      {/* Modal de Finalização / Parcelamento */}
       {showFinalizarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl">
@@ -1067,28 +1050,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   </div>
                 )}
               </div>
-
-              {formaPagamento === 'PARCELADO' && numParcelas > 1 && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-zinc-500 border-b border-zinc-800 pb-2">
-                    <h4 className="text-[10px] font-mono uppercase tracking-widest font-black">Simulação de Lançamentos</h4>
-                    <span className="text-[10px] font-mono uppercase">Valor/Parc: R$ {(ordem.valor_total / numParcelas).toFixed(2)}</span>
-                  </div>
-                  <div className="max-h-40 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
-                    {Array.from({ length: numParcelas }).map((_, i) => {
-                      const dt = new Date();
-                      dt.setDate(dt.getDate() + (i * diasIntervalo));
-                      return (
-                        <div key={i} className="flex items-center justify-between p-3 bg-zinc-950/50 border border-zinc-800 rounded-xl">
-                          <span className="text-xs font-mono text-zinc-400">P {i + 1}/{numParcelas}</span>
-                          <span className="text-xs font-bold text-white">Venc: {dt.toLocaleDateString('pt-BR')}</span>
-                          <span className="text-xs font-black text-green-500">R$ {(ordem.valor_total / numParcelas).toFixed(2)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="bg-orange-600/5 p-6 rounded-2xl border border-orange-500/10 flex items-center justify-between group overflow-hidden relative">
                 <div className="relative z-10">
