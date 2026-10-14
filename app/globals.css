@@ -2,36 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================
-   VEHLOX — VARIÁVEIS DE TEMA
-   ============================================================ */
 @layer base {
-  /* LIGHT MODE (padrão) */
   :root {
-    --background: 0 0% 98%;
-    --foreground: 240 10% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    --primary: 25 95% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 10% 4%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 25 95% 53%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 25 95% 53%;
-    --radius: 0.75rem;
-  }
-
-  /* DARK MODE */
-  .dark {
     --background: 240 10% 4%;
     --foreground: 0 0% 98%;
     --card: 240 6% 10%;
@@ -51,13 +23,9 @@
     --border: 240 4% 16%;
     --input: 240 4% 16%;
     --ring: 25 95% 53%;
+    --radius: 0.75rem;
   }
-}
 
-/* ============================================================
-   BASE — Estilos globais
-   ============================================================ */
-@layer base {
   * {
     border-color: hsl(var(--border));
   }
@@ -70,7 +38,6 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-feature-settings: 'rlig' 1, 'calt' 1, 'ss01' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -80,9 +47,6 @@
   }
 }
 
-/* ============================================================
-   UTILITIES — Helpers VEHLOX
-   ============================================================ */
 @layer utilities {
   .text-vehlox {
     color: hsl(var(--primary));
@@ -130,92 +94,6 @@
   }
 }
 
-/* ============================================================
-   CORREÇÕES GLOBAIS DE CONTRASTE (LIGHT MODE)
-   Força cores corretas em componentes com hardcoded dark
-   ============================================================ */
-@layer base {
-  /* === LIGHT MODE OVERRIDES === */
-  :root:not(.dark) .text-white,
-  :root:not(.dark) .text-zinc-50,
-  :root:not(.dark) .text-zinc-100,
-  :root:not(.dark) .text-zinc-200 {
-    color: hsl(var(--foreground)) !important;
-  }
-
-  :root:not(.dark) .text-zinc-300,
-  :root:not(.dark) .text-zinc-400 {
-    color: hsl(var(--muted-foreground)) !important;
-  }
-
-  /* Fundos escuros viram claros */
-  :root:not(.dark) .bg-zinc-950,
-  :root:not(.dark) .bg-zinc-950\/20,
-  :root:not(.dark) .bg-zinc-950\/40,
-  :root:not(.dark) .bg-zinc-950\/50,
-  :root:not(.dark) .bg-zinc-950\/60,
-  :root:not(.dark) .bg-zinc-950\/65,
-  :root:not(.dark) .bg-zinc-950\/80,
-  :root:not(.dark) .bg-zinc-950\/90 {
-    background-color: hsl(var(--card)) !important;
-  }
-
-  :root:not(.dark) .bg-zinc-900,
-  :root:not(.dark) .bg-zinc-900\/10,
-  :root:not(.dark) .bg-zinc-900\/20,
-  :root:not(.dark) .bg-zinc-900\/30,
-  :root:not(.dark) .bg-zinc-900\/40,
-  :root:not(.dark) .bg-zinc-900\/45,
-  :root:not(.dark) .bg-zinc-900\/50,
-  :root:not(.dark) .bg-zinc-900\/60,
-  :root:not(.dark) .bg-zinc-900\/70,
-  :root:not(.dark) .bg-zinc-900\/80,
-  :root:not(.dark) .bg-zinc-900\/90 {
-    background-color: hsl(var(--card) / 0.8) !important;
-  }
-
-  :root:not(.dark) .bg-zinc-800,
-  :root:not(.dark) .bg-zinc-800\/50,
-  :root:not(.dark) .bg-zinc-800\/80 {
-    background-color: hsl(var(--secondary)) !important;
-  }
-
-  /* Bordas escuras viram claras */
-  :root:not(.dark) .border-zinc-900,
-  :root:not(.dark) .border-zinc-900\/40,
-  :root:not(.dark) .border-zinc-850,
-  :root:not(.dark) .border-zinc-800,
-  :root:not(.dark) .border-zinc-800\/40,
-  :root:not(.dark) .border-zinc-800\/50,
-  :root:not(.dark) .border-zinc-800\/60,
-  :root:not(.dark) .border-zinc-800\/70,
-  :root:not(.dark) .border-zinc-800\/80 {
-    border-color: hsl(var(--border)) !important;
-  }
-
-  /* Hover states */
-  :root:not(.dark) .hover\:bg-zinc-900:hover,
-  :root:not(.dark) .hover\:bg-zinc-900\/30:hover,
-  :root:not(.dark) .hover\:bg-zinc-800:hover,
-  :root:not(.dark) .hover\:bg-zinc-800\/80:hover {
-    background-color: hsl(var(--secondary)) !important;
-  }
-
-  :root:not(.dark) .hover\:border-zinc-700:hover,
-  :root:not(.dark) .hover\:border-zinc-800:hover {
-    border-color: hsl(var(--border)) !important;
-  }
-
-  /* Placeholders */
-  :root:not(.dark) .placeholder-zinc-700,
-  :root:not(.dark) .placeholder-zinc-800 {
-    color: hsl(var(--muted-foreground) / 0.5) !important;
-  }
-}
-
-/* ============================================================
-   AUTOFILL — Remove azul do Chrome
-   ============================================================ */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
