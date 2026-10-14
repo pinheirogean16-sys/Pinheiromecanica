@@ -1,3 +1,9 @@
+// ============================================================
+// LOGGER VEHLOX
+// Usa process.stdout/stderr DIRECTAMENTE para evitar recursão
+// (não usa console.log/error que podem estar sobrescritos)
+// ============================================================
+
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 export interface LogEntry {
@@ -16,6 +22,21 @@ const NIVEIS_ATIVOS: Record<LogLevel, boolean> = {
   WARN: true,
   ERROR: true,
 };
+
+// ============================================================
+// Saída segura — NÃO usa console.* para evitar recursão
+// ============================================================
+function safeWrite(level: LogLevel, output: string) {
+  try {
+    if (level === 'ERROR' || level === 'WARN') {
+      process.stderr.write(output + '\n');
+    } else {
+      process.stdout.write(output + '\n');
+    }
+  } catch {
+    // Se até isso falhar, não faz nada (não pode travar a app)
+  }
+}
 
 export function log(
   level: LogLevel,
@@ -36,20 +57,19 @@ export function log(
     ambiente: process.env.NODE_ENV || 'development',
   };
 
-  // Em produção, o ideal é enviar para Pino/Sentry/Datadog
-  // Por enquanto, loga em JSON estruturado
-  const output = JSON.stringify(entry);
-
-  if (level === 'ERROR') {
-    console.error(output);
-  } else if (level === 'WARN') {
-    console.warn(output);
-  } else {
-    console.log(output);
+  let output = '';
+  try {
+    output = JSON.stringify(entry);
+  } catch {
+    output = `[${level}] ${modulo}: ${mensagem}`;
   }
+
+  safeWrite(level, output);
 }
 
+// ============================================================
 // Atalhos
+// ============================================================
 export const logInfo = (modulo: string, msg: string, dados?: Record<string, unknown>) =>
   log('INFO', modulo, msg, dados);
 
