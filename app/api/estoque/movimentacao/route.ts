@@ -30,8 +30,8 @@ export async function GET(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para ver movimentações de estoque
-    if (!checkPermission(user, 'estoque', 'visualizar')) {
+    // C05: exige permissão (usa 'pecas' que é o módulo real do RBAC)
+    if (!checkPermission(user, 'pecas', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
@@ -87,8 +87,8 @@ export async function POST(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para movimentar estoque
-    if (!checkPermission(user, 'estoque', 'editar')) {
+    // C05: exige permissão (usa 'pecas' que é o módulo real do RBAC)
+    if (!checkPermission(user, 'pecas', 'editar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
@@ -96,7 +96,6 @@ export async function POST(request: Request) {
     const { peca_id, tipo, quantidade, motivo, observacao, os_id } = body;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Verifica se a peça existe e pertence à empresa
       const peca = await tx.peca.findFirst({
         where: { id: peca_id, empresa_id: user.empresa_id },
       });
@@ -105,7 +104,6 @@ export async function POST(request: Request) {
         throw new Error('Peça não encontrada nesta empresa');
       }
 
-      // Se veio os_id, valida que a OS pertence à empresa (M09)
       if (os_id) {
         const osOk = await tx.ordemServico.findFirst({
           where: { id: os_id, empresa_id: user.empresa_id },
@@ -118,7 +116,6 @@ export async function POST(request: Request) {
 
       // A05: operação atômica de estoque
       if (tipo === 'SAIDA') {
-        // Decremento atômico com condição: só baixa se ainda tem saldo
         const updateResult = await tx.peca.updateMany({
           where: {
             id: peca_id,
@@ -129,7 +126,6 @@ export async function POST(request: Request) {
         });
 
         if (updateResult.count === 0) {
-          // Não conseguiu decrementar: ou a peça sumiu ou o saldo é insuficiente
           const atual = await tx.peca.findUnique({
             where: { id: peca_id },
             select: { quantidade: true, unidadeMedida: true, descricao: true },
@@ -141,14 +137,12 @@ export async function POST(request: Request) {
           );
         }
       } else {
-        // ENTRADA: incremento atômico
         await tx.peca.update({
           where: { id: peca_id },
           data: { quantidade: { increment: quantidade } },
         });
       }
 
-      // Grava o histórico da movimentação
       const mov = await tx.movimentacaoEstoque.create({
         data: {
           id: globalThis.crypto.randomUUID(),
@@ -183,7 +177,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Erros de negócio: devolve 400 com a mensagem
     if (
       error?.message?.includes('Estoque insuficiente') ||
       error?.message?.includes('Peça não encontrada') ||
