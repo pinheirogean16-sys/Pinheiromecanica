@@ -8,23 +8,31 @@ import { notificarEstoqueBaixo } from '@/lib/notificacoes';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
+import { apiError } from '@/lib/api-error';
 
+// A15: `quantidade` NÃO pode ser alterada por este endpoint.
+// Alteração de saldo de estoque só pode acontecer via
+// POST /api/estoque/movimentacao, que grava MovimentacaoEstoque e usa
+// increment/decrement atômico. Isso evita "estoque fantasma" e garante
+// rastreabilidade de toda entrada/saída.
 const updatePecaSchema = z.object({
   codigo: z.string().min(2).trim().optional(),
   descricao: z.string().min(3).trim().optional(),
-  fabricante: z.string().optional().nullable(),
+  fabricante: z.string().max(200).optional().nullable(),
   categoria: z.nativeEnum(Peca_categoria).optional(),
-  quantidade: z.number().min(0).optional(),
   estoque_minimo: z.number().min(0).optional(),
-  localizacao: z.string().optional().nullable(),
+  localizacao: z.string().max(200).optional().nullable(),
   preco_custo: z.number().nonnegative().optional(),
   preco_venda: z.number().nonnegative().optional(),
-  unidadeMedida: z.string().optional(),
-  unidadeCompra: z.string().optional(),
+  unidadeMedida: z.string().max(20).optional(),
+  unidadeCompra: z.string().max(20).optional(),
   fatorConversao: z.number().min(0.0001).optional(),
-  permiteFracionado: z.boolean().optional()
+  permiteFracionado: z.boolean().optional(),
 });
 
+// ============================================================
+// GET — Buscar peça com últimas aplicações
+// ============================================================
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -39,9 +47,9 @@ export async function GET(
 
     const { id } = await params;
     const rawPeca = await prisma.peca.findFirst({
-      where: { 
+      where: {
         id,
-        empresa_id: user.empresa_id
+        empresa_id: user.empresa_id,
       },
       include: {
         PecaAplicada: {
@@ -49,14 +57,14 @@ export async function GET(
             OrdemServico: {
               include: {
                 Cliente: true,
-                Veiculo: true
-              }
-            }
+                Veiculo: true,
+              },
+            },
           },
           orderBy: { OrdemServico: { created_at: 'desc' } },
-          take: 10
-        }
-      }
+          take: 10,
+        },
+      },
     });
 
     if (!rawPeca) {
@@ -66,26 +74,30 @@ export async function GET(
     const { PecaAplicada, ...rest } = rawPeca;
     const peca = {
       ...rest,
-      aplicacoes: PecaAplicada.map(pa => {
+      aplicacoes: PecaAplicada.map((pa) => {
         const { OrdemServico, ...paRest } = pa;
         return {
           ...paRest,
-          os: OrdemServico ? {
-            ...OrdemServico,
-            cliente: OrdemServico.Cliente,
-            veiculo: OrdemServico.Veiculo
-          } : null
+          os: OrdemServico
+            ? {
+                ...OrdemServico,
+                cliente: OrdemServico.Cliente,
+                veiculo: OrdemServico.Veiculo,
+              }
+            : null,
         };
-      })
+      }),
     };
 
     return NextResponse.json(peca);
-  } catch (error) {
-    log('ERROR', 'PECA', 'Erro ao buscar peça', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao buscar peça' }, { status: 500 });
+  } catch (error: any) {
+    return apiError(error, 'PECA', 'Erro ao buscar peça');
   }
 }
 
+// ============================================================
+// PUT — Atualizar dados cadastrais da peça
+// ============================================================
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -94,34 +106,38 @@ export async function PUT(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    if (!checkPermission(user, 'peca', 'editar')) {
+    if (!checkPermission(user, 'pecas', 'editar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { id } = await params;
     const data = updatePecaSchema.parse(await request.json());
-    
-    const antes = await prisma.peca.findFirst({ 
-      where: { 
+
+    const antes = await prisma.peca.findFirst({
+      where: {
         id,
-        empresa_id: user.empresa_id 
-      } 
+        empresa_id: user.empresa_id,
+      },
     });
-    if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
+    if (!antes) {
+      return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
+    }
 
-    const empresa_id = user.empresa_id;
-
-    if (data.codigo) {
+    if (data.codigo && data.codigo !== antes.codigo) {
       const existing = await prisma.peca.findFirst({
-        where: { 
+        where: {
           codigo: data.codigo,
-          empresa_id: empresa_id,
-          NOT: { id }
-        }
+          empresa_id: user.empresa_id,
+          NOT: { id },
+        },
+        select: { id: true },
       });
 
       if (existing) {
-        return NextResponse.json({ error: 'Código de peça já cadastrado em outro item' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'Código de peça já cadastrado em outro item' },
+          { status: 409 }
+        );
       }
     }
 
@@ -129,17 +145,24 @@ export async function PUT(
       where: { id },
       data: {
         ...data,
-        preco_custo: data.preco_custo !== undefined ? roundDecimal(data.preco_custo) : undefined,
-        preco_venda: data.preco_venda !== undefined ? roundDecimal(data.preco_venda) : undefined,
-        updated_by: user?.name || user?.email || 'Sistema'
-      }
+        preco_custo:
+          data.preco_custo !== undefined
+            ? roundDecimal(data.preco_custo)
+            : undefined,
+        preco_venda:
+          data.preco_venda !== undefined
+            ? roundDecimal(data.preco_venda)
+            : undefined,
+        updated_by: user?.name || user?.email || 'Sistema',
+      },
     });
 
+    // Notifica estoque baixo — silencioso se falhar
     if (peca.quantidade <= peca.estoque_minimo) {
       try {
         await notificarEstoqueBaixo(peca);
-      } catch (err) {
-        console.error('Erro ao notificar estoque baixo:', err);
+      } catch {
+        // notificação é efeito colateral; não quebra a atualização
       }
     }
 
@@ -149,8 +172,9 @@ export async function PUT(
       entidade: 'Peca',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
-      dados_depois: peca
+      dados_depois: peca,
     });
 
     log('INFO', 'PECA', 'Peça atualizada', { id }, user?.name);
@@ -161,15 +185,20 @@ export async function PUT(
     }
 
     return NextResponse.json(peca);
-  } catch (error) {
-    log('ERROR', 'PECA', 'Erro ao atualizar peça', { error }, 'sistema');
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: 'Erro ao atualizar peça' }, { status: 500 });
+    return apiError(error, 'PECA', 'Erro ao atualizar peça');
   }
 }
 
+// ============================================================
+// DELETE — Excluir peça (somente se sem vínculos)
+// ============================================================
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -178,21 +207,40 @@ export async function DELETE(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    if (!checkPermission(user, 'peca', 'excluir')) {
+    if (!checkPermission(user, 'pecas', 'excluir')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { id } = await params;
-    const antes = await prisma.peca.findFirst({ 
-      where: { 
+    const antes = await prisma.peca.findFirst({
+      where: {
         id,
-        empresa_id: user.empresa_id 
-      } 
+        empresa_id: user.empresa_id,
+      },
     });
-    if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-    
+    if (!antes) {
+      return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
+    }
+
+    // Verificar dependências antes de tentar deletar.
+    // Evita 500 por violação de FK (PecaAplicada e MovimentacaoEstoque usam Restrict).
+    const [aplicacoesCount, movimentacoesCount] = await Promise.all([
+      prisma.pecaAplicada.count({ where: { peca_id: id } }),
+      prisma.movimentacaoEstoque.count({ where: { peca_id: id } }),
+    ]);
+
+    if (aplicacoesCount > 0 || movimentacoesCount > 0) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta peça possui histórico (aplicações em OS ou movimentações de estoque) e não pode ser excluída. Considere desativá-la em vez de excluir.',
+        },
+        { status: 409 }
+      );
+    }
+
     await prisma.peca.delete({
-      where: { id }
+      where: { id },
     });
 
     await createAuditLog({
@@ -201,19 +249,19 @@ export async function DELETE(
       entidade: 'Peca',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
-      dados_antes: antes
+      empresa_id: user.empresa_id,
+      dados_antes: antes,
     });
 
     log('INFO', 'PECA', 'Peça excluída', { id }, user?.name);
-    
+
     if (user?.empresa_id) {
       const { invalidateDashboardCache } = await import('@/lib/dashboard-cache');
       invalidateDashboardCache(user.empresa_id);
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    log('ERROR', 'PECA', 'Erro ao excluir peça', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao excluir peça. Verifique se não está vinculada a OS.' }, { status: 500 });
+  } catch (error: any) {
+    return apiError(error, 'PECA', 'Erro ao excluir peça');
   }
 }
