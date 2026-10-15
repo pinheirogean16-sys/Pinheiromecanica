@@ -97,8 +97,8 @@ export default function ConfiguracoesPage() {
           setCompanyData(data);
         }
       }
-    } catch (error) {
-      console.error('Erro ao buscar dados da empresa:', error);
+    } catch {
+      // erro silencioso — dados da empresa carregam em seguida
     }
   }, []);
 
@@ -127,21 +127,10 @@ export default function ConfiguracoesPage() {
       });
       if (res.ok) {
         toast.success('Dados da empresa salvos com sucesso!');
-        localStorage.setItem('companyData', JSON.stringify({
-          nomeFantasia: companyData.nome_fantasia,
-          razaoSocial: companyData.razao_social,
-          cnpj: companyData.cnpj,
-          ie: companyData.inscricao_estadual,
-          im: companyData.inscricao_municipal,
-          telefone: companyData.telefone,
-          email: companyData.email,
-          endereco: companyData.endereco,
-          rodape: companyData.rodape_personalizado
-        }));
       } else {
         toast.error('Erro ao salvar dados da empresa');
       }
-    } catch (error) {
+    } catch {
       toast.error('Erro de conexão ao salvar');
     }
   };
@@ -162,8 +151,8 @@ export default function ConfiguracoesPage() {
       if (res.ok) {
         setLogsData(await res.json());
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // silencioso
     } finally {
       setLogsLoading(false);
     }
@@ -189,9 +178,11 @@ export default function ConfiguracoesPage() {
     comissao: '0'
   });
 
+  // M08: campo senha_atual é obrigatório para trocar a senha própria
   const [profileFormData, setProfileFormData] = useState({
     name: '',
     email: '',
+    senhaAtual: '',
     newPassword: '',
     confirmPassword: ''
   });
@@ -207,8 +198,7 @@ export default function ConfiguracoesPage() {
       } else {
         toast.error('Erro ao carregar perfil');
       }
-    } catch (error) { 
-      console.error(error); 
+    } catch {
       toast.error('Interrupção na rede de dados');
     }
   }, []);
@@ -222,9 +212,8 @@ export default function ConfiguracoesPage() {
       } else {
         toast.error('Erro ao carregar usuários');
       }
-    } catch (error) { 
-        console.error(error); 
-        toast.error('Falha de protocolo na listagem');
+    } catch {
+      toast.error('Falha de protocolo na listagem');
     }
   }, [currentUser, usersPage]);
 
@@ -273,18 +262,31 @@ export default function ConfiguracoesPage() {
         method, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) { setIsUserModalOpen(false); fetchUsers(); }
-      else { alert((await res.json()).error); }
-    } catch (error) { alert('Erro de conexão'); }
+      if (res.ok) {
+        setIsUserModalOpen(false);
+        fetchUsers();
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        toast.error(data.error || 'Erro ao salvar usuário');
+      }
+    } catch {
+      toast.error('Erro de conexão');
+    }
   };
 
   const handleDeleteUser = async (id: string) => {
     if (!confirm('Deseja excluir permanentemente este usuário?')) return;
     try {
       const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchUsers();
-      else alert((await res.json()).error);
-    } catch (error) { alert('Erro de conexão'); }
+      if (res.ok) {
+        fetchUsers();
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        toast.error(data.error || 'Erro ao excluir usuário');
+      }
+    } catch {
+      toast.error('Erro de conexão');
+    }
   };
 
   const handleResetPassword = async (id: string) => {
@@ -293,26 +295,70 @@ export default function ConfiguracoesPage() {
       const res = await fetch(`/api/usuarios/${id}/reset-password`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        alert(`Senha resetada! Nova senha: ${data.tempPassword}\nAnote-a agora.`);
+        toast.success(`Senha temporária: ${data.tempPassword}`, {
+          description: 'Anote agora. Não será exibida novamente.',
+          duration: 30000,
+        });
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        toast.error(data.error || 'Erro ao resetar');
       }
-    } catch (error) { alert('Erro ao resetar'); }
+    } catch {
+      toast.error('Erro de conexão');
+    }
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (profileFormData.newPassword && profileFormData.newPassword !== profileFormData.confirmPassword) {
-      alert('As novas senhas não coincidem'); return;
+
+    // Validação local antes de enviar
+    if (profileFormData.newPassword) {
+      if (!profileFormData.senhaAtual) {
+        toast.error('Informe a senha atual para trocar a senha');
+        return;
+      }
+      if (profileFormData.newPassword !== profileFormData.confirmPassword) {
+        toast.error('As novas senhas não coincidem');
+        return;
+      }
+      if (profileFormData.newPassword.length < 8) {
+        toast.error('A nova senha deve ter pelo menos 8 caracteres');
+        return;
+      }
     }
+
     try {
+      const payload: any = {
+        name: profileFormData.name,
+        email: profileFormData.email,
+      };
+      if (profileFormData.newPassword) {
+        payload.password = profileFormData.newPassword;
+        payload.senha_atual = profileFormData.senhaAtual;
+      }
+
       const res = await fetch('/api/usuario', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: profileFormData.name, email: profileFormData.email,
-          password: profileFormData.newPassword || undefined
-        })
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      if (res.ok) { alert('Perfil atualizado!'); fetchProfile(); }
-    } catch (error) { alert('Erro de conexão'); }
+
+      if (res.ok) {
+        toast.success('Perfil atualizado com sucesso');
+        setProfileFormData(prev => ({
+          ...prev,
+          senhaAtual: '',
+          newPassword: '',
+          confirmPassword: '',
+        }));
+        fetchProfile();
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+        toast.error(data.error || 'Erro ao atualizar perfil');
+      }
+    } catch {
+      toast.error('Erro de conexão');
+    }
   };
 
   if (loading) return (
@@ -484,7 +530,7 @@ export default function ConfiguracoesPage() {
                   <div className="space-y-6">
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nome Fantasia / Display</label>
-                      <input name="nome_fantasia" value={companyData.nome_fantasia} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="PAGANI DIESEL LTDA" />
+                      <input name="nome_fantasia" value={companyData.nome_fantasia} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="VEHLOX" />
                     </div>
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Razão Social Completa</label>
@@ -507,7 +553,7 @@ export default function ConfiguracoesPage() {
                       </div>
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Endpoint de Email</label>
-                        <input name="email" value={companyData.email} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" placeholder="CONTATO@EMPRESA.COM.BR" />
+                        <input name="email" value={companyData.email} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" placeholder="CONTATO@VEHLOX.COM.BR" />
                       </div>
                     </div>
                     <div>
@@ -541,7 +587,7 @@ export default function ConfiguracoesPage() {
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Token de Comunicação NFSe</label>
                         <div className="relative group">
-                          <input name="token_nfse" value={companyData.token_nfse} onChange={handleCompanyChange} type="password" className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="TOKEN DE ACESSO CRIPTOGRAFADO" />
+                          <input name="token_nfse" value={companyData.token_nfse} onChange={handleCompanyChange} type="password" className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="TOKEN DE ACESSO SEGURO" />
                           <ShieldCheck className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-800" />
                         </div>
                       </div>
@@ -676,16 +722,30 @@ export default function ConfiguracoesPage() {
                     <input type="email" value={profileFormData.email} onChange={(e) => setProfileFormData({ ...profileFormData, email: e.target.value })} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-sm text-zinc-400 font-mono font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" required />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-zinc-900">
+
+                <div className="pt-8 border-t border-zinc-900 space-y-6">
                   <div>
-                    <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nova Senha (Security)</label>
-                    <input type="password" value={profileFormData.newPassword} onChange={(e) => setProfileFormData({ ...profileFormData, newPassword: e.target.value })} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-sm text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="••••••••" />
+                    <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Trocar Senha</h3>
+                    <p className="text-[10px] text-zinc-600 font-mono uppercase tracking-wider mt-1">Deixe em branco se não quiser alterar a senha</p>
                   </div>
+
                   <div>
-                    <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Confirmar Autenticação</label>
-                    <input type="password" value={profileFormData.confirmPassword} onChange={(e) => setProfileFormData({ ...profileFormData, confirmPassword: e.target.value })} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-sm text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="••••••••" />
+                    <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Senha Atual (obrigatória para trocar)</label>
+                    <input type="password" value={profileFormData.senhaAtual} onChange={(e) => setProfileFormData({ ...profileFormData, senhaAtual: e.target.value })} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-sm text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="••••••••" autoComplete="current-password" />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nova Senha</label>
+                      <input type="password" value={profileFormData.newPassword} onChange={(e) => setProfileFormData({ ...profileFormData, newPassword: e.target.value })} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-sm text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="Mínimo 8 caracteres" autoComplete="new-password" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Confirmar Nova Senha</label>
+                      <input type="password" value={profileFormData.confirmPassword} onChange={(e) => setProfileFormData({ ...profileFormData, confirmPassword: e.target.value })} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-sm text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="Repita a nova senha" autoComplete="new-password" />
+                    </div>
                   </div>
                 </div>
+
                 <button type="submit" className="bg-orange-600 text-white w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-2xl hover:bg-orange-500 transition-all active:scale-[0.98] mt-4">Sincronizar Atualizações</button>
               </form>
             </div>
@@ -791,8 +851,8 @@ export default function ConfiguracoesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Password Incial</label>
-                  <input type="password" value={userFormData.password} onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="••••••••" required={!editingUser} />
+                  <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Password Inicial</label>
+                  <input type="password" value={userFormData.password} onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="Mínimo 8 caracteres" required={!editingUser} />
                 </div>
               </div>
 
