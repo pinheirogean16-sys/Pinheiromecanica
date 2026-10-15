@@ -1,8 +1,11 @@
 /**
  * Enterprise Request Manager Global
  * Built specifically for high reliability under Hostinger / shared server environments.
- * Handles deduplication, temporal hybrid caching (RAM + LocalStorage), request queueing 
+ * Handles deduplication, temporal caching (RAM only), request queueing
  * with concurrency limits, retry with exponential backoff, and graceful offline fallback.
+ *
+ * SEGURANÇA (C07): cache é mantido APENAS em memória (RAM) — nunca em localStorage.
+ * Isso evita vazamento de dados entre usuários no mesmo navegador (PC compartilhado).
  */
 
 import { toast } from 'sonner';
@@ -39,12 +42,12 @@ class RequestManager {
   private activeConnections = 0;
   private readonly maxConcurrentRequests = 3; // Hard limit to prevent Hostinger server 429 threshold
   private queue: QueueItem[] = [];
-  
+
   // Ongoing request Promises/AbortControllers for deduplication & cancellation
   private dedupeMap = new Map<string, Promise<any>>();
   private abortControllers = new Map<string, AbortController>();
 
-  // Memory Cache
+  // Memory Cache (RAM only — nunca persistido)
   private memoryCache = new Map<string, CacheItem>();
 
   // Telemetry indicators for enterprise HUD (CTRL + SHIFT + D)
@@ -53,7 +56,7 @@ class RequestManager {
     queueBlocks: 0,
     dedupeHits: 0,
     cacheHits: 0,
-    localStorageHits: 0,
+    localStorageHits: 0, // mantido para compatibilidade com o HUD (sempre 0 agora)
     failedRequests: 0,
     retriesAttempted: 0,
     rateLimitBlocks: 0,
@@ -61,14 +64,43 @@ class RequestManager {
   };
 
   constructor() {
-    // Attempt local storage cleanup of expired keys in background
     if (typeof window !== 'undefined') {
-      setTimeout(() => this.cleanupIndexedCache(), 1000);
+      // SEGURANÇA (C07): remove cache legado do localStorage de versões anteriores
+      // que vazava dados entre usuários. Executa uma vez por sessão de página.
+      this.clearLegacyLocalStorageCache();
+
+      // Cleanup de entradas expiradas em memória
+      setTimeout(() => this.cleanupExpiredCache(), 1000);
     }
   }
 
   /**
-   * Generates a unique deterministic cache key for a request
+   * SEGURANÇA (C07): remove qualquer chave `rm_cache:*` deixada no localStorage
+   * por versões anteriores deste arquivo. Deve rodar no início da sessão para
+   * eliminar dados eventualmente herdados de outro usuário.
+   */
+  private clearLegacyLocalStorageCache(): void {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('rm_cache:')) {
+          keysToRemove.push(k);
+        }
+      }
+      for (const k of keysToRemove) {
+        localStorage.removeItem(k);
+      }
+    } catch {
+      // localStorage pode estar indisponível (modo privado, cota cheia, etc.)
+    }
+  }
+
+  /**
+   * Gera uma chave determinística para um request.
+   * IMPORTANTE: continua sem usuário/empresa porque o cache agora é
+   * APENAS em memória — vive enquanto a aba está aberta, e é destruído
+   * no reload/logout. Não há vazamento entre sessões.
    */
   private generateKey(path: string, config: RequestConfig): string {
     const method = (config.method || 'GET').toUpperCase();
@@ -77,10 +109,9 @@ class RequestManager {
   }
 
   /**
-   * Fetches data from caches (RAM first, then LocalStorage)
+   * Lê o valor do cache em memória (RAM). Nunca toca em localStorage.
    */
   private getCacheValue(key: string): any | null {
-    // 1. RAM Cache check
     const ramItem = this.memoryCache.get(key);
     if (ramItem) {
       if (Date.now() < ramItem.expiresAt) {
@@ -89,30 +120,11 @@ class RequestManager {
       }
       this.memoryCache.delete(key);
     }
-
-    // 2. LocalStorage Cache check as secondary backup
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(`rm_cache:${key}`);
-        if (stored) {
-          const parsed: CacheItem = JSON.parse(stored);
-          if (Date.now() < parsed.expiresAt) {
-            // Restore back to memory cache
-            this.memoryCache.set(key, parsed);
-            this.telemetry.localStorageHits++;
-            return parsed.data;
-          }
-          localStorage.removeItem(`rm_cache:${key}`);
-        }
-      } catch (err) {
-        console.warn('RM Cache: LocalStorage read failed', err);
-      }
-    }
     return null;
   }
 
   /**
-   * Save entry to caches (RAM + LocalStorage)
+   * Salva o valor APENAS em memória. Nunca persiste.
    */
   private setCacheValue(key: string, data: any, ttl: number): void {
     if (ttl <= 0) return;
@@ -124,82 +136,42 @@ class RequestManager {
     };
 
     this.memoryCache.set(key, item);
-
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`rm_cache:${key}`, JSON.stringify(item));
-      } catch (err) {
-        // Handle storage full by clearing older items
-        this.cleanupIndexedCache(true);
-        try {
-          localStorage.setItem(`rm_cache:${key}`, JSON.stringify(item));
-        } catch {}
-      }
-    }
   }
 
   /**
-   * Get an extreme robust fallback even if the cache is legally expired.
-   * Helps keep UI fully stable and visually populated during active server down/429 periods.
+   * Fallback stale (mesmo expirado) para manter a UI estável se o servidor cair.
+   * Fonte: apenas memória — nunca disco.
    */
   private getStaleFallback(key: string): any | null {
     const ramItem = this.memoryCache.get(key);
     if (ramItem) return ramItem.data;
-
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(`rm_cache:${key}`);
-        if (stored) {
-          const parsed: CacheItem = JSON.parse(stored);
-          return parsed.data;
-        }
-      } catch {}
-    }
     return null;
   }
 
   /**
-   * Cleans up expired cache items to conserve memory & local storage space.
+   * Remove entradas expiradas do cache em memória.
    */
-  private cleanupIndexedCache(forceAll = false): void {
-    if (typeof window === 'undefined') return;
-
-    try {
-      if (forceAll) {
-        // Storage is full, clear older cached assets completely
-        for (const k of Object.keys(localStorage)) {
-          if (k.startsWith('rm_cache:')) {
-            localStorage.removeItem(k);
-          }
-        }
-        this.memoryCache.clear();
-        return;
+  private cleanupExpiredCache(): void {
+    const now = Date.now();
+    for (const key of Array.from(this.memoryCache.keys())) {
+      const item = this.memoryCache.get(key);
+      if (item && now > item.expiresAt) {
+        this.memoryCache.delete(key);
       }
-
-      const now = Date.now();
-      for (const key of Array.from(this.memoryCache.keys())) {
-        const item = this.memoryCache.get(key);
-        if (item && now > item.expiresAt) {
-          this.memoryCache.delete(key);
-        }
-      }
-
-      for (const k of Object.keys(localStorage)) {
-        if (k.startsWith('rm_cache:')) {
-          const stored = localStorage.getItem(k);
-          if (stored) {
-            const parsed: CacheItem = JSON.parse(stored);
-            if (now > parsed.expiresAt) {
-              localStorage.removeItem(k);
-            }
-          }
-        }
-      }
-    } catch {}
+    }
   }
 
   /**
-   * Cancels any active outgoing request for a specific endpoint key
+   * SEGURANÇA (C07): limpa todo o cache em memória.
+   * Deve ser chamado no LOGOUT para eliminar qualquer dado sensível residual
+   * em navegadores compartilhados, mesmo sem reload da página.
+   */
+  public clearCache(): void {
+    this.memoryCache.clear();
+  }
+
+  /**
+   * Cancela qualquer request ativo para uma chave específica.
    */
   public cancelRequest(key: string): void {
     const controller = this.abortControllers.get(key);
@@ -211,7 +183,7 @@ class RequestManager {
   }
 
   /**
-   * Dispatches of queues the request to maintain a strict concurrent execution model
+   * Ponto de entrada principal. Enfileira ou despacha o request.
    */
   public async request<T = any>(path: string, config: RequestConfig = {}): Promise<T> {
     this.telemetry.totalRequests++;
@@ -220,16 +192,15 @@ class RequestManager {
     const isGet = method === 'GET';
     const key = this.generateKey(path, config);
 
-    // Default parameters for caching and resilience
-    const defaultTTL = isGet ? 10 * 1000 : 0; // 10 seconds of default client-side caching for GETs
+    const defaultTTL = isGet ? 10 * 1000 : 0; // 10s de cache client-side padrão para GETs
     const ttl = config.ttl !== undefined ? config.ttl : defaultTTL;
     const skipCache = config.skipCache || !isGet;
-    const retries = config.retries !== undefined ? config.retries : (isGet ? 2 : 0);
+    const retries = config.retries !== undefined ? config.retries : isGet ? 2 : 0;
     const retryDelay = config.retryDelay || 1000;
     const timeout = config.timeout || 25000;
     const priority = config.priority || 'normal';
 
-    // 1. Check cache first for GET requests
+    // 1. Cache (RAM)
     if (!skipCache) {
       const cached = this.getCacheValue(key);
       if (cached !== null) {
@@ -237,7 +208,7 @@ class RequestManager {
       }
     }
 
-    // 2. Deduplicate ongoing identical GET requests
+    // 2. Deduplicação de GETs em andamento
     if (isGet && !config.skipDeduplication) {
       const ongoing = this.dedupeMap.get(key);
       if (ongoing) {
@@ -246,12 +217,11 @@ class RequestManager {
       }
     }
 
-    // 3. Cancel outstanding request of same key if new comes in (e.g. typing or change filter)
+    // 3. Cancela request anterior da mesma chave (ex: filtro mudando)
     if (!isGet) {
       this.cancelRequest(key);
     }
 
-    // Wrap in queued promise
     const promise = new Promise<T>((resolve, reject) => {
       const queueItem: QueueItem = {
         id: Math.random().toString(36).substring(7),
@@ -263,13 +233,11 @@ class RequestManager {
         retriesRemaining: retries,
       };
 
-      // Push into queue
       this.enqueue(queueItem);
     });
 
     if (isGet && !config.skipDeduplication) {
       this.dedupeMap.set(key, promise);
-      // Clean up deduplication ref when promise settles
       promise.finally(() => {
         this.dedupeMap.delete(key);
       });
@@ -279,12 +247,11 @@ class RequestManager {
   }
 
   /**
-   * Put item in the queue and order it by Priority
+   * Enfileira por prioridade.
    */
   private enqueue(item: QueueItem): void {
     this.queue.push(item);
 
-    // Sort queue by Priority (high first, low last)
     const priorityWeight = { high: 3, normal: 2, low: 1 };
     this.queue.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
 
@@ -292,7 +259,7 @@ class RequestManager {
   }
 
   /**
-   * Process pending queued requests up to max concurrency
+   * Processa a fila respeitando o limite de concorrência.
    */
   private async processQueue(): Promise<void> {
     if (this.activeConnections >= this.maxConcurrentRequests) {
@@ -308,7 +275,7 @@ class RequestManager {
   }
 
   /**
-   * Performs the raw HTTP connection with AbortController, Timeout and backoff retries
+   * Executa o HTTP real com timeout, abort e retry exponencial.
    */
   private async executeRequest(item: QueueItem): Promise<void> {
     const { path, config, resolve, reject } = item;
@@ -322,7 +289,7 @@ class RequestManager {
     }, config.timeout);
 
     const defaultHeaders: Record<string, string> = {
-      'Accept': 'application/json',
+      Accept: 'application/json',
     };
 
     let processedBody = config.body;
@@ -351,7 +318,8 @@ class RequestManager {
         ...nativeOptions
       } = config;
 
-      const requestPriority = priority === 'high' ? 'high' : priority === 'low' ? 'low' : undefined;
+      const requestPriority =
+        priority === 'high' ? 'high' : priority === 'low' ? 'low' : undefined;
 
       const response = await fetch(path, {
         ...nativeOptions,
@@ -390,7 +358,7 @@ class RequestManager {
         };
       }
 
-      // If valid, cache it
+      // Cache apenas GETs bem-sucedidos
       const resolvedTtl = ttl ?? 0;
       if (resolvedTtl > 0 && (config.method || 'GET').toUpperCase() === 'GET') {
         this.setCacheValue(key, data, resolvedTtl);
@@ -401,58 +369,59 @@ class RequestManager {
       clearTimeout(timeoutId);
       this.abortControllers.delete(key);
 
-      const isAbort = err.name === 'AbortError' || err.message === 'The user aborted a request.';
+      const isAbort =
+        err.name === 'AbortError' || err.message === 'The user aborted a request.';
       const status = err.status || 0;
 
-      // Detect if we should retry (network dropouts or server timeouts, but do not retry 403, 401 or user cancellation)
-      const shouldRetry = 
-        item.retriesRemaining > 0 && 
-        !isAbort && 
-        status !== 400 && 
-        status !== 401 && 
-        status !== 403 && 
+      const shouldRetry =
+        item.retriesRemaining > 0 &&
+        !isAbort &&
+        status !== 400 &&
+        status !== 401 &&
+        status !== 403 &&
         status !== 404;
 
       if (shouldRetry) {
         item.retriesRemaining--;
         this.telemetry.retriesAttempted++;
-        
-        // Exponential Backoff algorithm: delay base * 2 ^ attempt
-        const delay = (config.retryDelay || 1000) * Math.pow(2, (config.retries || 2) - item.retriesRemaining);
-        
+
+        const delay =
+          (config.retryDelay || 1000) *
+          Math.pow(2, (config.retries || 2) - item.retriesRemaining);
+
         setTimeout(() => {
           this.enqueue(item);
         }, delay);
       } else {
-        // Retry exhausted or not applicable, search fallback cache for GETs
         const isGet = (config.method || 'GET').toUpperCase() === 'GET';
         const fallback = isGet ? this.getStaleFallback(key) : null;
 
         if (fallback !== null) {
           this.telemetry.restoredFromFallback++;
-          
+
           if (!config.silentError) {
-            toast.warning('Instabilidade de servidor detectada! Exibindo dados de cache local.', {
-              description: 'Nenhum dado foi perdido.',
-              duration: 5000,
-            });
+            toast.warning(
+              'Instabilidade de servidor detectada! Exibindo dados de cache local.',
+              {
+                description: 'Nenhum dado foi perdido.',
+                duration: 5000,
+              }
+            );
           }
-          
+
           resolve(fallback);
         } else {
-          // No fallback available, fail formally
           this.telemetry.failedRequests++;
-          
+
           if (!config.silentError && !isAbort) {
             toast.error(err.message || 'Erro de conexão na requisição.');
           }
-          
+
           reject(err);
         }
       }
     } finally {
       this.activeConnections = Math.max(0, this.activeConnections - 1);
-      // Trigger execution of layout tasks in queue
       this.processQueue();
     }
   }
