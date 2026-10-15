@@ -4,7 +4,7 @@ const PUBLIC_ROUTES = [
   '/login',
   '/register',
   '/api/auth/login',
-  '/api/auth/register',
+  '/api/register',
   '/api/auth/refresh',
   '/manifest.json',
   '/favicon.ico',
