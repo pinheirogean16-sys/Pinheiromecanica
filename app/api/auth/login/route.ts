@@ -85,16 +85,34 @@ export async function POST(request: Request) {
     }
 
     // ============================================================
+    // 5b. C06: bloquear login de usuário desativado
+    // ============================================================
+    if (user.ativo === false) {
+      log('WARN', 'AUTH', 'Tentativa de login de usuário desativado', {
+        userId: user.id,
+        email,
+        ip,
+      });
+      return NextResponse.json(
+        { error: 'Usuário desativado. Contate o administrador.' },
+        { status: 403 }
+      );
+    }
+
+    // ============================================================
     // 6. Sucesso: limpar rate limit e gerar token
     // ============================================================
     loginAttempts.delete(ip);
 
+    // C06: inclui token_version no JWT. Se a senha for trocada depois,
+    // o valor no banco é incrementado e este token deixa de valer.
     const token = await signToken({
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
       empresa_id: user.empresa_id,
+      token_version: user.token_version ?? 0,
     });
 
     // ============================================================
