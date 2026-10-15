@@ -6,7 +6,8 @@ import {
   ArrowLeft, Printer, Edit, Trash2, User, Truck, 
   Calendar, FileText, Wrench, Package, DollarSign,
   Terminal, ShieldCheck, ChevronRight, ClipboardCheck, Plus, Eye,
-  MapPin, Navigation, Milestone, Receipt, Users, Clock, AlertTriangle, Loader2
+  MapPin, Navigation, Milestone, Receipt, Users, Clock, AlertTriangle, Loader2,
+  XCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -30,6 +31,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const [diasIntervalo, setDiasIntervalo] = useState(28);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
+  // A01: modal de cancelamento
+  const [showCancelarModal, setShowCancelarModal] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [isCanceling, setIsCanceling] = useState(false);
+
   const fetchOrdem = useCallback(async () => {
     try {
       const res = await fetch(`/api/ordens/${resolvedParams.id}`, { credentials: 'include' });
@@ -37,8 +43,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         const data = await res.json();
         setOrdem(data);
       }
-    } catch (error) {
-      // Silencioso
+    } catch {
+      // silencioso
     } finally {
       setLoading(false);
     }
@@ -76,7 +82,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       } else {
         toast.error('Erro ao registrar homologação digital');
       }
-    } catch (err) {
+    } catch {
       toast.error('Erro de conexão');
     } finally {
       setIsSigning(false);
@@ -104,14 +110,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
 
   const handleDeleteChecklist = async (execId: string) => {
     if (!confirm('Deseja realmente excluir este checklist?')) return;
-    
+
     try {
-      const res = await fetch(`/api/checklist/execucao/${execId}`, { 
+      const res = await fetch(`/api/checklist/execucao/${execId}`, {
         method: 'DELETE',
-        credentials: 'include' 
+        credentials: 'include'
       });
       const data = await res.json();
-      
+
       if (res.ok) {
         toast.success(data.message || 'Checklist removido!');
         const resp = await fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, { credentials: 'include' });
@@ -126,27 +132,24 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       } else {
         toast.error(data.error || 'Erro ao remover checklist');
       }
-    } catch (err) {
+    } catch {
       toast.error('Erro de conexão');
     }
   };
 
-  // ============================================================
-  // 🎯 Extrai preventivas vinculadas à OS (múltiplas fontes)
-  // ============================================================
   const extrairPreventivasVinculadas = (): string[] => {
     if (!ordem) return [];
-    
+
     const ids: string[] = [];
-    
+
     if (Array.isArray(ordem.preventivas_ids)) {
       ids.push(...ordem.preventivas_ids.filter(Boolean));
     }
-    
+
     if (ordem.preventiva_id && !ids.includes(ordem.preventiva_id)) {
       ids.push(ordem.preventiva_id);
     }
-    
+
     if (Array.isArray(ordem.preventivas_execucoes)) {
       ordem.preventivas_execucoes.forEach((pe: any) => {
         if (pe.preventiva_id && !ids.includes(pe.preventiva_id)) {
@@ -154,11 +157,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         }
       });
     }
-    
+
     if (ids.length === 0 && ordem.observacoes) {
       try {
-        const meta = typeof ordem.observacoes === 'string' 
-          ? JSON.parse(ordem.observacoes) 
+        const meta = typeof ordem.observacoes === 'string'
+          ? JSON.parse(ordem.observacoes)
           : ordem.observacoes;
         if (Array.isArray(meta?.preventivas_ids)) {
           meta.preventivas_ids.forEach((id: string) => {
@@ -170,7 +173,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         }
       } catch {}
     }
-    
+
     return ids;
   };
 
@@ -178,15 +181,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     if (novoStatus === 'FINALIZADA') {
       try {
         const preventivasVinculadas = extrairPreventivasVinculadas();
-        
+
         const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             status: 'FINALIZADA',
             preventivas_ids: preventivasVinculadas,
-            // 🎯 Envia km/horímetro atuais do veículo
             km_veiculo: ordem?.veiculo?.quilometragem,
             horimetro_veiculo: ordem?.veiculo?.horimetro_atual
           })
@@ -199,7 +201,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           const err = await res.json().catch(() => ({}));
           toast.error(err.error || 'Erro ao finalizar');
         }
-      } catch (err) {
+      } catch {
         toast.error('Erro de conexão');
       }
       return;
@@ -218,24 +220,44 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       } else {
         toast.error('Erro ao atualizar status');
       }
-    } catch (error) {
+    } catch {
       toast.error('Erro de conexão');
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Tem certeza que deseja excluir esta OS? Esta ação não pode ser desfeita.')) return;
-    
+  // A01: cancelamento em vez de exclusão
+  const handleCancelar = async () => {
+    if (!motivoCancelamento.trim()) {
+      toast.error('Informe o motivo do cancelamento');
+      return;
+    }
+
+    setIsCanceling(true);
     try {
-      const res = await fetch(`/api/ordens/${resolvedParams.id}`, { 
-        method: 'DELETE',
-        credentials: 'include'
+      const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          status: 'CANCELADA',
+          motivo_cancelamento: motivoCancelamento.trim(),
+        }),
       });
+
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
-        router.push('/os');
+        toast.success('OS cancelada com sucesso');
+        setShowCancelarModal(false);
+        setMotivoCancelamento('');
+        fetchOrdem();
+      } else {
+        toast.error(data.error || 'Erro ao cancelar OS');
       }
-    } catch (error) {
-      // Silencioso
+    } catch {
+      toast.error('Erro de conexão');
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -265,18 +287,17 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     setIsFinalizing(true);
     try {
       const preventivasVinculadas = extrairPreventivasVinculadas();
-      
+
       const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           status: 'FINALIZADA',
           forma_pagamento: formaPagamento,
           numero_parcelas: numParcelas,
           dias_entre_parcelas: diasIntervalo,
           preventivas_ids: preventivasVinculadas,
-          // 🎯 Envia km/horímetro atuais do veículo
           km_veiculo: ordem?.veiculo?.quilometragem,
           horimetro_veiculo: ordem?.veiculo?.horimetro_atual
         })
@@ -289,7 +310,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         const errorData = await res.json();
         toast.error(errorData.error || 'Erro ao finalizar OS');
       }
-    } catch (error) {
+    } catch {
       toast.error('Erro de conexão');
     } finally {
       setIsFinalizing(false);
@@ -316,9 +337,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     FINALIZADA: 'ENTREGUE'
   };
 
+  // A01: esconde botão de cancelar se OS já cancelada ou entregue
+  const podeCancelar = ordem.status !== 'CANCELADA' && ordem.status !== 'ENTREGUE';
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 px-4 py-8 pb-20">
-      {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="flex items-center gap-5">
           <Link href="/os">
@@ -334,8 +357,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               </span>
               {ordem.tipo_atendimento && (
                 <span className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-tighter border-2 ${
-                  ordem.tipo_atendimento === 'OFICINA' 
-                    ? 'bg-zinc-800/80 text-zinc-300 border-zinc-700' 
+                  ordem.tipo_atendimento === 'OFICINA'
+                    ? 'bg-zinc-800/80 text-zinc-300 border-zinc-700'
                     : ordem.tipo_atendimento === 'EMERGENCIAL'
                     ? 'bg-red-500/10 text-red-400 border-red-500/30'
                     : 'bg-orange-500/10 text-orange-400 border-orange-500/30'
@@ -349,7 +372,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             </p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-3 flex-wrap">
           {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (
             <Link href={`/os/viagem-print?id=${ordem.id}`}>
@@ -370,12 +393,18 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               <Edit className="w-5 h-5" />
             </button>
           </Link>
-          <button 
-            onClick={handleDelete}
-            className="w-full sm:w-12 h-12 bg-red-950/10 border border-red-500/20 rounded-2xl flex items-center justify-center hover:bg-red-900/20 transition-all text-red-500 shadow-md"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+          {/* A01: botão "Cancelar OS" em vez de "Excluir" */}
+          {podeCancelar && (
+            <button
+              type="button"
+              onClick={() => setShowCancelarModal(true)}
+              title="Cancelar OS"
+              className="w-full sm:w-auto px-5 h-12 bg-red-950/20 border border-red-500/30 rounded-2xl flex items-center justify-center gap-2 hover:bg-red-900/30 transition-all text-red-400 hover:text-red-300 shadow-md font-black text-[10px] uppercase tracking-widest"
+            >
+              <XCircle className="w-5 h-5" />
+              Cancelar OS
+            </button>
+          )}
         </div>
       </div>
 
@@ -482,14 +511,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         let timeline: any[] = [];
         try {
           timeline = typeof ordem.timeline_viagem === 'string' ? JSON.parse(ordem.timeline_viagem || '[]') : (ordem.timeline_viagem || []);
-        } catch (e) {
+        } catch {
           timeline = [];
         }
 
         let equipe: any[] = [];
         try {
           equipe = typeof ordem.mao_obra_equipe === 'string' ? JSON.parse(ordem.mao_obra_equipe || '[]') : (ordem.mao_obra_equipe || []);
-        } catch (e) {
+        } catch {
           equipe = [];
         }
 
@@ -535,7 +564,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   </div>
                 </div>
                 {ordem.local_gps ? (
-                  <a 
+                  <a
                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ordem.local_gps)}`}
                     target="_blank"
                     rel="noreferrer"
@@ -778,9 +807,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                       <Eye size={14} />
                     </button>
                   </Link>
-                  <button 
+                  <button
                     onClick={() => exec?.id && handleDeleteChecklist(exec.id)}
-                    className="p-2 bg-zinc-800 hover:bg-red-600/20 rounded-lg text-zinc-400 hover:text-red-500 transition" 
+                    className="p-2 bg-zinc-800 hover:bg-red-600/20 rounded-lg text-zinc-400 hover:text-red-500 transition"
                     title="Excluir"
                   >
                     <Trash2 size={16} />
@@ -843,7 +872,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               </div>
             )}
           </div>
-          
+
           <div className="w-full sm:w-auto p-6 bg-zinc-950 border border-zinc-800 rounded-3xl text-right">
             <div className="flex items-center gap-3 justify-end text-orange-500 mb-1">
               <DollarSign className="w-4 h-4" />
@@ -912,12 +941,12 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         ) : (
           <div className="space-y-6">
             <p className="text-xs text-zinc-400 font-medium">As assinaturas podem ser colhidas diretamente na tela do tablet ou celular pelo técnico, cliente e supervisor.</p>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">1. Firma do Cliente</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="DIGITE O NOME..."
                   value={sigCliente}
                   onChange={(e) => setSigCliente(e.target.value)}
@@ -933,8 +962,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
 
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">2. Firma do Técnico</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="DIGITE O NOME..."
                   value={sigMecanico}
                   onChange={(e) => setSigMecanico(e.target.value)}
@@ -950,8 +979,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
 
               <div className="space-y-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">3. Visto Supervisor</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="DIGITE O NOME..."
                   value={sigSupervisor}
                   onChange={(e) => setSigSupervisor(e.target.value)}
@@ -967,7 +996,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             </div>
 
             <div className="flex justify-end pt-2">
-              <button 
+              <button
                 onClick={handleSaveSignatures}
                 disabled={isSigning || (!sigCliente && !sigMecanico && !sigSupervisor)}
                 className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-800/40 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-orange-950/20 flex items-center gap-2 cursor-pointer"
@@ -983,7 +1012,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </div>
-  
+
+      {/* MODAL: Finalizar */}
       {showFinalizarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl">
@@ -992,19 +1022,19 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 <h3 className="text-xl font-black text-white uppercase tracking-tight">Finalizar Protocolo</h3>
                 <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Configuração Financeira e Fechamento</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowFinalizarModal(false)}
                 className="w-10 h-10 bg-zinc-800 border border-zinc-700 rounded-xl flex items-center justify-center text-zinc-400 hover:text-white transition-all"
               >
                 <Eye className="w-5 h-5 rotate-45" />
               </button>
             </div>
-            
+
             <div className="p-8 space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
                   <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">Forma de Pagamento</label>
-                  <select 
+                  <select
                     value={formaPagamento}
                     onChange={(e) => {
                       setFormaPagamento(e.target.value);
@@ -1027,7 +1057,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">Parcelas</label>
-                        <input 
+                        <input
                           type="number"
                           value={numParcelas}
                           onChange={(e) => setNumParcelas(parseInt(e.target.value) || 1)}
@@ -1038,7 +1068,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">Intervalo (dias)</label>
-                        <input 
+                        <input
                           type="number"
                           value={diasIntervalo}
                           onChange={(e) => setDiasIntervalo(parseInt(e.target.value) || 28)}
@@ -1062,13 +1092,13 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button 
+                <button
                   onClick={() => setShowFinalizarModal(false)}
                   className="flex-1 px-8 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all"
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   onClick={confirmFinalizar}
                   disabled={isFinalizing}
                   className="flex-[2] px-8 py-4 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-800/50 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-orange-950/20 flex items-center justify-center gap-3"
@@ -1079,6 +1109,89 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                     <>
                       Confirmar Encerramento
                       <ChevronRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* A01: MODAL DE CANCELAMENTO */}
+      {showCancelarModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Cancelar OS #{ordem.numero}</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 text-xs text-zinc-300 leading-relaxed space-y-1.5">
+                <p className="font-bold text-red-400 uppercase text-[10px] tracking-widest">O que vai acontecer</p>
+                <ul className="list-disc pl-5 space-y-1 text-zinc-400">
+                  <li>O status da OS será alterado para <strong className="text-white">CANCELADA</strong></li>
+                  <li>Lançamentos financeiros <strong>pendentes</strong> serão cancelados</li>
+                  <li>Peças aplicadas serão devolvidas ao estoque (com registro)</li>
+                  <li>O histórico da OS é <strong>preservado</strong> — nada é apagado</li>
+                </ul>
+                <p className="font-bold text-red-400 uppercase text-[10px] tracking-widest pt-2">Bloqueios</p>
+                <ul className="list-disc pl-5 space-y-1 text-zinc-400">
+                  <li>Não é possível cancelar OS <strong>ENTREGUE</strong></li>
+                  <li>Não é possível cancelar OS com <strong>lançamento PAGO</strong></li>
+                </ul>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-black">Motivo do Cancelamento *</label>
+                <textarea
+                  value={motivoCancelamento}
+                  onChange={(e) => setMotivoCancelamento(e.target.value)}
+                  placeholder="Descreva o motivo (ex: cliente desistiu, erro de cadastro, duplicidade...)"
+                  rows={3}
+                  maxLength={500}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-red-500 transition font-medium resize-none placeholder:text-zinc-700"
+                />
+                <p className="text-[9px] text-zinc-600 text-right font-mono">
+                  {motivoCancelamento.length}/500
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCancelarModal(false);
+                    setMotivoCancelamento('');
+                  }}
+                  disabled={isCanceling}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelar}
+                  disabled={isCanceling || !motivoCancelamento.trim()}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3"
+                >
+                  {isCanceling ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4" />
+                      Confirmar Cancelamento
                     </>
                   )}
                 </button>
