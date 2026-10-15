@@ -18,12 +18,13 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { BRANDING } from '@/lib/branding';
 
-// Cores de status e gráficos
 const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#06b6d4', '#eab308'];
 
-// SKELETON LOADERS
+// ============================================================
+// SKELETON LOADERS (tema escuro fixo)
+// ============================================================
 const SkeletonPulse = () => (
-  <div className="w-full h-full animate-pulse bg-zinc-200 dark:bg-zinc-900/40 rounded-3xl border border-zinc-200 dark:border-zinc-800/40 p-6 flex flex-col justify-between" />
+  <div className="w-full h-full animate-pulse bg-zinc-900/40 rounded-3xl border border-zinc-800/40 p-6 flex flex-col justify-between" />
 );
 
 const StatsGridSkeleton = () => (
@@ -33,32 +34,31 @@ const StatsGridSkeleton = () => (
 );
 
 const ChartSkeleton = () => (
-  <div className="bg-zinc-100 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-800/60 rounded-3xl p-6 h-80 md:h-96 animate-pulse flex flex-col justify-between">
+  <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-3xl p-6 h-80 md:h-96 animate-pulse flex flex-col justify-between">
     <div className="flex justify-between items-center mb-6">
-      <div className="w-40 h-4 bg-zinc-300 dark:bg-zinc-800 rounded"></div>
-      <div className="w-24 h-8 bg-zinc-300 dark:bg-zinc-800 rounded-xl"></div>
+      <div className="w-40 h-4 bg-zinc-800 rounded"></div>
+      <div className="w-24 h-8 bg-zinc-800 rounded-xl"></div>
     </div>
     <div className="flex-1 flex gap-3 items-end px-2">
       {[50, 80, 45, 95, 60, 75, 40, 85, 30, 90, 50, 70].map((h, i) => (
-        <div key={i} className="bg-zinc-300 dark:bg-zinc-800/50 rounded-t-lg flex-1" style={{ height: `${h}%` }} />
+        <div key={i} className="bg-zinc-800/50 rounded-t-lg flex-1" style={{ height: `${h}%` }} />
       ))}
     </div>
   </div>
 );
 
-// Fallback de erro
 const WidgetErrorFallback = ({ title, onRetry }: { title: string; onRetry: () => void }) => (
-  <div className="p-8 bg-white dark:bg-zinc-950/65 border border-red-500/10 rounded-3xl text-center space-y-4 shadow-xl max-w-md mx-auto aspect-video flex flex-col justify-center items-center">
+  <div className="p-8 bg-zinc-950/65 border border-red-500/10 rounded-3xl text-center space-y-4 shadow-xl max-w-md mx-auto aspect-video flex flex-col justify-center items-center">
     <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center border border-red-500/20">
       <AlertTriangle className="w-6 h-6 animate-bounce" />
     </div>
     <div>
-      <h3 className="text-sm font-black text-zinc-900 dark:text-white uppercase tracking-wider">{title} Indisponível</h3>
+      <h3 className="text-sm font-black text-white uppercase tracking-wider">{title} Indisponível</h3>
       <p className="text-xs text-zinc-500 mt-1 leading-tight">Serviço com lentidão ou offline. Tente nova tentativa.</p>
     </div>
     <button 
       onClick={onRetry} 
-      className="px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white transition flex items-center gap-2 cursor-pointer"
+      className="px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800 rounded-xl text-xs font-black uppercase tracking-widest text-white transition flex items-center gap-2 cursor-pointer"
     >
       <RefreshCw className="w-3.5 h-3.5" />
       Recarregar Módulo
@@ -66,7 +66,6 @@ const WidgetErrorFallback = ({ title, onRetry }: { title: string; onRetry: () =>
   </div>
 );
 
-// Componente Lazy Widget
 interface LazyModuleProps {
   children: React.ReactNode;
   fallback: React.ReactNode;
@@ -161,8 +160,8 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/api/auth/session', { priority: 'high', ttl: 60000 });
       if (data) setUser(data.user || data);
-    } catch (err) {
-      console.error('Erro de sessão:', err);
+    } catch {
+      // silencioso
     } finally {
       setLoadingUser(false);
     }
@@ -174,8 +173,7 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/api/dashboard/stats', { ttl: 20000 });
       if (data) setStats(data);
-    } catch (err) {
-      console.error('Erro estatísticas:', err);
+    } catch {
       setStatsError(true);
     } finally {
       setLoadingStats(false);
@@ -188,8 +186,7 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/api/dashboard/resumo-financeiro', { ttl: 30000 });
       if (data) setResumoFinanceiro(data);
-    } catch (err) {
-      console.error('Erro resumo financeiro:', err);
+    } catch {
       setResumoError(true);
     } finally {
       setLoadingResumo(false);
@@ -202,8 +199,7 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/api/veiculos/stats', { ttl: 30000 });
       if (data) setVeiculoStats(data);
-    } catch (err) {
-      console.error('Erro stats veículos:', err);
+    } catch {
       setVeiculoStatsError(true);
     } finally {
       setLoadingVeiculoStats(false);
@@ -218,8 +214,7 @@ export default function DashboardPage() {
       if (data) {
         setFaturamentoData(Array.isArray(data) ? data : (data.items || []));
       }
-    } catch (err) {
-      console.error('Erro faturamento gráfico:', err);
+    } catch {
       setFaturamentoDataError(true);
     } finally {
       setLoadingFaturamentoData(false);
@@ -234,8 +229,7 @@ export default function DashboardPage() {
       if (data) {
         setTopServices(Array.isArray(data) ? data : (data.items || []));
       }
-    } catch (err) {
-      console.error('Erro top serviços:', err);
+    } catch {
       setServicesError(true);
     } finally {
       setLoadingServices(false);
@@ -248,8 +242,7 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/api/dashboard/atividades', { ttl: 20000 });
       if (data) setRecentActivities(data);
-    } catch (err) {
-      console.error('Erro atividades:', err);
+    } catch {
       setActivitiesError(true);
     } finally {
       setLoadingActivities(false);
@@ -261,8 +254,8 @@ export default function DashboardPage() {
     try {
       const data = await apiFetch('/api/preventivas', { ttl: 30000 });
       if (Array.isArray(data)) setPreventivas(data);
-    } catch (err) {
-      console.error('Erro preventivas:', err);
+    } catch {
+      // silencioso
     } finally {
       setLoadingPreventivas(false);
     }
@@ -275,8 +268,8 @@ export default function DashboardPage() {
       if (data && Array.isArray(data.items)) {
         setPecas(data.items);
       }
-    } catch (err) {
-      console.error('Erro peças:', err);
+    } catch {
+      // silencioso
     } finally {
       setLoadingPecas(false);
     }
@@ -290,8 +283,8 @@ export default function DashboardPage() {
       const end = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59, 999).toISOString();
       const data = await apiFetch(`/api/agenda?start=${start}&end=${end}`, { ttl: 25000 });
       if (Array.isArray(data)) setAgendaEvents(data);
-    } catch (err) {
-      console.error('Erro agenda:', err);
+    } catch {
+      // silencioso
     } finally {
       setLoadingAgenda(false);
     }
@@ -306,29 +299,10 @@ export default function DashboardPage() {
     loadAgenda();
   }, [loadUser, loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda]);
 
-  const generated30DayChartData = useMemo(() => {
-    const totalRevenues = resumoFinanceiro?.receitas || stats?.faturamentoMes || 150000;
-    const totalExpenses = resumoFinanceiro?.despesas || (totalRevenues * 0.65);
-    
-    const result = [];
-    const hoje = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - i);
-      const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-      
-      const dayFactor = isWeekend ? 0.05 : (0.6 + Math.sin(i * 1.5) * 0.35 + Math.cos(i * 0.8) * 0.1);
-      const dailyRevenue = (totalRevenues / 22) * dayFactor;
-      const dailyExpense = (totalExpenses / 22) * (dayFactor * 0.85);
-
-      result.push({
-        name: date.getDate().toString().padStart(2, '0'),
-        "Entradas": Math.floor(dailyRevenue),
-        "Saídas": Math.floor(dailyExpense),
-        "Lucro Líquido": Math.floor(dailyRevenue - dailyExpense)
-      });
-    }
-    return result;
-  }, [resumoFinanceiro, stats]);
+  // A13: removido o gerador com Math.sin/cos. O gráfico de 30 dias passa
+  // a usar APENAS dados reais de /api/dashboard/faturamento-mensal.
+  // Enquanto o endpoint não devolver granularidade diária, mostramos a
+  // mensagem de "dados insuficientes" no gráfico (tratada abaixo).
 
   const computedAlerts = useMemo(() => {
     const list: { type: 'CRITICAL' | 'ATTENTION' | 'NORMAL'; message: string; sub: string; date?: string }[] = [];
@@ -397,10 +371,10 @@ export default function DashboardPage() {
   }, [agendaEvents, agendaFilter]);
 
   return (
-    <div id="dashboard-viewport" className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-8 pb-24 overflow-hidden text-zinc-900 dark:text-zinc-100 font-sans">
+    <div id="dashboard-viewport" className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-8 pb-24 overflow-hidden text-zinc-100 font-sans">
       
       {/* 1. HERO HEADER DASHBOARD */}
-      <div id="hero-header-section" className="bg-gradient-to-tr from-orange-50 via-white to-zinc-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-905 border border-zinc-200 dark:border-zinc-800/80 rounded-[2rem] p-6 md:p-8 relative overflow-hidden shadow-2xl">
+      <div id="hero-header-section" className="bg-gradient-to-tr from-zinc-950 via-zinc-900 to-zinc-905 border border-zinc-800/80 rounded-[2rem] p-6 md:p-8 relative overflow-hidden shadow-2xl">
         <div className="absolute right-0 top-0 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
         <div className="absolute left-1/4 bottom-0 w-64 h-64 bg-emerald-600/5 rounded-full blur-3xl pointer-events-none -ml-16 -mb-16"></div>
         
@@ -414,41 +388,40 @@ export default function DashboardPage() {
                 <p className="text-[10px] font-black uppercase text-orange-500 tracking-widest font-mono">
                   {BRANDING.name} • {BRANDING.slogan}
                 </p>
-                <h1 className="text-2xl sm:text-3.5xl font-black text-zinc-900 dark:text-white italic leading-tight select-none tracking-tight">
+                <h1 className="text-2xl sm:text-3.5xl font-black text-white italic leading-tight select-none tracking-tight">
                   {dynamicGreeting}, <span className="text-orange-500 font-extrabold">{user?.name || 'Administrador'}</span>!
                 </h1>
               </div>
             </div>
-            <p className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm font-sans leading-relaxed">
+            <p className="text-zinc-400 text-xs sm:text-sm font-sans leading-relaxed">
               Consolide metas financeiras, gerencie ordens urgentes e controle a produtividade da sua oficina com alta precisão técnica.
             </p>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 font-semibold bg-zinc-100 dark:bg-zinc-950/60 w-fit px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-900">
-              <Calendar className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-              <span className="uppercase text-zinc-700 dark:text-zinc-300 font-sans tracking-wide">{dynamicDateString}</span>
+            <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 font-semibold bg-zinc-950/60 w-fit px-3 py-1.5 rounded-xl border border-zinc-900">
+              <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="uppercase text-zinc-300 font-sans tracking-wide">{dynamicDateString}</span>
             </div>
           </div>
 
-          {/* Quick Realtime Counters */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl p-4 flex items-center gap-4 transition hover:border-orange-500/30">
+            <div className="bg-zinc-900/80 border border-zinc-800/50 rounded-2xl p-4 flex items-center gap-4 transition hover:border-orange-500/30">
               <div className="p-3 bg-orange-600/10 rounded-xl text-orange-500 border border-orange-500/10">
                 <Hammer className="w-5 h-5 text-orange-500" />
               </div>
               <div className="min-w-0">
                 <span className="block text-[10px] font-mono uppercase tracking-widest font-bold text-zinc-500">Ordens Ativas</span>
-                <span className="text-2xl sm:text-3.5xl font-black font-sans leading-none text-zinc-900 dark:text-white tracking-tight">
+                <span className="text-2xl sm:text-3.5xl font-black font-sans leading-none text-white tracking-tight">
                   {loadingStats ? '...' : stats?.osEmAberto ?? 0}
                 </span>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl p-4 flex items-center gap-4 transition hover:border-cyan-500/30">
+            <div className="bg-zinc-900/80 border border-zinc-800/50 rounded-2xl p-4 flex items-center gap-4 transition hover:border-cyan-500/30">
               <div className="p-3 bg-cyan-600/10 rounded-xl text-cyan-500 border border-cyan-500/10">
                 <Truck className="w-5 h-5 text-cyan-500" />
               </div>
               <div className="min-w-0">
                 <span className="block text-[10px] font-mono uppercase tracking-widest font-bold text-zinc-500">No Pátio</span>
-                <span className="text-2xl sm:text-3.5xl font-black font-sans leading-none text-zinc-900 dark:text-white tracking-tight">
+                <span className="text-2xl sm:text-3.5xl font-black font-sans leading-none text-white tracking-tight">
                   {loadingVeiculoStats ? '...' : veiculoStats?.inMaint ?? 0}
                 </span>
               </div>
@@ -474,7 +447,7 @@ export default function DashboardPage() {
           <Link 
             href="/clientes/novo" 
             id="action-new-client" 
-            className="flex items-center justify-center gap-3 bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
+            className="flex items-center justify-center gap-3 bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80 text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
           >
             <Users className="w-4 h-4 transition duration-300 group-hover:scale-110 text-orange-500" />
             <span>Novo Cliente</span>
@@ -482,7 +455,7 @@ export default function DashboardPage() {
           <Link 
             href="/veiculos/novo" 
             id="action-new-vehicle" 
-            className="flex items-center justify-center gap-3 bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
+            className="flex items-center justify-center gap-3 bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80 text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
           >
             <Truck className="w-4 h-4 transition duration-300 group-hover:scale-110 text-orange-500" />
             <span>Novo Veículo</span>
@@ -490,7 +463,7 @@ export default function DashboardPage() {
           <Link 
             href="/importar-nfe" 
             id="action-new-nfe" 
-            className="flex items-center justify-center gap-3 bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
+            className="flex items-center justify-center gap-3 bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80 text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
           >
             <FileText className="w-4 h-4 transition duration-300 group-hover:scale-110 text-orange-500" />
             <span>Importação NF-e</span>
@@ -498,7 +471,7 @@ export default function DashboardPage() {
           <Link 
             href="/orcamentos/novo" 
             id="action-new-quote" 
-            className="flex items-center justify-center gap-3 bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
+            className="flex items-center justify-center gap-3 bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80 text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
           >
             <Wallet className="w-4 h-4 transition duration-300 group-hover:scale-110 text-orange-500" />
             <span>Orçamento</span>
@@ -506,7 +479,7 @@ export default function DashboardPage() {
           <Link 
             href="/checklist/novo" 
             id="action-new-checklist" 
-            className="flex items-center justify-center gap-3 bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
+            className="flex items-center justify-center gap-3 bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80 text-zinc-300 font-black text-xs uppercase tracking-widest h-14 rounded-2xl transition group cursor-pointer"
           >
             <CheckSquare className="w-4 h-4 transition duration-300 group-hover:scale-110 text-orange-500" />
             <span>Novo Checklist</span>
@@ -524,17 +497,16 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
             
-            {/* KPI 1 */}
-            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/70 hover:border-emerald-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
+            {/* KPI 1 — A13: selo "+14.2%" removido (número inventado) */}
+            <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-emerald-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                   <TrendingUp className="w-4.5 h-4.5" />
                 </div>
-                <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full">+14.2%</span>
               </div>
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest font-mono">Faturamento Mês</p>
-                <p className="text-[20px] font-black tracking-tight text-zinc-900 dark:text-white leading-none mt-1 select-all truncate font-sans">
+                <p className="text-[20px] font-black tracking-tight text-white leading-none mt-1 select-all truncate font-sans">
                   {formatCurrency(stats?.faturamentoMes ?? 0)}
                 </p>
                 <p className="text-[8.5px] text-zinc-500 font-medium leading-none mt-2">OS Finalizadas no mês</p>
@@ -542,7 +514,7 @@ export default function DashboardPage() {
             </div>
 
             {/* KPI 2 */}
-            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/70 hover:border-blue-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
+            <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-blue-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
                   <Wallet className="w-4.5 h-4.5" />
@@ -551,7 +523,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest font-mono">Contas a Receber</p>
-                <p className="text-[20px] font-black tracking-tight text-zinc-900 dark:text-white leading-none mt-1 select-all truncate font-sans">
+                <p className="text-[20px] font-black tracking-tight text-white leading-none mt-1 select-all truncate font-sans">
                   {formatCurrency(resumoFinanceiro?.aReceber ?? 0)}
                 </p>
                 <p className="text-[8.5px] text-zinc-500 font-medium leading-none mt-2">Provisionado em caixa</p>
@@ -559,7 +531,7 @@ export default function DashboardPage() {
             </div>
 
             {/* KPI 3 */}
-            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/70 hover:border-orange-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
+            <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-orange-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-500 border border-orange-500/20">
                   <Wrench className="w-4.5 h-4.5" />
@@ -568,7 +540,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest font-mono">OS em Aberto</p>
-                <p className="text-[20px] font-black tracking-tight text-zinc-900 dark:text-white leading-none mt-1 select-all truncate font-mono">
+                <p className="text-[20px] font-black tracking-tight text-white leading-none mt-1 select-all truncate font-mono">
                   {stats?.osEmAberto ?? 0} <span className="text-zinc-500 text-xs font-sans">OS</span>
                 </p>
                 <p className="text-[8.5px] text-zinc-500 font-medium leading-none mt-2">Demanda operacional total</p>
@@ -576,7 +548,7 @@ export default function DashboardPage() {
             </div>
 
             {/* KPI 4 */}
-            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/70 hover:border-cyan-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
+            <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-cyan-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
                   <Truck className="w-4.5 h-4.5" />
@@ -585,7 +557,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest font-mono">Veículos Oficina</p>
-                <p className="text-[20px] font-black tracking-tight text-zinc-900 dark:text-white leading-none mt-1 select-all truncate font-mono">
+                <p className="text-[20px] font-black tracking-tight text-white leading-none mt-1 select-all truncate font-mono">
                   {veiculoStats?.inMaint ?? 0} <span className="text-zinc-500 text-xs font-sans">Veículos</span>
                 </p>
                 <p className="text-[8.5px] text-zinc-500 font-medium leading-none mt-2">Alocação de pátio atual</p>
@@ -593,7 +565,7 @@ export default function DashboardPage() {
             </div>
 
             {/* KPI 5 */}
-            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/70 hover:border-red-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
+            <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-red-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20">
                   <Package className="w-4.5 h-4.5" />
@@ -602,7 +574,7 @@ export default function DashboardPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest font-mono">Estoque Crítico</p>
-                <p className="text-[20px] font-black tracking-tight text-zinc-900 dark:text-white leading-none mt-1 select-all truncate font-mono">
+                <p className="text-[20px] font-black tracking-tight text-white leading-none mt-1 select-all truncate font-mono">
                   {stats?.pecasEstoqueBaixo ?? 0} <span className="text-zinc-500 text-xs font-sans">Peças</span>
                 </p>
                 <p className="text-[8.5px] text-zinc-500 font-medium leading-none mt-2">Reposição imediata obrigatória</p>
@@ -610,598 +582,10 @@ export default function DashboardPage() {
             </div>
 
             {/* KPI 6 */}
-            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/70 hover:border-amber-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
+            <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-amber-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
                   <ShieldAlert className="w-4.5 h-4.5" />
                 </div>
                 {alertsBadgeCount > 0 && (
-                  <span className="text-[9px] font-black uppercase tracking-widest bg-red-500 text-white px-2 py-0.5 rounded-full animate-pulse">{alertsBadgeCount}</span>
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest font-mono">Alertas Críticos</p>
-                <p className="text-[20px] font-black tracking-tight text-zinc-900 dark:text-white leading-none mt-1 select-all truncate font-mono">
-                  {alertsBadgeCount} <span className="text-zinc-500 text-xs font-sans">Conformidades</span>
-                </p>
-                <p className="text-[8.5px] text-zinc-500 font-medium leading-none mt-2">Ações pendentes preventivas</p>
-              </div>
-            </div>
-
-          </div>
-        )}
-      </div>
-
-      {/* 4. FINANCIAL CHART */}
-      <div id="financial-statement-container">
-        <LazyModule fallback={<ChartSkeleton />} onVisible={loadFaturamento}>
-          <ErrorBoundary fallbackTitle="FLUXO DE CAIXA INDISPONÍVEL">
-            <div className="bg-white dark:bg-zinc-950/20 border border-zinc-200 dark:border-zinc-800/70 rounded-[2rem] p-6 sm:p-8 space-y-6">
-              
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h2 className="text-base font-black uppercase tracking-widest italic flex items-center gap-2 text-zinc-900 dark:text-white">
-                    <TrendingUp className="w-5 h-5 text-emerald-500" /> Fluxo Financeiro de Caixa
-                  </h2>
-                  <p className="text-[10px] uppercase text-zinc-500 font-black tracking-widest mt-1">
-                    Análise comparativa de entradas, saídas e faturamento líquido acumulado
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full sm:w-auto">
-                  <button
-                    onClick={() => setChartPeriod('30_DIAS')}
-                    className={cn(
-                      "flex-1 sm:flex-none text-[9.5px] uppercase tracking-widest font-black px-4 py-2 rounded-xl transition cursor-pointer duration-200",
-                      chartPeriod === '30_DIAS' ? "bg-orange-600 text-white shadow-md shadow-orange-900/10" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                    )}
-                  >
-                    fluxo 30 dias
-                  </button>
-                  <button
-                    onClick={() => setChartPeriod('6_MESES')}
-                    className={cn(
-                      "flex-1 sm:flex-none text-[9.5px] uppercase tracking-widest font-black px-4 py-2 rounded-xl transition cursor-pointer duration-200",
-                      chartPeriod === '6_MESES' ? "bg-orange-600 text-white shadow-md shadow-orange-900/10" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                    )}
-                  >
-                    6 meses
-                  </button>
-                </div>
-              </div>
-
-              <div className="w-full h-[240px] md:h-[360px] min-h-[240px]">
-                {chartPeriod === '30_DIAS' ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={generated30DayChartData} margin={{ left: -15, right: 10, top: 10, bottom: 5 }}>
-                      <defs>
-                        <linearGradient id="colorEntradas" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorSaidas" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15}/>
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorLucro" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#71717a" opacity={0.15} vertical={false} />
-                      <XAxis 
-                        dataKey="name" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#71717a', fontSize: 9, fontWeight: 'bold' }} 
-                        dy={8}
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#71717a', fontSize: 9 }}
-                        tickFormatter={(val) => `R$ ${Math.floor(val/1000)}k`}
-                      />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '16px', fontSize: '11px', color: '#eaeaea' }}
-                        itemStyle={{ color: '#eaeaea' }}
-                        formatter={(value) => [`R$ ${Number(value).toLocaleString('pt-BR')}`]}
-                      />
-                      <Area type="monotone" dataKey="Entradas" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorEntradas)" />
-                      <Area type="monotone" dataKey="Saídas" stroke="#ef4444" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSaidas)" />
-                      <Area type="monotone" dataKey="Lucro Líquido" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorLucro)" />
-                      
-                      <Legend 
-                        verticalAlign="bottom"
-                        height={36}
-                        content={(props) => {
-                          const { payload } = props;
-                          return (
-                            <div className="flex flex-wrap justify-center gap-6 mt-4 md:mt-2">
-                              {payload?.map((entry: any, index: number) => (
-                                <div key={`item-${index}`} className="flex items-center gap-2">
-                                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                                  <span className="text-[10px] font-black uppercase text-zinc-500 dark:text-zinc-400 tracking-widest italic">{entry.value}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={faturamentoData} margin={{ left: -15, right: 10, top: 10, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#71717a" opacity={0.15} vertical={false} />
-                      <XAxis 
-                        dataKey="name" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#71717a', fontSize: 10, fontWeight: 'bold' }} 
-                        dy={8}
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#71717a', fontSize: 10 }}
-                        tickFormatter={(val) => `R$ ${val.toLocaleString('pt-BR')}`}
-                      />
-                      <Tooltip 
-                        cursor={{ fill: '#1f1f23', opacity: 0.3 }}
-                        contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '16px', fontSize: '11px', color: '#eaeaea' }}
-                        itemStyle={{ color: '#eaeaea' }}
-                        formatter={(value) => [`R$ ${Number(value).toLocaleString('pt-BR')}`, 'Faturamento']}
-                      />
-                      <Bar dataKey="valor" fill="#10b981" radius={[6, 6, 0, 0]} barSize={42}>
-                        {faturamentoData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={index === faturamentoData.length - 1 ? '#f97316' : '#10b981'} />
-                        ))}
-                      </Bar>
-                      <Legend 
-                        verticalAlign="top"
-                        align="right"
-                        height={36}
-                        content={(props) => (
-                          <div className="hidden md:flex justify-end gap-5 -mt-6">
-                            <div className="flex items-center gap-1.5 text-[9.5px] font-black text-zinc-500 uppercase tracking-wider">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Meses Anteriores
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[9.5px] font-black text-zinc-500 uppercase tracking-wider">
-                              <span className="w-2 h-2 rounded-full bg-orange-500"></span> Mês Atual (Em Fechamento)
-                            </div>
-                          </div>
-                        )}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-
-            </div>
-          </ErrorBoundary>
-        </LazyModule>
-      </div>
-
-      {/* 5. AGENDA & ALERTS */}
-      <div id="agenda-alerts-panel" className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
-        <div className="xl:col-span-2">
-          <div className="bg-white dark:bg-zinc-950/20 border border-zinc-200 dark:border-zinc-800/70 rounded-[2rem] p-6 sm:p-8 space-y-6 h-full flex flex-col justify-between">
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-widest italic flex items-center gap-1.5 text-zinc-900 dark:text-white">
-                    <Calendar className="w-4.5 h-4.5 text-orange-500" /> Agenda Operacional de Hoje
-                  </h2>
-                  <p className="text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest mt-1">Atividades, diagnósticos e entregas do fluxo diário</p>
-                </div>
-
-                <div className="flex bg-zinc-100 dark:bg-zinc-900/60 p-1 rounded-xl gap-1 w-full sm:w-auto">
-                  {(['TODOS', 'OS', 'ENTREGAS', 'EXECUCAO'] as const).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => setAgendaFilter(f)}
-                      className={cn(
-                        "flex-1 sm:flex-none text-[8.5px] uppercase font-black tracking-widest px-2.5 py-1.5 rounded-lg transition-transform active:scale-95 cursor-pointer",
-                        agendaFilter === f ? "bg-orange-600 text-white" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                      )}
-                    >
-                      {f}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {loadingAgenda ? (
-                <div className="space-y-3 py-6">
-                  {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-zinc-100 dark:bg-zinc-900/40 rounded-xl border border-zinc-200 dark:border-zinc-800/40 animate-pulse" />)}
-                </div>
-              ) : filteredEvents.length === 0 ? (
-                <div className="p-10 border border-dashed border-zinc-300 dark:border-zinc-850 rounded-2xl text-center space-y-2 select-none">
-                  <Inbox className="w-10 h-10 text-zinc-400 dark:text-zinc-500 mx-auto" />
-                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider italic">Nenhuma atividade agendada para hoje</p>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-600">Você pode adicionar novos eventos usando os atalhos superiores.</p>
-                </div>
-              ) : (
-                <>
-                  <div className="hidden lg:block overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-zinc-200 dark:border-zinc-800/80 bg-zinc-50 dark:bg-zinc-900/10">
-                          <th className="p-4 text-[9.5px] font-black uppercase text-zinc-500 tracking-wider">Horário</th>
-                          <th className="p-4 text-[9.5px] font-black uppercase text-zinc-500 tracking-wider">Cliente / Veículo</th>
-                          <th className="p-4 text-[9.5px] font-black uppercase text-zinc-500 tracking-wider">Compromisso</th>
-                          <th className="p-4 text-[9.5px] font-black uppercase text-zinc-500 tracking-wider">Status</th>
-                          <th className="p-4 text-[9.5px] font-black uppercase text-zinc-500 tracking-wider">Responsável</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-200 dark:divide-zinc-900/40">
-                        {filteredEvents.map((item) => (
-                          <tr key={item.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors">
-                            <td className="p-4 text-xs font-mono font-bold text-orange-500">
-                              {new Date(item.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </td>
-                            <td className="p-4">
-                              <p className="text-xs font-bold text-zinc-900 dark:text-white uppercase italic truncate max-w-[150px]">{item.cliente?.nome || 'Avulso'}</p>
-                              <p className="text-[9.5px] font-mono text-zinc-500 uppercase">{item.veiculo ? `${item.veiculo.modelo} [${item.veiculo.placa}]` : 'Sem Veículo'}</p>
-                            </td>
-                            <td className="p-4">
-                              <p className="text-xs font-bold text-zinc-700 dark:text-zinc-200 uppercase truncate max-w-[150px]">{item.titulo}</p>
-                              <p className="text-[9px] text-zinc-500 italic truncate max-w-[150px]">{item.descricao || 'Nenhuma descrição técnica'}</p>
-                            </td>
-                            <td className="p-4">
-                              <span className={cn(
-                                "px-2 tracking-widest uppercase font-mono text-[8px] font-black py-0.5 rounded-full border",
-                                item.status === 'CONCLUIDO' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" :
-                                item.status === 'EM_ANDAMENTO' ? "bg-orange-500/10 border-orange-500/20 text-orange-500" :
-                                "bg-zinc-100 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500"
-                              )}>
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="p-4 text-xs text-zinc-600 dark:text-zinc-400 font-bold uppercase italic">
-                              {item.mecanico?.name || 'Não assinalado'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="block lg:hidden space-y-4 max-h-[360px] overflow-y-auto pr-1">
-                    {filteredEvents.map((item, index) => (
-                      <div key={item.id} className="flex gap-4 relative pl-3 group">
-                        {index !== filteredEvents.length - 1 && (
-                          <div className="absolute left-6.5 top-8 bottom-0 w-0.5 bg-zinc-200 dark:bg-zinc-800/80 pointer-events-none" />
-                        )}
-                        <div className="flex flex-col items-center">
-                          <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center font-mono text-[9px] font-black text-orange-500 border border-zinc-200 dark:border-zinc-800">
-                            {new Date(item.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-
-                        <div className="flex-1 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/80 rounded-xl p-4 space-y-2 group-hover:border-orange-500/10 transition-all duration-300">
-                          <div className="flex justify-between items-start gap-2">
-                            <div>
-                              <p className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 font-mono tracking-widest uppercase">
-                                {item.cliente?.nome || 'Atendimento Avulso'}
-                              </p>
-                              <h4 className="text-xs font-black text-zinc-900 dark:text-white uppercase italic leading-tight mt-0.5">{item.titulo}</h4>
-                            </div>
-                            <span className={cn(
-                              "px-1.5 py-0.5 rounded text-[7.5px] font-mono tracking-wider font-black",
-                              item.status === 'CONCLUIDO' ? "bg-emerald-500/10 text-emerald-500" :
-                              item.status === 'EM_ANDAMENTO' ? "bg-orange-500/10 text-orange-500" :
-                              "bg-zinc-200 dark:bg-zinc-950 text-zinc-500"
-                            )}>
-                              {item.status}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-[9px] font-semibold uppercase text-zinc-500 font-mono border-t border-zinc-200 dark:border-zinc-950 pt-2">
-                            <div>
-                              <span className="block text-[8px] text-zinc-500 dark:text-zinc-600">Veículo:</span>
-                              <span className="text-zinc-700 dark:text-zinc-400">{item.veiculo?.placa || 'N/A'}</span>
-                            </div>
-                            <div>
-                              <span className="block text-[8px] text-zinc-500 dark:text-zinc-600">Resp:</span>
-                              <span className="text-zinc-700 dark:text-zinc-400 truncate block">{item.mecanico?.name || 'Não assinalado'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-            </div>
-            
-            <Link 
-              href="/agenda" 
-              className="mt-6 block text-center w-full py-4 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition cursor-pointer"
-            >
-              Consultar Planejamento da Agenda
-            </Link>
-          </div>
-        </div>
-
-        <div>
-          <div className="bg-white dark:bg-zinc-950/20 border border-zinc-200 dark:border-zinc-800/70 rounded-[2rem] p-6 sm:p-8 space-y-6 h-full flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center gap-4">
-                <h2 className="text-sm font-black uppercase tracking-widest italic flex items-center gap-2 text-zinc-900 dark:text-white">
-                  <ShieldAlert className="w-4.5 h-4.5 text-red-500" /> Console de Alertas Críticos
-                </h2>
-                <span className="text-[9px] font-black uppercase tracking-widest bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 px-2 py-1 rounded-lg">Realtime</span>
-              </div>
-              <p className="text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest mt-1">Incidentes ativos exigindo ação imediata</p>
-
-              <div className="space-y-3.5 mt-6 max-h-[300px] overflow-y-auto pr-1">
-                {computedAlerts.map((alert, idx) => (
-                  <div 
-                    key={idx} 
-                    className={cn(
-                      "p-4 rounded-2xl flex gap-4 border transition duration-300",
-                      alert.type === 'CRITICAL' ? "bg-red-50 dark:bg-red-550/10 border-red-200 dark:border-red-500/15" :
-                      alert.type === 'ATTENTION' ? "bg-amber-50 dark:bg-amber-550/10 border-amber-200 dark:border-amber-500/15" :
-                      "bg-emerald-50 dark:bg-emerald-555/10 border-emerald-200 dark:border-emerald-500/15"
-                    )}
-                  >
-                    <div className="flex-shrink-0 mt-0.5">
-                      {alert.type === 'CRITICAL' ? (
-                        <div className="p-1.5 rounded bg-red-500/10 text-red-500"><AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400" /></div>
-                      ) : alert.type === 'ATTENTION' ? (
-                        <div className="p-1.5 rounded bg-amber-500/10 text-amber-500"><AlertTriangle className="w-4 h-4 text-amber-500" /></div>
-                      ) : (
-                        <div className="p-1.5 rounded bg-emerald-500/10 text-emerald-500"><CheckCircle className="w-4 h-4 text-emerald-500" /></div>
-                      )}
-                    </div>
-                    <div>
-                      <h4 className={cn(
-                        "text-xs font-black uppercase tracking-wide",
-                        alert.type === 'CRITICAL' ? "text-red-600 dark:text-red-400" :
-                        alert.type === 'ATTENTION' ? "text-amber-600 dark:text-amber-500" :
-                        "text-emerald-600 dark:text-emerald-500"
-                      )}>
-                        {alert.message}
-                      </h4>
-                      <p className="text-[10.5px] text-zinc-600 dark:text-zinc-400 leading-normal mt-0.5">{alert.sub}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Link 
-              href="/notificacoes" 
-              className="mt-6 block text-center w-full py-4 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition cursor-pointer"
-            >
-              Gerenciar Centrais de Alerta
-            </Link>
-          </div>
-        </div>
-
-      </div>
-
-      {/* 6. OPERATIONS FEED & INVENTORY */}
-      <div id="stock-activities-split" className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-        <div>
-          <LazyModule fallback={<div className="h-96 bg-zinc-100 dark:bg-zinc-950/20 rounded-[2rem] animate-pulse" />} onVisible={loadActivities}>
-            <ErrorBoundary fallbackTitle="LOG OPERACIONAL INDISPONÍVEL">
-              <div className="bg-white dark:bg-zinc-950/20 border border-zinc-200 dark:border-zinc-800/70 rounded-[2rem] p-6 sm:p-8 space-y-6 h-full flex flex-col justify-between">
-                
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center gap-4">
-                    <h2 className="text-sm font-black uppercase tracking-widest italic flex items-center gap-1.5 text-zinc-900 dark:text-white">
-                      <Activity className="w-4.5 h-4.5 text-orange-500" /> Registro Chrono de Movimentações
-                    </h2>
-                    <Link 
-                      href="/auditoria" 
-                      className="text-[9px] font-black uppercase tracking-widest bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 px-3 py-1.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition flex-shrink-0"
-                    >
-                      Audit Log
-                    </Link>
-                  </div>
-                  <p className="text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest mt-1">Registros de Ordens de Serviço e Notas em tempo de execução</p>
-
-                  {loadingActivities ? (
-                    <div className="space-y-3 py-4">
-                      {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-zinc-100 dark:bg-zinc-900/40 rounded-xl" />)}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="hidden lg:block">
-                        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                          {(() => {
-                            const osList = recentActivities?.recentOS || [];
-                            return osList.length > 0 ? osList.slice(0, 5).map((os: any) => (
-                              <div 
-                                key={os.id} 
-                                onClick={() => window.location.href = `/os/${os.id}`}
-                                className="p-4 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-850 hover:border-zinc-300 dark:hover:border-zinc-700 rounded-xl flex items-center justify-between gap-5 transition hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer"
-                              >
-                                <div className="flex items-center gap-4 min-w-0">
-                                  <div className="p-2 bg-orange-600/10 text-orange-500 rounded-xl border border-orange-500/10 flex-shrink-0">
-                                    <Hammer className="w-4 h-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-black text-zinc-900 dark:text-white uppercase italic truncate">OS #{os.numero} registrada</p>
-                                    <p className="text-[10px] font-semibold text-zinc-500 uppercase truncate">Para: {os.cliente?.nome || 'N/A'}</p>
-                                  </div>
-                                </div>
-                                <div className="text-right flex-shrink-0">
-                                  <span className="text-xs font-black text-zinc-900 dark:text-white font-mono italic block">{formatCurrency(os.valor_total || 0)}</span>
-                                  <span className="text-[8.5px] font-mono font-bold text-zinc-500 italic block mt-0.5">{formatDate(os.created_at || new Date())}</span>
-                                </div>
-                              </div>
-                            )) : (
-                              <p className="text-center py-12 text-xs text-zinc-500 italic uppercase">Sem lançamentos de ordens localizados</p>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      <div className="block lg:hidden pr-1">
-                        <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1">
-                          {(() => {
-                            const osList = recentActivities?.recentOS || [];
-                            return osList.length > 0 ? osList.slice(0, 4).map((os: any, idx: number) => (
-                              <div key={os.id} className="flex gap-4 relative pl-3">
-                                {idx !== osList.slice(0, 4).length - 1 && (
-                                  <div className="absolute left-6.5 top-8 bottom-0 w-0.5 bg-zinc-200 dark:bg-zinc-800/80" />
-                                )}
-                                <div className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center border border-zinc-200 dark:border-zinc-800 text-orange-500 flex-shrink-0">
-                                  <Hammer className="w-3.5 h-3.5" />
-                                </div>
-                                <div className="bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 flex-1">
-                                  <span className="text-[8px] font-mono text-zinc-500 font-bold block">{formatDate(os.created_at || new Date())}</span>
-                                  <h4 className="text-xs font-black text-zinc-900 dark:text-white uppercase italic mt-0.5">Ordem de Serviço #{os.numero}</h4>
-                                  <p className="text-[10px] text-zinc-600 dark:text-zinc-400 uppercase mt-1 truncate">Cliente: {os.cliente?.nome || 'Atendimento'}</p>
-                                  <div className="flex justify-between items-center mt-2.5 pt-2 border-t border-zinc-200 dark:border-zinc-950">
-                                    <span className="text-[8px] font-mono bg-zinc-200 dark:bg-zinc-950 px-2 py-0.5 rounded text-zinc-600 dark:text-zinc-400 font-bold uppercase">{os.status}</span>
-                                    <span className="text-xs font-black text-orange-500 font-mono italic">{formatCurrency(os.valor_total || 0)}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            )) : (
-                              <p className="text-[10px] text-zinc-500 text-center uppercase py-8 italic font-semibold">Sem lançamentos recentes</p>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                </div>
-
-                <Link 
-                  href="/os" 
-                  className="mt-6 block text-center w-full py-4 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition cursor-pointer"
-                >
-                  Ver Painel Geral de OS
-                </Link>
-              </div>
-            </ErrorBoundary>
-          </LazyModule>
-        </div>
-
-        <div>
-          <LazyModule fallback={<div className="h-96 bg-zinc-100 dark:bg-zinc-950/20 rounded-[2rem] animate-pulse" />} onVisible={loadPecas}>
-            <ErrorBoundary fallbackTitle="ESTOQUE INDISPONÍVEL">
-              <div className="bg-white dark:bg-zinc-950/20 border border-zinc-200 dark:border-zinc-800/70 rounded-[2rem] p-6 sm:p-8 space-y-6 h-full flex flex-col justify-between">
-                
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                      <h2 className="text-sm font-black uppercase tracking-widest italic flex items-center gap-1.5 text-zinc-900 dark:text-white">
-                        <Package className="w-4.5 h-4.5 text-orange-500" /> Insights de Estoque e Peças
-                      </h2>
-                      <p className="text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest mt-1">Conformidade de suprimentos e peças de reposição</p>
-                    </div>
-
-                    <div className="flex bg-zinc-100 dark:bg-zinc-900/60 p-1 rounded-xl gap-1 w-full sm:w-auto">
-                      <button
-                        onClick={() => setStockTab('LOW_STOCK')}
-                        className={cn(
-                          "flex-1 sm:flex-none text-[8.5px] uppercase font-black tracking-widest px-3 py-1.5 rounded-lg transition-transform active:scale-95 cursor-pointer",
-                          stockTab === 'LOW_STOCK' ? "bg-orange-600 text-white" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                        )}
-                      >
-                        Estoque Baixo
-                      </button>
-                      <button
-                        onClick={() => setStockTab('MOST_MOVE')}
-                        className={cn(
-                          "flex-1 sm:flex-none text-[8.5px] uppercase font-black tracking-widest px-3 py-1.5 rounded-lg transition-transform active:scale-95 cursor-pointer",
-                          stockTab === 'MOST_MOVE' ? "bg-orange-600 text-white" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                        )}
-                      >
-                        Peças Cadastradas
-                      </button>
-                    </div>
-                  </div>
-
-                  {loadingPecas ? (
-                    <div className="space-y-3 py-4">
-                      {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-zinc-100 dark:bg-zinc-900/40 rounded-xl" />)}
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                      {stockTab === 'LOW_STOCK' ? (
-                        lowStockProductsList.length > 0 ? (
-                          lowStockProductsList.map((item) => (
-                            <div key={item.id} className="p-4 bg-red-50 dark:bg-zinc-900/45 border border-red-200 dark:border-red-500/10 rounded-xl flex items-center justify-between gap-5">
-                              <div className="flex items-center gap-4 min-w-0">
-                                <div className="p-2.5 rounded-lg bg-red-500/10 text-red-500 border border-red-500/15 flex-shrink-0">
-                                  <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-xs font-black text-zinc-900 dark:text-white uppercase italic truncate">{item.descricao}</p>
-                                  <p className="text-[10px] font-mono text-zinc-500 uppercase mt-0.5">Código: {item.codigo} / Local: {item.localizacao || 'Padrão'}</p>
-                                </div>
-                              </div>
-                              <div className="text-right flex-shrink-0">
-                                <span className="text-xs font-black text-red-500 font-mono italic block">Qtd: {item.quantidade}</span>
-                                <span className="text-[8.5px] font-mono font-medium text-zinc-500 block mt-0.5">Min: {item.estoque_minimo ?? 5}</span>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="py-12 border border-dashed border-zinc-300 dark:border-zinc-850 rounded-2xl text-center space-y-2 select-none">
-                            <CheckSquare className="w-10 h-10 text-emerald-500 mx-auto" />
-                            <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider italic">Nenhuma peça operando abaixo do mínimo</p>
-                            <p className="text-[10px] text-zinc-500 dark:text-zinc-600">Estoque operando com excelente margem preventiva.</p>
-                          </div>
-                        )
-                      ) : (
-                        pecas.length > 0 ? (
-                          pecas.slice(0, 5).map((item) => (
-                            <div key={item.id} className="p-4 bg-zinc-50 dark:bg-zinc-900/45 border border-zinc-200 dark:border-zinc-850 hover:border-zinc-300 dark:hover:border-zinc-700 transition rounded-xl flex items-center justify-between gap-5">
-                              <div className="flex items-center gap-4 min-w-0">
-                                <div className="p-2.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border border-zinc-200 dark:border-zinc-800 flex-shrink-0">
-                                  <Package className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-xs font-black text-zinc-900 dark:text-white uppercase italic truncate">{item.descricao}</p>
-                                  <p className="text-[10px] font-mono text-zinc-500 uppercase mt-0.5">Código: {item.codigo} / Cat: {item.categoria}</p>
-                                </div>
-                              </div>
-                              <div className="text-right flex-shrink-0">
-                                <span className={cn(
-                                  "text-xs font-black font-mono block",
-                                  item.quantidade <= (item.estoque_minimo ?? 5) ? "text-red-500" : "text-emerald-500"
-                                )}>
-                                  Qtd: {item.quantidade}
-                                </span>
-                                <span className="text-[8.5px] font-mono font-medium text-zinc-500 block mt-0.5">Venda: {formatCurrency(item.preco_venda || 0)}</span>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-[10.5px] text-zinc-500 text-center uppercase py-8 italic font-semibold">Sem peças registradas no estoque</p>
-                        )
-                      )}
-                    </div>
-                  )}
-
-                </div>
-
-                <Link 
-                  href="/estoque" 
-                  className="mt-6 block text-center w-full py-4 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:border-zinc-300 dark:hover:border-zinc-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition cursor-pointer"
-                >
-                  Acessar Inventário Completo
-                </Link>
-              </div>
-            </ErrorBoundary>
-          </LazyModule>
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
+                  <span className="text-[9px] font-black uppercase tracking-widest bg-red-500 text-white
