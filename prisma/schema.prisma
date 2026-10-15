@@ -549,6 +549,8 @@ model User {
   created_at                                  DateTime       @default(now())
   updated_at                                  DateTime
   empresa_id                                  String
+  ativo                                       Boolean        @default(true)
+  token_version                               Int            @default(0)
   EventoAgenda_EventoAgenda_mecanico_idToUser EventoAgenda[] @relation("EventoAgenda_mecanico_idToUser")
   EventoAgenda_EventoAgenda_usuario_idToUser  EventoAgenda[] @relation("EventoAgenda_usuario_idToUser")
   Notificacao                                 Notificacao[]
