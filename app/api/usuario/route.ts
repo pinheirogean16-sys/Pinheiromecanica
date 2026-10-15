@@ -10,7 +10,6 @@ import { z } from 'zod';
 const updatePerfilSchema = z.object({
   name: z.string().min(2, 'Nome muito curto').max(200).optional(),
   email: z.string().email('E-mail inválido').max(200).optional(),
-  // M08: se senha for enviada, exigir senha atual
   password: z.string().min(8, 'Nova senha deve ter pelo menos 8 caracteres').max(200).optional(),
   senha_atual: z.string().optional(),
 });
@@ -59,10 +58,16 @@ export async function PUT(request: Request) {
     }
     const body = parsed.data;
 
-    // Busca o usuário atual com hash (para validar senha atual)
     const atual = await prisma.user.findUnique({
       where: { id: authUser.id },
-      select: { id: true, name: true, email: true, password_hash: true, empresa_id: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password_hash: true,
+        empresa_id: true,
+        token_version: true,
+      },
     });
     if (!atual) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
@@ -70,12 +75,10 @@ export async function PUT(request: Request) {
 
     const updateData: any = {};
 
-    // Nome
     if (body.name !== undefined && body.name !== atual.name) {
       updateData.name = body.name;
     }
 
-    // M08: e-mail com checagem de unicidade antes de tentar atualizar
     if (body.email !== undefined && body.email !== atual.email) {
       const outroComEmail = await prisma.user.findFirst({
         where: {
@@ -93,7 +96,8 @@ export async function PUT(request: Request) {
       updateData.email = body.email;
     }
 
-    // M08: troca de senha exige senha atual
+    let senhaAlterada = false;
+
     if (body.password !== undefined) {
       if (!body.senha_atual) {
         return NextResponse.json(
@@ -121,9 +125,11 @@ export async function PUT(request: Request) {
       }
 
       updateData.password_hash = await bcrypt.hash(body.password, 10);
+      // C06: incrementa token_version — invalida todos os tokens antigos deste usuário
+      updateData.token_version = (atual.token_version ?? 0) + 1;
+      senhaAlterada = true;
     }
 
-    // Nada para atualizar
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
         { id: atual.id, name: atual.name, email: atual.email }
@@ -136,7 +142,6 @@ export async function PUT(request: Request) {
       select: { id: true, name: true, email: true },
     });
 
-    // M08: auditoria — nunca gravar o hash nem a senha em texto
     await createAuditLog({
       modulo: 'USUARIO',
       acao: 'EDITAR_PERFIL',
@@ -148,7 +153,7 @@ export async function PUT(request: Request) {
       dados_depois: {
         name: user.name,
         email: user.email,
-        senha_alterada: body.password !== undefined,
+        senha_alterada: senhaAlterada,
       },
     });
 
@@ -156,7 +161,7 @@ export async function PUT(request: Request) {
       'INFO',
       'USUARIO',
       'Perfil atualizado',
-      { userId: atual.id, senha_alterada: body.password !== undefined },
+      { userId: atual.id, senha_alterada: senhaAlterada },
       atual.name
     );
 
