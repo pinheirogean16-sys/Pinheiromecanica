@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { verifyTokenEdge } from '@/lib/auth-edge';
 
 const PUBLIC_ROUTES = [
   '/login',
@@ -14,7 +15,7 @@ const PUBLIC_ROUTES = [
 const STATIC_EXTENSIONS =
   /\.(?:css|js|jsx|ts|tsx|json|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|map|txt|xml)$/i;
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1. Assets estáticos e internos
@@ -26,7 +27,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Rotas públicas
+  // 2. Rotas públicas (login, register, manifest, etc)
   if (
     PUBLIC_ROUTES.some(
       (route) => pathname === route || pathname.startsWith(route + '/')
@@ -35,20 +36,30 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Verifica apenas existência do cookie (rápido, sem decodificar)
-  // A validação real do JWT acontece em cada API via requireAuth()
+  // 3. Valida o JWT de verdade (C01b) — não basta o cookie existir
   const token = request.cookies.get('auth-token')?.value;
 
   if (!token) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    return denyAccess(pathname, request);
+  }
+
+  const payload = await verifyTokenEdge(token);
+
+  if (!payload) {
+    // Token inválido, expirado ou forjado — nega acesso
+    return denyAccess(pathname, request);
   }
 
   return NextResponse.next();
+}
+
+function denyAccess(pathname: string, request: NextRequest) {
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  }
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('from', pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
