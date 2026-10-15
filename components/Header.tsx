@@ -3,6 +3,7 @@
 import { Search, LogOut } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import SinoNotificacoes from './SinoNotificacoes';
+import { requestManager } from '@/lib/request-manager';
 
 export default function Header() {
   const router = useRouter();
@@ -11,7 +12,16 @@ export default function Header() {
   if (pathname === '/login') return null;
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Se falhar, seguimos com a limpeza local mesmo assim
+    }
+
+    // C07: limpa o cache em memória antes de sair — evita vazamento
+    // de dados entre usuários no mesmo navegador (PC compartilhado)
+    requestManager.clearCache();
+
     document.cookie = 'auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     router.push('/login');
   };
