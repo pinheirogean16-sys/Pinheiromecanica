@@ -210,7 +210,6 @@ const preprocessInteger = (val: any) => {
   return isNaN(parsed) ? null : parsed;
 };
 
-// A06: preprocess específico para quantidade — aceita fracionados, sem forçar mínimo 1
 const preprocessQuantidade = (val: any) => {
   if (val === null || val === undefined || val === '') return 1;
   const n = Number(val);
@@ -287,7 +286,6 @@ const updateOsSchema = z
         z.object({
           pecaId: z.string().optional().nullable(),
           peca_id: z.string().optional().nullable(),
-          // A06: aceita quantidade fracionada (ex: 0.5 litro de óleo)
           quantidade: z.preprocess(preprocessQuantidade, z.number().positive()),
           unidade: z.string().optional().nullable().default('un'),
           valor_unit: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
@@ -316,6 +314,7 @@ const updateOsSchema = z
     justificativa_ajuste_leitura: z.string().optional().nullable(),
     preventivas_ids: z.array(z.string()).optional().default([]),
     preventiva_id: z.string().optional().nullable(),
+    motivo_cancelamento: z.string().max(500).optional().nullable(),
   })
   .partial();
 
@@ -382,7 +381,6 @@ const putOsSchema = z.object({
       z.object({
         pecaId: z.string().optional().nullable(),
         peca_id: z.string().optional().nullable(),
-        // A06: aceita quantidade fracionada (ex: 0.5 litro de óleo)
         quantidade: z.preprocess(preprocessQuantidade, z.number().positive()),
         unidade: z.string().optional().nullable().default('un'),
         valor_unit: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
@@ -434,7 +432,6 @@ export async function GET(
       include: {
         Cliente: true,
         Veiculo: true,
-        // C09: nunca incluir password_hash — apenas campos públicos do usuário
         User: { select: { id: true, name: true, email: true } },
         ServicoOS: true,
         PecaAplicada: { include: { Peca: true } },
@@ -477,7 +474,7 @@ export async function GET(
 }
 
 // ============================================================
-// PATCH — Atualizar parcialmente
+// PATCH — Atualizar parcialmente (e cancelar)
 // ============================================================
 export async function PATCH(
   request: Request,
@@ -514,6 +511,129 @@ export async function PATCH(
       );
     }
 
+    // ============================================================
+    // A01: CANCELAMENTO (em vez de exclusão)
+    // Se o body pede status = CANCELADA, tratamos como cancelamento formal
+    // ============================================================
+    if (body.status === 'CANCELADA') {
+      const result = await prisma.$transaction(async (tx) => {
+        // Bloqueia se já cancelada ou entregue
+        if (antes.status === 'CANCELADA') {
+          throw new Error('OS já está cancelada');
+        }
+        if (antes.status === 'ENTREGUE') {
+          throw new Error('OS entregue não pode ser cancelada');
+        }
+
+        // Bloqueia se houver lançamento financeiro pago
+        const pagos = await tx.movimentacaoFinanceira.count({
+          where: { os_id: id, status: 'PAGO' },
+        });
+        if (pagos > 0) {
+          throw new Error(
+            'Existem lançamentos financeiros PAGOS vinculados a esta OS. Registre um estorno antes de cancelar.'
+          );
+        }
+
+        // Cancela lançamentos financeiros pendentes
+        await tx.movimentacaoFinanceira.updateMany({
+          where: { os_id: id, status: { not: 'PAGO' } },
+          data: { status: 'CANCELADO', updated_at: new Date(), updated_by: user?.name || 'Sistema' },
+        });
+
+        // Devolve estoque com conversão correta de unidade (A01)
+        const pecasAplicadas = await tx.pecaAplicada.findMany({
+          where: { os_id: id },
+          include: { Peca: true },
+        });
+
+        for (const item of pecasAplicadas) {
+          let qtdDevolver = item.quantidade;
+          if (
+            item.unidade &&
+            item.Peca?.unidadeMedida &&
+            item.unidade.toLowerCase() !== item.Peca.unidadeMedida.toLowerCase()
+          ) {
+            try {
+              qtdDevolver = converterUnidade(
+                item.quantidade,
+                item.unidade,
+                item.Peca.unidadeMedida
+              );
+            } catch {
+              // Se falhar a conversão, devolve a quantidade original (defensivo)
+              qtdDevolver = item.quantidade;
+            }
+          }
+
+          // Devolve ao estoque
+          await tx.peca.update({
+            where: { id: item.peca_id },
+            data: { quantidade: { increment: qtdDevolver } },
+          });
+
+          // A01: registra MovimentacaoEstoque de ENTRADA (não apaga histórico)
+          await tx.movimentacaoEstoque.create({
+            data: {
+              id: globalThis.crypto.randomUUID(),
+              peca_id: item.peca_id,
+              tipo: 'ENTRADA',
+              quantidade: qtdDevolver,
+              motivo: 'DEVOLUCAO',
+              observacao: `Devolução automática por cancelamento da OS #${antes.numero}`,
+              os_id: id,
+              usuario_id: user.id || 'system',
+              empresa_id: antes.empresa_id,
+            },
+          });
+        }
+
+        // Atualiza a OS para CANCELADA
+        const ordemAtualizada = await tx.ordemServico.update({
+          where: { id },
+          data: {
+            status: 'CANCELADA',
+            observacoes: body.motivo_cancelamento
+              ? `${antes.observacoes ? antes.observacoes + '\n\n' : ''}[CANCELAMENTO] ${body.motivo_cancelamento}`
+              : antes.observacoes,
+            updated_by: user?.name || user?.email || 'Sistema',
+          },
+          include: { Cliente: true },
+        });
+
+        return ordemAtualizada;
+      });
+
+      await createAuditLog({
+        modulo: 'OS',
+        acao: 'CANCELAR',
+        entidade: 'OrdemServico',
+        entidade_id: id,
+        usuario: user?.name || user?.email || 'Sistema',
+        empresa_id: user.empresa_id,
+        dados_antes: antes,
+        dados_depois: result,
+      });
+
+      log(
+        'INFO',
+        'OS',
+        'OS cancelada',
+        { id, motivo: body.motivo_cancelamento || 'não informado' },
+        user?.name
+      );
+
+      if (user?.empresa_id) {
+        const { invalidateDashboardCache } = await import('@/lib/dashboard-cache');
+        invalidateDashboardCache(user.empresa_id);
+      }
+
+      return NextResponse.json(serializeDecimals(result));
+    }
+
+    // ============================================================
+    // PATCH normal (edição parcial) — fluxo original
+    // ============================================================
     const veiculoId = antes.veiculo_id;
     let leiturasRes: any = { kmFinalAtualizar: null, horimetroFinalAtualizar: null, sucesso: true };
     if (body.km_veiculo !== undefined || body.horimetro_veiculo !== undefined) {
@@ -896,7 +1016,6 @@ export async function PATCH(
 
       return ordem;
     },
-    // M05: timeout explícito também no PATCH (era só no PUT)
     { timeout: 15000 });
 
     await createAuditLog({
@@ -938,12 +1057,22 @@ export async function PATCH(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
+    if (
+      error?.message?.includes('já está cancelada') ||
+      error?.message?.includes('não pode ser cancelada') ||
+      error?.message?.includes('PAGOS vinculados') ||
+      error?.message?.includes('Estoque insuficiente') ||
+      error?.message?.includes('Conversão incompatível') ||
+      error?.message?.includes('não permite fracionamento')
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return apiError(error, 'OS', 'Erro ao atualizar OS');
   }
 }
 
 // ============================================================
-// PUT — Atualizar completamente
+// PUT — Atualizar completamente (idêntico ao que já existia)
 // ============================================================
 export async function PUT(
   request: Request,
@@ -1440,7 +1569,7 @@ export async function PUT(
 }
 
 // ============================================================
-// DELETE — Excluir OS
+// DELETE — A01: bloqueado. Use PATCH com status CANCELADA
 // ============================================================
 export async function DELETE(
   request: Request,
@@ -1464,70 +1593,25 @@ export async function DELETE(
 
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 
-    if (user.role !== 'ADMIN' && antes.created_by !== user.name && antes.created_by !== user.email) {
-      log('WARN', 'OS', 'Tentativa de exclusão de OS de outro usuário negada', {
-        id,
-        userId: user?.id,
-        owner: antes.created_by,
-      }, user?.name);
-      return NextResponse.json(
-        { error: 'Você só pode excluir suas próprias OS' },
-        { status: 403 }
-      );
-    }
+    // A01: exclusão física desabilitada. Toda OS deve ser cancelada.
+    log(
+      'WARN',
+      'OS',
+      'Tentativa de exclusão física de OS bloqueada (A01)',
+      { id, osNumero: antes.numero, status: antes.status },
+      user?.name
+    );
 
-    await prisma.$transaction(async (tx) => {
-      const pecasAplicadas = await tx.pecaAplicada.findMany({ where: { os_id: id } });
-
-      for (const item of pecasAplicadas) {
-        await tx.peca.update({
-          where: { id: item.peca_id },
-          data: { quantidade: { increment: item.quantidade } },
-        });
-
-        log('INFO', 'OS', 'Estoque devolvido (OS excluída)', {
-          os_id: id,
-          peca_id: item.peca_id,
-          quantidade: item.quantidade,
-        });
-      }
-
-      await tx.eventoAgenda.updateMany({
-        where: { os_id: id },
-        data: { os_id: null },
-      });
-
-      await tx.checklistExecucao.updateMany({
-        where: { os_id: id },
-        data: { os_id: null },
-      });
-
-      await tx.movimentacaoEstoque.deleteMany({ where: { os_id: id } });
-      await tx.pecaAplicada.deleteMany({ where: { os_id: id } });
-      await tx.servicoOS.deleteMany({ where: { os_id: id } });
-      await tx.movimentacaoFinanceira.deleteMany({ where: { os_id: id } });
-
-      await tx.ordemServico.delete({ where: { id } });
-    });
-
-    await createAuditLog({
-      modulo: 'OS',
-      acao: 'EXCLUIR',
-      entidade: 'OrdemServico',
-      entidade_id: id,
-      usuario: user?.name || user?.email || 'Sistema',
-      dados_antes: antes,
-    });
-
-    log('INFO', 'OS', 'OS excluída', { id }, user?.name);
-
-    if (user?.empresa_id) {
-      const { invalidateDashboardCache } = await import('@/lib/dashboard-cache');
-      invalidateDashboardCache(user.empresa_id);
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      {
+        error:
+          'Exclusão de OS não é permitida. Use a ação "Cancelar OS" para encerrar o registro preservando o histórico e o financeiro.',
+        osNumero: antes.numero,
+        acaoRecomendada: 'PATCH /api/ordens/[id] com { "status": "CANCELADA", "motivo_cancelamento": "..." }',
+      },
+      { status: 405 }
+    );
   } catch (error: any) {
-    return apiError(error, 'OS', 'Erro ao excluir OS');
+    return apiError(error, 'OS', 'Erro ao processar exclusão de OS');
   }
 }
