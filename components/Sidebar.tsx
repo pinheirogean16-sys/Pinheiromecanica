@@ -101,7 +101,6 @@ const sidebarGroups: MenuGroup[] = [
     items: [
       { href: '/configuracoes', label: 'Empresa', icon: Building2, modulo: 'configuracoes', acao: 'visualizar' },
       { href: '/mecanicos', label: 'Usuários', icon: Users, modulo: 'usuarios', acao: 'visualizar' },
-      // ✅ Removido item "Aparência"
     ],
   },
 ];
@@ -122,8 +121,8 @@ export default function Sidebar() {
           const data = await res.json();
           setUser(data);
         }
-      } catch (error) {
-        console.error('Erro ao buscar usuário na Sidebar:', error);
+      } catch {
+        // silencioso
       }
     };
     fetchUser();
@@ -147,7 +146,6 @@ export default function Sidebar() {
       group.items?.some((item) => pathname === item.href)
     );
     if (activeGroup) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpenGroups((prev) => {
         if (prev.includes(activeGroup.id)) return prev;
         return [activeGroup.id];
@@ -199,13 +197,13 @@ export default function Sidebar() {
       <>
         {/* Cabeçalho com logo VEHLOX */}
         <div
-          className={`p-5 border-b flex items-center transition-colors border-zinc-200 dark:border-zinc-900 ${
+          className={`p-5 border-b flex items-center border-zinc-900 ${
             collapsed ? 'justify-center' : 'justify-between'
           }`}
         >
           {!collapsed && (
             <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
-              <div className="h-11 w-11 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
+              <div className="h-11 w-11 flex-shrink-0 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center">
                 <Image
                   src={BRANDING.logo.url}
                   alt={BRANDING.logo.alt}
@@ -216,10 +214,10 @@ export default function Sidebar() {
                 />
               </div>
               <div className="min-w-0">
-                <h1 className="text-base font-black text-zinc-900 dark:text-white uppercase tracking-tight leading-none">
+                <h1 className="text-base font-black text-white uppercase tracking-tight leading-none">
                   {BRANDING.name}
                 </h1>
-                <p className="text-[9px] text-zinc-500 dark:text-zinc-600 font-mono font-bold uppercase tracking-widest mt-0.5 truncate">
+                <p className="text-[9px] text-zinc-600 font-mono font-bold uppercase tracking-widest mt-0.5 truncate">
                   {BRANDING.slogan}
                 </p>
               </div>
@@ -228,7 +226,7 @@ export default function Sidebar() {
           {!collapsed && !isMobileView && (
             <button
               onClick={() => setIsCollapsed(true)}
-              className="p-2 rounded-lg transition-all text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              className="p-2 rounded-lg transition-all text-zinc-500 hover:text-white hover:bg-zinc-900"
               aria-label="Recolher menu"
             >
               <ChevronLeft size={18} />
@@ -237,7 +235,7 @@ export default function Sidebar() {
           {isMobileView && (
             <button
               onClick={() => setIsMobileOpen(false)}
-              className="p-2 rounded-lg transition-all text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              className="p-2 rounded-lg transition-all text-zinc-500 hover:text-white hover:bg-zinc-900"
               aria-label="Fechar menu"
             >
               <X size={18} />
@@ -249,7 +247,7 @@ export default function Sidebar() {
         {collapsed && !isMobileView && (
           <button
             onClick={() => setIsCollapsed(false)}
-            className="mx-auto mt-3 p-2 rounded-lg transition-all text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900"
+            className="mx-auto mt-3 p-2 rounded-lg transition-all text-zinc-500 hover:text-white hover:bg-zinc-900"
             aria-label="Expandir menu"
           >
             <ChevronRight size={18} />
@@ -279,13 +277,11 @@ export default function Sidebar() {
                     className={`
                       flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all
                       text-[11px] font-bold uppercase tracking-wider
-                      ${
-                        collapsed ? 'justify-center' : ''
-                      }
+                      ${collapsed ? 'justify-center' : ''}
                       ${
                         isDirectActive
-                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-500 border border-orange-500/20'
-                          : 'text-zinc-600 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 border border-transparent'
+                          ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20'
+                          : 'text-zinc-500 hover:text-white hover:bg-zinc-900 border border-transparent'
                       }
                     `}
                   >
@@ -305,8 +301,8 @@ export default function Sidebar() {
                     text-[11px] font-bold uppercase tracking-wider cursor-pointer
                     ${
                       hasActiveChild
-                        ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white'
-                        : 'text-zinc-600 dark:text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900'
+                        ? 'bg-zinc-900 text-white'
+                        : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
                     }
                     ${collapsed ? 'justify-center' : ''}
                   `}
@@ -354,8 +350,8 @@ export default function Sidebar() {
                                 text-[10px] font-semibold uppercase tracking-wider
                                 ${
                                   isSubActive
-                                    ? 'text-orange-600 dark:text-orange-500 bg-orange-500/5 font-bold'
-                                    : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900/50'
+                                    ? 'text-orange-500 bg-orange-500/5 font-bold'
+                                    : 'text-zinc-600 hover:text-white hover:bg-zinc-900/50'
                                 }
                               `}
                             >
@@ -375,7 +371,7 @@ export default function Sidebar() {
 
         {/* Rodapé com usuário */}
         <div
-          className={`p-4 border-t transition-colors border-zinc-200 dark:border-zinc-900 ${
+          className={`p-4 border-t border-zinc-900 ${
             collapsed ? 'flex justify-center' : ''
           }`}
         >
@@ -387,10 +383,10 @@ export default function Sidebar() {
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-zinc-900 dark:text-white uppercase tracking-wide truncate">
+                <p className="text-[11px] font-bold text-white uppercase tracking-wide truncate">
                   {user?.name || 'Usuário'}
                 </p>
-                <p className="text-[9px] text-zinc-500 dark:text-zinc-600 font-mono uppercase truncate tracking-wider mt-0.5">
+                <p className="text-[9px] text-zinc-600 font-mono uppercase truncate tracking-wider mt-0.5">
                   {user?.role || 'Acesso'}
                 </p>
               </div>
@@ -406,7 +402,7 @@ export default function Sidebar() {
       {/* Botão hambúrguer mobile */}
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="fixed top-3 left-4 z-40 p-2.5 rounded-xl lg:hidden shadow-lg transition-colors bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-400 hover:text-orange-600"
+        className="fixed top-3 left-4 z-40 p-2.5 rounded-xl lg:hidden shadow-lg transition-colors bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-orange-500"
         aria-label="Menu"
       >
         <Menu size={18} />
@@ -425,7 +421,7 @@ export default function Sidebar() {
           onClick={() => setIsMobileOpen(false)}
         />
         <aside
-          className={`fixed top-0 left-0 h-full w-72 flex flex-col transition-transform duration-300 shadow-2xl bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-900 ${
+          className={`fixed top-0 left-0 h-full w-72 flex flex-col transition-transform duration-300 shadow-2xl bg-zinc-950 border-r border-zinc-900 ${
             isMobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -435,7 +431,7 @@ export default function Sidebar() {
 
       {/* Sidebar desktop */}
       <aside
-        className={`hidden lg:flex flex-col transition-all duration-300 bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-900 ${
+        className={`hidden lg:flex flex-col transition-all duration-300 bg-zinc-950 border-r border-zinc-900 ${
           isCollapsed ? 'w-20' : 'w-64 lg:w-72'
         }`}
       >
