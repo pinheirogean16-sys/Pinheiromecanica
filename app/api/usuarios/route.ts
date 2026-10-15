@@ -8,34 +8,48 @@ import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 
 const userSchema = z.object({
-  name: z.string().min(2).trim(),
-  email: z.string().email().trim(),
-  password: z.string().min(6),
-  role: z.enum(['ADMIN', 'LIDER', 'MECANICO', 'FINANCEIRO', 'ESTOQUISTA']).default('MECANICO'),
-  especialidade: z.string().optional().nullable(),
+  name: z.string().min(2, 'Nome muito curto').max(200).trim(),
+  email: z.string().email('E-mail inválido').max(200).trim().toLowerCase(),
+  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(200),
+  role: z
+    .enum(['ADMIN', 'LIDER', 'MECANICO', 'FINANCEIRO', 'ESTOQUISTA'])
+    .default('MECANICO'),
+  especialidade: z.string().max(200).optional().nullable(),
   comissao: z.coerce.number().nonnegative().optional().default(0),
 });
 
+// ============================================================
+// GET — Listar usuários da empresa
+// ============================================================
 export async function GET(request: Request) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
 
+    // C05: exige permissão para ver a lista
+    if (!checkPermission(user, 'usuarios', 'visualizar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const q = searchParams.get('q') || '';
+    const q = (searchParams.get('q') || '').slice(0, 100);
+
     const where: any = {
-      empresa_id: user.empresa_id
+      empresa_id: user.empresa_id,
     };
     if (q) {
       where.OR = [
         { name: { contains: q } },
         { email: { contains: q } },
-        { especialidade: { contains: q } }
+        { especialidade: { contains: q } },
       ];
     }
-    
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+
+    // M06: limita tamanho da página
+    const rawPage = parseInt(searchParams.get('page') || '1', 10);
+    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
+    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
     const skip = (page - 1) * limit;
 
     const [users, total] = await Promise.all([
@@ -48,27 +62,37 @@ export async function GET(request: Request) {
           role: true,
           especialidade: true,
           comissao: true,
-          created_at: true
+          created_at: true,
         },
         orderBy: { created_at: 'desc' },
         skip,
         take: limit,
       }),
-      prisma.user.count({ where })
+      prisma.user.count({ where }),
     ]);
-    
+
     return NextResponse.json({
       items: users,
       total,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     });
-  } catch (error) {
-    log('ERROR', 'USUARIOS', 'Erro ao listar usuários', { error }, 'sistema');
-    return NextResponse.json({ items: [], total: 0, page: 1, totalPages: 0 });
+  } catch (error: any) {
+    // B05: retorna 500 em vez de lista vazia silenciosa
+    log(
+      'ERROR',
+      'USUARIOS',
+      'Erro ao listar usuários',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json({ error: 'Erro ao listar usuários' }, { status: 500 });
   }
 }
 
+// ============================================================
+// POST — Criar usuário
+// ============================================================
 export async function POST(request: Request) {
   try {
     const { error, user: currentUser } = await requireAuth();
@@ -77,28 +101,56 @@ export async function POST(request: Request) {
     if (!checkPermission(currentUser, 'usuarios', 'criar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
-    
+
     const body = userSchema.parse(await request.json());
-    
-    const existing = await prisma.user.findUnique({ where: { email: body.email } });
-    if (existing) return NextResponse.json({ error: 'E-mail em uso' }, { status: 400 });
-    
-    const hashedPassword = await bcrypt.hash(body.password, 10);
-    
-    const newUser = await prisma.user.create({
-      data: {
-        id: crypto.randomUUID(),
-        empresa_id: currentUser.empresa_id,
-        name: body.name,
-        email: body.email,
-        password_hash: hashedPassword,
-        role: body.role,
-        especialidade: body.especialidade, 
-        comissao: body.comissao,
-        updated_at: new Date()
-      },
-      select: { id: true, name: true, email: true, role: true }
+
+    // A24 (parcial): verifica e-mail DENTRO da empresa.
+    // NOTA: o schema.prisma ainda tem `email @unique` GLOBAL. Isso significa
+    // que o mesmo e-mail ainda NÃO pode existir em duas empresas diferentes.
+    // Corrigir isso requer migration para `@@unique([email, empresa_id])`.
+    const existing = await prisma.user.findFirst({
+      where: { email: body.email, empresa_id: currentUser.empresa_id },
+      select: { id: true },
     });
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Este e-mail já está em uso nesta empresa' },
+        { status: 409 }
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(body.password, 10);
+
+    let newUser;
+    try {
+      newUser = await prisma.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          empresa_id: currentUser.empresa_id,
+          name: body.name,
+          email: body.email,
+          password_hash: hashedPassword,
+          role: body.role,
+          especialidade: body.especialidade || null,
+          comissao: body.comissao,
+          updated_at: new Date(),
+        },
+        select: { id: true, name: true, email: true, role: true },
+      });
+    } catch (err: any) {
+      // A24 (parcial): se o e-mail já existe em OUTRA empresa, o banco rejeita
+      // com P2002 porque o índice ainda é global. Mensagem clara para o usuário.
+      if (err?.code === 'P2002') {
+        return NextResponse.json(
+          {
+            error:
+              'Este e-mail já está cadastrado no sistema. Se precisar usar o mesmo e-mail em outra empresa, contate o suporte.',
+          },
+          { status: 409 }
+        );
+      }
+      throw err;
+    }
 
     await createAuditLog({
       modulo: 'USUARIOS',
@@ -106,17 +158,38 @@ export async function POST(request: Request) {
       entidade: 'User',
       entidade_id: newUser.id,
       usuario: currentUser?.name || currentUser?.email || 'Sistema',
-      dados_depois: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role }
+      empresa_id: currentUser.empresa_id,
+      dados_depois: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+      },
     });
 
-    log('INFO', 'USUARIOS', 'Usuário criado', { id: newUser.id, email: newUser.email }, currentUser?.name);
-    
+    log(
+      'INFO',
+      'USUARIOS',
+      'Usuário criado',
+      { id: newUser.id, email: newUser.email, role: newUser.role },
+      currentUser?.name
+    );
+
     return NextResponse.json(newUser, { status: 201 });
-  } catch (error) {
-    log('ERROR', 'USUARIOS', 'Erro ao criar usuário', { error }, 'sistema');
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: 'Erro ao criar' }, { status: 500 });
+    log(
+      'ERROR',
+      'USUARIOS',
+      'Erro ao criar usuário',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json({ error: 'Erro ao criar usuário' }, { status: 500 });
   }
 }
