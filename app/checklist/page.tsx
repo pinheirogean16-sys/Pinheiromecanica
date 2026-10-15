@@ -26,6 +26,29 @@ interface Checklist {
   _count: { execucoes: number };
 }
 
+// C10: normaliza o retorno da API.
+// A API pode devolver `itens` ou `ChecklistItem` dependendo da rota.
+// Esta função garante que o front sempre trabalhe com `itens`.
+function normalizarChecklist(raw: any): Checklist {
+  const itensBrutos = raw?.itens ?? raw?.ChecklistItem ?? [];
+  const itens = Array.isArray(itensBrutos) ? itensBrutos : [];
+
+  // Contagem de execuções: aceita _count.execucoes ou um array Execucoes
+  const totalExecucoes =
+    raw?._count?.execucoes ??
+    (Array.isArray(raw?.ChecklistExecucao) ? raw.ChecklistExecucao.length : 0);
+
+  return {
+    id: String(raw?.id ?? ''),
+    nome: String(raw?.nome ?? '—'),
+    categoria: String(raw?.categoria ?? ''),
+    ativo: raw?.ativo !== false,
+    created_at: raw?.created_at ?? '',
+    itens,
+    _count: { execucoes: totalExecucoes },
+  };
+}
+
 export default function ChecklistPage() {
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,20 +61,20 @@ export default function ChecklistPage() {
     try {
       const res = await fetch('/api/checklist', {
         headers: { 'Cache-Control': 'no-cache' },
-        credentials: 'include'
+        credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
-        setChecklists(Array.isArray(data) ? data : []);
+        const lista = Array.isArray(data) ? data : [];
+        setChecklists(lista.map(normalizarChecklist));
       } else {
         setError(true);
         setChecklists([]);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError(true);
       setChecklists([]);
-      toast.error('Ocorreu uma falha ao sincronizar o bando de dados.');
+      toast.error('Ocorreu uma falha ao sincronizar o banco de dados.');
     } finally {
       setLoading(false);
     }
@@ -65,46 +88,58 @@ export default function ChecklistPage() {
       }
     };
     loadData();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [fetchChecklists]);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Deseja realmente remover permanentemente o checklist "${name}"?`)) return;
-    
+
     try {
-      const res = await fetch(`/api/checklist/${id}`, { 
+      const res = await fetch(`/api/checklist/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (res.ok) {
         toast.success('Template de checklist removido.');
         fetchChecklists();
       } else {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({ error: null }));
         toast.error(errorData.error || 'Não foi possível excluir o checklist.');
       }
-    } catch (err) {
+    } catch {
       toast.error('Erro ao conectar com a API');
     }
   };
 
   const filteredChecklists = useMemo(() => {
-    return checklists.filter(c => 
-      c.nome.toLowerCase().includes(search.toLowerCase()) ||
-      c.id.toLowerCase().includes(search.toLowerCase())
+    const termo = search.trim().toLowerCase();
+    if (!termo) return checklists;
+    return checklists.filter(
+      (c) =>
+        c.nome.toLowerCase().includes(termo) ||
+        c.id.toLowerCase().includes(termo)
     );
   }, [checklists, search]);
 
   const formatDate = (date: string) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('pt-BR');
+    try {
+      return new Date(date).toLocaleDateString('pt-BR');
+    } catch {
+      return 'N/A';
+    }
   };
 
   const stats = useMemo(() => {
     return {
       total: checklists.length,
-      ativos: checklists.filter(c => c.ativo).length,
-      totalExecucoes: checklists.reduce((acc, c) => acc + (c._count?.execucoes || 0), 0)
+      ativos: checklists.filter((c) => c.ativo).length,
+      totalExecucoes: checklists.reduce(
+        (acc, c) => acc + (c._count?.execucoes || 0),
+        0
+      ),
     };
   }, [checklists]);
 
@@ -114,8 +149,8 @@ export default function ChecklistPage() {
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-             <div className="w-1.5 h-8 bg-orange-600 rounded-full" />
-             <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">LISTAS DE INSPEÇÃO</h1>
+            <div className="w-1.5 h-8 bg-orange-600 rounded-full" />
+            <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">LISTAS DE INSPEÇÃO</h1>
           </div>
           <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.4em] leading-none ml-5">FORMULÁRIOS DE CONTROLE E QUALIDADE TÉCNICA</p>
         </div>
@@ -129,7 +164,7 @@ export default function ChecklistPage() {
         </Link>
       </div>
 
-      {/* STATS BOLOCOS */}
+      {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-[2.5rem] space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
@@ -162,21 +197,21 @@ export default function ChecklistPage() {
         </div>
       </div>
 
-      {/* FILTROS E BUSCA */}
+      {/* FILTROS */}
       <div className="flex flex-col md:flex-row gap-4 items-center bg-zinc-900 border border-zinc-800 p-4 rounded-[2.5rem] shadow-2xl">
-         <div className="relative flex-1 group w-full">
-           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={18} />
-           <input 
-             type="text" 
-             placeholder="BUSCAR POR NOME DO CHECKLIST..."
-             value={search}
-             onChange={(e) => setSearch(e.target.value)}
-             className="w-full bg-zinc-950 border border-zinc-900 rounded-2xl py-4 pl-16 pr-6 text-xs text-white outline-none focus:border-orange-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800"
-           />
-         </div>
+        <div className="relative flex-1 group w-full">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={18} />
+          <input 
+            type="text" 
+            placeholder="BUSCAR POR NOME DO CHECKLIST..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-900 rounded-2xl py-4 pl-16 pr-6 text-xs text-white outline-none focus:border-orange-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800"
+          />
+        </div>
       </div>
 
-      {/* TABELA INDUSTRIAL (DESKTOP) */}
+      {/* TABELA DESKTOP */}
       <div className="hidden lg:block bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
         <div className="w-full overflow-x-auto">
           <table className="min-w-full text-left border-collapse">
@@ -218,10 +253,10 @@ export default function ChecklistPage() {
                 </tr>
               ) : filteredChecklists.length === 0 ? (
                 <tr>
-                   <td colSpan={7} className="p-20 text-center opacity-30">
-                     <AlertCircle className="w-12 h-12 mx-auto mb-4" />
-                     <p className="font-black uppercase tracking-widest text-xs italic">Nenhum checklist disponível no inventário</p>
-                   </td>
+                  <td colSpan={7} className="p-20 text-center opacity-30">
+                    <AlertCircle className="w-12 h-12 mx-auto mb-4" />
+                    <p className="font-black uppercase tracking-widest text-xs italic">Nenhum checklist disponível no inventário</p>
+                  </td>
                 </tr>
               ) : filteredChecklists.map((checklist) => (
                 <tr 
@@ -251,7 +286,7 @@ export default function ChecklistPage() {
                   <td className="p-6 text-center">
                     <div className="flex flex-col items-center">
                       <span className="text-lg font-black text-white italic tracking-tighter">
-                        {checklist.itens?.length || 0}
+                        {checklist.itens.length}
                       </span>
                       <span className="text-[8px] text-zinc-700 font-black uppercase tracking-widest">Procedimentos</span>
                     </div>
@@ -274,7 +309,7 @@ export default function ChecklistPage() {
                   <td className="p-6 text-center">
                     <div className="flex flex-col items-center">
                       <span className="text-lg font-black text-white italic tracking-tighter">
-                        {checklist._count?.execucoes || 0}
+                        {checklist._count.execucoes}
                       </span>
                       <span className="text-[8px] text-zinc-700 font-black uppercase tracking-widest">Executados</span>
                     </div>
@@ -330,7 +365,7 @@ export default function ChecklistPage() {
         </div>
       </div>
 
-      {/* CARDS DESIGN (MOBILE) */}
+      {/* CARDS MOBILE */}
       <div className="block lg:hidden space-y-4">
         {loading ? (
           <div className="p-12 text-center bg-zinc-900 border border-zinc-800 rounded-2xl flex flex-col items-center gap-4">
@@ -361,13 +396,13 @@ export default function ChecklistPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
-                  <span className="text-[9px] font-mono text-zinc-650 font-black tracking-widest">
+                  <span className="text-[9px] font-mono text-zinc-600 font-black tracking-widest">
                     ID: #{checklist.id.slice(-4).toUpperCase()}
                   </span>
                   <h3 className="text-base font-black text-white uppercase italic tracking-tight break-words">
                     {checklist.nome}
                   </h3>
-                  <div className="inline-block bg-zinc-950 border border-zinc-850 px-2 py-0.5 rounded text-[9px] text-zinc-400 font-mono font-bold tracking-wider uppercase">
+                  <div className="inline-block bg-zinc-950 border border-zinc-800 px-2 py-0.5 rounded text-[9px] text-zinc-400 font-mono font-bold tracking-wider uppercase">
                     {checklist.categoria}
                   </div>
                 </div>
@@ -386,41 +421,37 @@ export default function ChecklistPage() {
                 </div>
               </div>
 
-              {/* INFO BADGES ROW */}
-              <div className="grid grid-cols-2 gap-2 bg-zinc-950/40 p-3 rounded-xl border border-zinc-850/30">
+              <div className="grid grid-cols-2 gap-2 bg-zinc-950/40 p-3 rounded-xl border border-zinc-800/30">
                 <div className="flex items-center gap-2">
                   <ListTodo className="w-3.5 h-3.5 text-orange-500 shrink-0" />
                   <div className="leading-tight min-w-0">
-                    <p className="text-[8px] font-black text-zinc-505 uppercase tracking-wider">Itens</p>
-                    <p className="text-xs font-bold font-mono text-zinc-300 truncate">{checklist.itens?.length || 0} Itens</p>
+                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-wider">Itens</p>
+                    <p className="text-xs font-bold font-mono text-zinc-300 truncate">{checklist.itens.length} Itens</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5 text-zinc-504 shrink-0" />
+                  <Calendar className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                   <div className="leading-tight min-w-0">
-                    <p className="text-[8px] font-black text-zinc-505 uppercase tracking-wider">Criado em</p>
+                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-wider">Criado em</p>
                     <p className="text-xs font-bold font-mono text-zinc-300 truncate">{formatDate(checklist.created_at)}</p>
                   </div>
                 </div>
               </div>
 
-              {/* ERGONOMICS MOBILE ACTIONS */}
               <div className="space-y-2 pt-2">
-                {/* PRIMARY ACTION: EXECUTE */}
                 <Link 
                   href={`/checklist/executar/${checklist.id}`}
                   className="w-full min-h-[48px] flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black text-xs uppercase tracking-wider transition active:scale-[0.98] shadow-lg shadow-green-950/25"
                 >
                   <Play className="w-4 h-4 fill-white" />
-                  EXECUTE INSPEÇÃO
+                  EXECUTAR INSPEÇÃO
                 </Link>
 
-                {/* SECONDARY ACTIONS GRID */}
                 <div className="grid grid-cols-4 gap-2">
                   <Link 
                     href={`/checklist/${checklist.id}`}
-                    className="min-h-[44px] bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl flex items-center justify-center transition active:bg-zinc-850"
+                    className="min-h-[44px] bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl flex items-center justify-center transition active:bg-zinc-800"
                     title="Visualizar Template"
                   >
                     <Eye size={16} />
@@ -428,7 +459,7 @@ export default function ChecklistPage() {
 
                   <Link 
                     href={`/checklist/resultado?checklistId=${checklist.id}`}
-                    className="min-h-[44px] bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-blue-500 rounded-xl flex items-center justify-center transition active:bg-zinc-850"
+                    className="min-h-[44px] bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-blue-500 rounded-xl flex items-center justify-center transition active:bg-zinc-800"
                     title="Ver Execuções"
                   >
                     <FileText size={16} />
@@ -436,7 +467,7 @@ export default function ChecklistPage() {
 
                   <Link 
                     href={`/checklist/${checklist.id}/editar`}
-                    className="min-h-[44px] bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-orange-500 rounded-xl flex items-center justify-center transition active:bg-zinc-850"
+                    className="min-h-[44px] bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-orange-500 rounded-xl flex items-center justify-center transition active:bg-zinc-800"
                     title="Editar Formulário"
                   >
                     <Pencil size={16} />
