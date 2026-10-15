@@ -7,9 +7,9 @@ import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 
 const configEmpresaSchema = z.object({
-  nome_fantasia: z.string().optional().nullable().transform(v => v?.trim()),
-  razao_social: z.string().optional().nullable().transform(v => v?.trim()),
-  cnpj: z.string().optional().nullable().transform(v => v?.trim()),
+  nome_fantasia: z.string().optional().nullable().transform((v) => v?.trim()),
+  razao_social: z.string().optional().nullable().transform((v) => v?.trim()),
+  cnpj: z.string().optional().nullable().transform((v) => v?.trim()),
   inscricao_estadual: z.string().optional().nullable(),
   inscricao_municipal: z.string().optional().nullable(),
   telefone: z.string().optional().nullable(),
@@ -28,9 +28,12 @@ const configEmpresaSchema = z.object({
   pix: z.string().optional().nullable(),
   banco: z.string().optional().nullable(),
   agencia: z.string().optional().nullable(),
-  conta: z.string().optional().nullable()
+  conta: z.string().optional().nullable(),
 });
 
+// ============================================================
+// GET — Buscar configuração da empresa do usuário
+// ============================================================
 export async function GET() {
   try {
     const { error, user } = await requireAuth();
@@ -40,16 +43,29 @@ export async function GET() {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    const config = await prisma.configuracaoEmpresa.findUnique({
-      where: { id: 'config_empresa' }
+    // C03: busca por empresa_id (não mais pelo id fixo 'config_empresa')
+    const config = await prisma.configuracaoEmpresa.findFirst({
+      where: { empresa_id: user.empresa_id },
     });
     return NextResponse.json(config || {});
-  } catch (error) {
-    log('ERROR', 'CONFIG', 'Erro ao buscar configurações', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao buscar configurações' }, { status: 500 });
+  } catch (error: any) {
+    log(
+      'ERROR',
+      'CONFIG',
+      'Erro ao buscar configurações',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json(
+      { error: 'Erro ao buscar configurações' },
+      { status: 500 }
+    );
   }
 }
 
+// ============================================================
+// PUT — Salvar configuração da empresa do usuário
+// ============================================================
 export async function PUT(request: Request) {
   try {
     const { error, user } = await requireAuth();
@@ -60,48 +76,75 @@ export async function PUT(request: Request) {
     }
 
     const body = configEmpresaSchema.parse(await request.json());
-    
-    const antes = await prisma.configuracaoEmpresa.findUnique({
-      where: { id: 'config_empresa' }
+
+    // C03: busca o registro da empresa do usuário (não mais o id fixo)
+    const antes = await prisma.configuracaoEmpresa.findFirst({
+      where: { empresa_id: user.empresa_id },
     });
 
     const agora = new Date();
 
-    // ============================================================
-    // 🎯 FIX: incluir updated_at no create
-    // O schema Prisma exige esse campo no INSERT
-    // ============================================================
-    const config = await prisma.configuracaoEmpresa.upsert({
-      where: { id: 'config_empresa' },
-      update: {
-        ...(body as any),
-        updated_at: agora
-      },
-      create: {
-        id: 'config_empresa',
-        ...(body as any),
-        updated_at: agora
-      } as any
-    });
+    let config;
+
+    if (antes) {
+      // Registro já existe para esta empresa — atualiza
+      config = await prisma.configuracaoEmpresa.update({
+        where: { id: antes.id },
+        data: {
+          ...(body as any),
+          updated_at: agora,
+        },
+      });
+    } else {
+      // Primeira vez desta empresa salvando — cria novo registro
+      // O `id` é gerado como UUID (não mais o fixo 'config_empresa')
+      config = await prisma.configuracaoEmpresa.create({
+        data: {
+          id: globalThis.crypto.randomUUID(),
+          empresa_id: user.empresa_id,
+          ...(body as any),
+          updated_at: agora,
+        } as any,
+      });
+    }
 
     await createAuditLog({
       modulo: 'CONFIG',
       acao: 'EDITAR',
       entidade: 'ConfiguracaoEmpresa',
-      entidade_id: 'config_empresa',
+      entidade_id: config.id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
-      dados_depois: config
+      dados_depois: config,
     });
 
-    log('INFO', 'CONFIG', 'Configurações da empresa atualizadas', { id: 'config_empresa' }, user?.name);
+    log(
+      'INFO',
+      'CONFIG',
+      'Configurações da empresa atualizadas',
+      { id: config.id, empresa_id: user.empresa_id },
+      user?.name
+    );
 
     return NextResponse.json(config);
-  } catch (error) {
-    log('ERROR', 'CONFIG', 'Erro ao salvar configurações', { error }, 'sistema');
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: 'Erro ao salvar configurações' }, { status: 500 });
+    log(
+      'ERROR',
+      'CONFIG',
+      'Erro ao salvar configurações',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json(
+      { error: 'Erro ao salvar configurações' },
+      { status: 500 }
+    );
   }
 }
