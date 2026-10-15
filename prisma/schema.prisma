@@ -126,6 +126,7 @@ model Cliente {
 
 model ConfiguracaoEmpresa {
   id                   String   @id @default("config_empresa")
+  empresa_id           String?
   nome_fantasia        String?
   razao_social         String?
   cnpj                 String?
