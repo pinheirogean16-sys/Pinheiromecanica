@@ -7,6 +7,9 @@ import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
 import { z } from 'zod';
 
+// A17: status como enum (não texto livre)
+const STATUS_VALIDOS = ['PENDENTE', 'PAGO', 'ATRASADO', 'CANCELADO'] as const;
+
 const updateFinanceiroSchema = z.object({
   tipo: z.enum(['ENTRADA', 'SAIDA']).optional(),
   descricao: z.string().min(3).trim().optional(),
@@ -14,7 +17,7 @@ const updateFinanceiroSchema = z.object({
   data: z.string().optional().nullable(),
   data_vencimento: z.string().optional().nullable(),
   data_pagamento: z.string().optional().nullable(),
-  status: z.string().optional(),
+  status: z.enum(STATUS_VALIDOS).optional(),
   forma_pagamento: z.string().optional().nullable(),
   categoria: z.string().optional().nullable(),
   centro_custo: z.string().optional().nullable(),
@@ -24,6 +27,19 @@ const updateFinanceiroSchema = z.object({
   comprovante_url: z.string().optional().nullable(),
 });
 
+// A16: grava data no meio-dia UTC para evitar deslocamento de fuso (UTC-3)
+function parseDateMeioDiaUTC(valor: string | null | undefined): Date | null | undefined {
+  if (valor === undefined) return undefined;
+  if (valor === null || valor === '') return null;
+  const d = new Date(valor);
+  if (isNaN(d.getTime())) return undefined;
+  d.setUTCHours(12, 0, 0, 0);
+  return d;
+}
+
+// ============================================================
+// GET — Buscar movimentação
+// ============================================================
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -38,43 +54,58 @@ export async function GET(
 
     const { id } = await params;
     const movimentacaoRaw = await prisma.movimentacaoFinanceira.findFirst({
-      where: { 
+      where: {
         id,
-        empresa_id: user.empresa_id
+        empresa_id: user.empresa_id,
       },
       include: {
         OrdemServico: {
-          select: { id: true, numero: true, Cliente: { select: { nome: true } } }
+          select: {
+            id: true,
+            numero: true,
+            Cliente: { select: { nome: true } },
+          },
         },
         Cliente: {
-          select: { id: true, nome: true }
-        }
-      }
+          select: { id: true, nome: true },
+        },
+      },
     });
 
     if (!movimentacaoRaw) {
-      return NextResponse.json({ error: 'Movimentação não encontrada' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Movimentação não encontrada' },
+        { status: 404 }
+      );
     }
 
     const movimentacao = {
       ...movimentacaoRaw,
-      os: movimentacaoRaw.OrdemServico ? {
-        id: movimentacaoRaw.OrdemServico.id,
-        numero: movimentacaoRaw.OrdemServico.numero,
-        cliente: movimentacaoRaw.OrdemServico.Cliente
-      } : null,
+      os: movimentacaoRaw.OrdemServico
+        ? {
+            id: movimentacaoRaw.OrdemServico.id,
+            numero: movimentacaoRaw.OrdemServico.numero,
+            cliente: movimentacaoRaw.OrdemServico.Cliente,
+          }
+        : null,
       cliente: movimentacaoRaw.Cliente,
       OrdemServico: undefined,
-      Cliente: undefined
+      Cliente: undefined,
     };
 
     return NextResponse.json(movimentacao);
   } catch (error) {
     log('ERROR', 'FINANCEIRO', 'Erro ao buscar movimentação', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao buscar movimentação' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Erro ao buscar movimentação' },
+      { status: 500 }
+    );
   }
 }
 
+// ============================================================
+// PUT — Atualizar movimentação
+// ============================================================
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -90,44 +121,88 @@ export async function PUT(
     const { id } = await params;
     const rawBody = await request.json();
 
-    console.error('[FINANCEIRO UPDATE BODY]');
-    console.error(JSON.stringify(rawBody, null, 2));
-    console.error('TIPO VALOR:', typeof rawBody.valor);
-    console.error('VALOR:', rawBody.valor);
-
     if (rawBody.valor !== undefined && rawBody.valor !== null) {
       rawBody.valor = Number(rawBody.valor);
     }
 
     const body = updateFinanceiroSchema.parse(rawBody);
 
-    const antes = await prisma.movimentacaoFinanceira.findFirst({ 
-      where: { 
+    const antes = await prisma.movimentacaoFinanceira.findFirst({
+      where: {
         id,
-        empresa_id: user.empresa_id 
-      } 
+        empresa_id: user.empresa_id,
+      },
     });
-    if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-    
+    if (!antes) {
+      return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
+    }
+
+    // A09: bloqueia edição de lançamento já PAGO
+    if (antes.status === 'PAGO') {
+      return NextResponse.json(
+        {
+          error:
+            'Lançamento já pago não pode ser editado. Registre um estorno para corrigir.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // M09: valida que os_id e cliente_id pertencem à empresa
+    if (body.os_id) {
+      const osOk = await prisma.ordemServico.findFirst({
+        where: { id: body.os_id, empresa_id: user.empresa_id },
+        select: { id: true },
+      });
+      if (!osOk) {
+        return NextResponse.json(
+          { error: 'OS vinculada não encontrada nesta empresa' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (body.cliente_id) {
+      const clienteOk = await prisma.cliente.findFirst({
+        where: { id: body.cliente_id, empresa_id: user.empresa_id },
+        select: { id: true },
+      });
+      if (!clienteOk) {
+        return NextResponse.json(
+          { error: 'Cliente vinculado não encontrado nesta empresa' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // A17: monta o update só com os campos enviados
+    const updateData: any = {};
+    if (body.tipo !== undefined) updateData.tipo = body.tipo;
+    if (body.descricao !== undefined) updateData.descricao = body.descricao;
+    if (body.valor !== undefined) updateData.valor = roundDecimal(body.valor);
+    if (body.data !== undefined) updateData.data = parseDateMeioDiaUTC(body.data);
+    if (body.data_vencimento !== undefined)
+      updateData.data_vencimento = parseDateMeioDiaUTC(body.data_vencimento);
+    if (body.data_pagamento !== undefined)
+      updateData.data_pagamento = parseDateMeioDiaUTC(body.data_pagamento);
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.forma_pagamento !== undefined)
+      updateData.forma_pagamento = body.forma_pagamento;
+    if (body.categoria !== undefined) updateData.categoria = body.categoria;
+    if (body.centro_custo !== undefined) updateData.centro_custo = body.centro_custo;
+    if (body.numero_documento !== undefined)
+      updateData.numero_documento = body.numero_documento;
+    if (body.comprovante_url !== undefined)
+      updateData.comprovante_url = body.comprovante_url;
+    if (body.os_id !== undefined) updateData.os_id = body.os_id || null;
+    if (body.cliente_id !== undefined) updateData.cliente_id = body.cliente_id || null;
+
+    updateData.updated_by = user?.name || user?.email || 'Sistema';
+    updateData.updated_at = new Date();
+
     const movimentacao = await prisma.movimentacaoFinanceira.update({
       where: { id },
-      data: {
-        tipo: body.tipo,
-        descricao: body.descricao,
-        valor: body.valor ? roundDecimal(body.valor) : undefined,
-        data: body.data ? new Date(body.data) : undefined,
-        data_vencimento: body.data_vencimento ? new Date(body.data_vencimento) : (body.data_vencimento === null ? null : undefined),
-        data_pagamento: body.data_pagamento ? new Date(body.data_pagamento) : (body.data_pagamento === null ? null : undefined),
-        status: body.status,
-        forma_pagamento: body.forma_pagamento,
-        categoria: body.categoria,
-        centro_custo: body.centro_custo,
-        numero_documento: body.numero_documento,
-        comprovante_url: body.comprovante_url,
-        os_id: body.os_id || null,
-        cliente_id: body.cliente_id || null,
-        updated_by: user?.name || user?.email || 'Sistema'
-      }
+      data: updateData,
     });
 
     await createAuditLog({
@@ -137,7 +212,7 @@ export async function PUT(
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
       dados_antes: antes,
-      dados_depois: movimentacao
+      dados_depois: movimentacao,
     });
 
     log('INFO', 'FINANCEIRO', 'Movimentação atualizada', { id }, user?.name);
@@ -149,14 +224,23 @@ export async function PUT(
 
     return NextResponse.json(movimentacao);
   } catch (error) {
-    log('ERROR', 'FINANCEIRO', 'Erro ao atualizar movimentação', { error }, 'sistema');
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: 'Erro ao atualizar movimentação' }, { status: 500 });
+    log('ERROR', 'FINANCEIRO', 'Erro ao atualizar movimentação', { error }, 'sistema');
+    return NextResponse.json(
+      { error: 'Erro ao atualizar movimentação' },
+      { status: 500 }
+    );
   }
 }
 
+// ============================================================
+// DELETE — Excluir movimentação
+// ============================================================
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -170,16 +254,29 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const antes = await prisma.movimentacaoFinanceira.findFirst({ 
-      where: { 
+    const antes = await prisma.movimentacaoFinanceira.findFirst({
+      where: {
         id,
-        empresa_id: user.empresa_id 
-      } 
+        empresa_id: user.empresa_id,
+      },
     });
-    if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-    
+    if (!antes) {
+      return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
+    }
+
+    // A09: não permite excluir lançamento já PAGO
+    if (antes.status === 'PAGO') {
+      return NextResponse.json(
+        {
+          error:
+            'Lançamento já pago não pode ser excluído. Registre um estorno para corrigir.',
+        },
+        { status: 400 }
+      );
+    }
+
     await prisma.movimentacaoFinanceira.delete({
-      where: { id }
+      where: { id },
     });
 
     await createAuditLog({
@@ -188,11 +285,11 @@ export async function DELETE(
       entidade: 'MovimentacaoFinanceira',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
-      dados_antes: antes
+      dados_antes: antes,
     });
 
     log('INFO', 'FINANCEIRO', 'Movimentação excluída', { id }, user?.name);
-    
+
     if (user?.empresa_id) {
       const { invalidateDashboardCache } = await import('@/lib/dashboard-cache');
       invalidateDashboardCache(user.empresa_id);
@@ -201,6 +298,9 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error) {
     log('ERROR', 'FINANCEIRO', 'Erro ao excluir movimentação', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao excluir movimentação' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Erro ao excluir movimentação' },
+      { status: 500 }
+    );
   }
 }
