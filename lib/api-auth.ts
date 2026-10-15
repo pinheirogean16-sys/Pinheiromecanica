@@ -1,10 +1,14 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { verifyToken } from './auth';
+import { verifySession } from './auth';
 import { checkPermission, type Modulo, type Acao } from './rbac';
 
 // ============================================================
-// requireAuth — verifica se está autenticado
+// requireAuth — verifica se está autenticado E se o usuário
+// continua válido no banco (C06):
+//  - usuário existe
+//  - ativo = true
+//  - token_version do JWT bate com o do banco
 // ============================================================
 async function requireAuth() {
   const cookieStore = await cookies();
@@ -17,13 +21,15 @@ async function requireAuth() {
     };
   }
 
-  // ⚠️ AGORA É ASYNC (mudamos de jsonwebtoken para jose)
-  const payload = await verifyToken(token);
+  // C06: verifySession faz JWT + consulta ao banco.
+  // Derruba sessões de usuários desativados ou com token_version desatualizado
+  // (troca de senha, logout forçado).
+  const payload = await verifySession(token);
 
   if (!payload || !payload.empresa_id || payload.empresa_id === 'default') {
     return {
       error: NextResponse.json(
-        { error: 'Token inválido ou sem identificação de empresa' },
+        { error: 'Sessão inválida ou expirada. Faça login novamente.' },
         { status: 401 }
       ),
       user: null,
