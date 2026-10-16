@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -10,6 +10,10 @@ export interface QueryLogEntry {
   error?: string;
 }
 
+// ============================================================
+// M07: telemetria só é populada em desenvolvimento.
+// Em produção, o objeto fica vazio (não é escrito por ninguém).
+// ============================================================
 export const dbTelemetry = {
   totalQueries: 0,
   slowQueries: 0,
@@ -17,15 +21,11 @@ export const dbTelemetry = {
   queriesLog: [] as QueryLogEntry[],
 };
 
-if (isDev && typeof window !== 'undefined') {
-  (window as any).__db_telemetry = dbTelemetry;
-}
-
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// ⚡ OTIMIZAÇÃO: só erros em produção, sem 'query' nem 'warn'
+// ⚡ Logs do Prisma: só 'error' em produção (sem 'query' nem 'warn')
 const basePrisma =
   globalForPrisma.prisma ??
   new PrismaClient({
@@ -36,14 +36,15 @@ if (isDev) {
   globalForPrisma.prisma = basePrisma;
 }
 
-export const prisma = basePrisma.$extends({
+// ============================================================
+// M07: extensão de telemetria definida separadamente.
+// Só é aplicada em desenvolvimento — em produção, o client
+// exportado é o `basePrisma` puro, sem overhead por query.
+// ============================================================
+const telemetryExtension = Prisma.defineExtension({
+  name: 'query-telemetry',
   query: {
     async $allOperations({ model, operation, args, query }: any) {
-      // ⚡ Em produção: apenas executa (zero overhead)
-      if (!isDev) {
-        return query(args);
-      }
-
       dbTelemetry.totalQueries++;
       const startTime = Date.now();
 
@@ -76,7 +77,7 @@ export const prisma = basePrisma.$extends({
           operation: `${operation} (FAILED)`,
           duration,
           timestamp: new Date().toISOString(),
-          error: err.message || 'Erro de query',
+          error: err?.message || 'Erro de query',
         });
 
         if (dbTelemetry.queriesLog.length > 50) {
@@ -88,3 +89,16 @@ export const prisma = basePrisma.$extends({
     },
   },
 });
+
+// ============================================================
+// Export: em dev aplica extensão (telemetria ativa).
+// Em produção retorna o client puro (zero overhead por query).
+// O tipo é forçado a ExtendedClient para o autocomplete do IDE
+// continuar funcionando — em produção, todos os métodos do
+// basePrisma continuam disponíveis (a extensão só adiciona).
+// ============================================================
+type ExtendedPrismaClient = ReturnType<typeof basePrisma.$extends>;
+
+export const prisma: ExtendedPrismaClient = (
+  isDev ? basePrisma.$extends(telemetryExtension) : basePrisma
+) as ExtendedPrismaClient;
