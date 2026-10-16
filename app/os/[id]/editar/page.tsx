@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, use, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   User, Car, Wrench, Package, 
@@ -34,7 +34,7 @@ function sanitizeWorkOrderPayload(payload: any) {
     .map((p: any) => ({
       peca_id: p.peca_id || p.pecaId,
       descricao: p.descricao || 'Peça',
-      quantidade: Math.max(1, Number(p.quantidade || 1)),
+      quantidade: Math.max(0.001, Number(p.quantidade || 1)),
       unidade: p.unidade || 'un',
       valor_unit: parseFloat(p.valor_unit || 0),
       valor_total: parseFloat(p.valor_total || 0),
@@ -73,11 +73,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
-  // Refs para controle de concorrência e carregamento seguro do rascunho
-  const lastRequestId = useRef<number>(0);
-  const isLoadedRef = useRef(false);
-  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  
+  // C13/A37: autosave removido. Só salvamos no botão explícito.
+  // Não há mais lastRequestId/isLoadedRef porque não há autosave.
+
   // Dados fundamentais
   const [mecanicos, setMecanicos] = useState<any[]>([]);
   const [availablePecas, setAvailablePecas] = useState<any[]>([]);
@@ -87,6 +85,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   
   // Dados da OS
   const [ordem, setOrdem] = useState<any>(null);
+  const [loadError, setLoadError] = useState(false);
   
   // Formulário
   const [status, setStatus] = useState('');
@@ -96,7 +95,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [selectedMecanico, setSelectedMecanico] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
-  // Novos campos estruturais "CAMPOS X OFICINA"
+  // Campos estruturais
   const [tipoOS, setTipoOS] = useState<'OFICINA' | 'CAMPO'>('OFICINA');
 
   // Atributos Específicos de Oficina
@@ -115,7 +114,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     iluminacao: false
   });
 
-  // Atributos Específicos de Campo adicionais
+  // Atributos Específicos de Campo
   const [veiculoApoio, setVeiculoApoio] = useState('');
   const [horarioSaidaEquipe, setHorarioSaidaEquipe] = useState('');
   const [horarioChegadaEquipe, setHorarioChegadaEquipe] = useState('');
@@ -150,7 +149,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [localEstado, setLocalEstado] = useState('');
   const [localGps, setLocalGps] = useState('');
 
-  // Manutenção Preventiva & Leituras de Odômetro/Horímetro
+  // Manutenção Preventiva & Leituras
   const [preventivasVeiculo, setPreventivasVeiculo] = useState<any[]>([]);
   const [selectedPreventivas, setSelectedPreventivas] = useState<string[]>([]);
   const [preventivasExecutadas, setPreventivasExecutadas] = useState<any[]>([]);
@@ -170,13 +169,17 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
 
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -191,8 +194,12 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
 
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -264,10 +271,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
 
   const [pecaSearchTerm, setPecaSearchTerm] = useState('');
 
-  // Carregamento inicial com proteção de concorrência e rascunho inteligente
+  // Carregamento inicial
   useEffect(() => {
     const controller = new AbortController();
-    const requestId = ++lastRequestId.current;
 
     const loadBasics = async () => {
       try {
@@ -275,9 +281,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           fetch('/api/usuarios?limit=1000', { signal: controller.signal }),
           fetch(`/api/ordens/${id}`, { signal: controller.signal })
         ]);
-
-        // Aborta se outra requisição iniciou após esta
-        if (requestId !== lastRequestId.current) return;
 
         if (mRes.ok) {
           const data = await mRes.json();
@@ -295,11 +298,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           setSelectedMecanico(data.mecanico_id || '');
           setObservacoes(data.observacoes || '');
 
-          // Tipo de OS dinâmico herdadado
           const tOS = data.tipoOS || (data.tipo_atendimento === 'CAMPO' ? 'CAMPO' : 'OFICINA');
           setTipoOS(tOS);
 
-          // Carregamento inteligente de metadados estendidos via Observações serializadas
           if (data.observacoes) {
             try {
               const meta = JSON.parse(data.observacoes);
@@ -318,12 +319,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                 if (Array.isArray(meta.fotosCampo)) setFotosCampo(meta.fotosCampo);
                 if (meta.assinaturaCampo) setAssinaturaCampo(meta.assinaturaCampo);
               }
-            } catch (err) {
-              // Observações em formato texto — ignora parse JSON
-            }
+            } catch {}
           }
 
-          // Campos de Atendimento Externo e Logística de Campo
           setTipoAtendimento(tOS);
           setKmSaida(data.km_saida || 0);
           setKmRetorno(data.km_retorno || 0);
@@ -345,7 +343,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             parsedEquipe = typeof data.mao_obra_equipe === 'string' 
               ? JSON.parse(data.mao_obra_equipe || '[]') 
               : (data.mao_obra_equipe || []);
-          } catch(e) {
+          } catch {
             parsedEquipe = [];
           }
           setMecanicosAdicionaisInput(parsedEquipe.map((p: any) => typeof p === 'object' ? p.nome || p.role : p).join(', '));
@@ -363,7 +361,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             setDataPrimeiraParcela(new Date(data.data_vencimento_primeira).toISOString().split('T')[0]);
           }
 
-          // Hidratar preventivas e leituras de odômetro/horímetro
           if (Array.isArray(data.preventivas_ids)) {
             setSelectedPreventivas(data.preventivas_ids);
           }
@@ -387,7 +384,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
               .catch(() => {});
           }
           
-          // Mapear serviços
           setServicos((data.servicos || []).map((s: any) => ({
             id: s.id || crypto.randomUUID(),
             descricao: s.descricao,
@@ -398,7 +394,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             valor_total: s.valor_total || 0
           })));
           
-          // Mapear peças vindas da API
           const rawPecas = data.pecas || data.pecas_aplicadas || data.itens || [];
           
           const apiPecasMapped = rawPecas.map((p: any) => {
@@ -419,30 +414,18 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             };
           });
 
-          // Limpa rascunho anterior de peças local ao carregar a página inicialmente do banco
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.removeItem('os-draft-' + id);
-            } catch (err) {
-              // Ignora erro de localStorage
-            }
-          }
-
           setPecas(apiPecasMapped);
         } else {
+          setLoadError(true);
           toast.error('Erro ao carregar Ordem de Serviço');
         }
       } catch (err: any) { 
         if (err.name !== 'AbortError') {
+          setLoadError(true);
           toast.error('Erro de conexão com o servidor');
         }
       } finally {
-        if (requestId === lastRequestId.current) {
-          setFetching(false);
-          setTimeout(() => {
-            isLoadedRef.current = true;
-          }, 400);
-        }
+        setFetching(false);
       }
     };
     loadBasics();
@@ -486,7 +469,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     };
   }, [pecaSearchTerm]);
 
-  // Lógica de Serviços Memoizada
   const addServico = useCallback(() => {
     const serviceId = crypto.randomUUID();
     setServicos(prev => [...prev, { 
@@ -520,7 +502,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     setServicos(prev => prev.filter(s => s.id !== sid));
   }, []);
 
-  // Lógica de Peças Memoizada
   const addPeca = useCallback((pecaRef: any) => {
     const defaultUnit = pecaRef.unidadeMedida || 'un';
     const compativeis = obterUnidadesCompativeis(defaultUnit);
@@ -628,9 +609,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             try {
               const ratio = converterUnidade(1, targetUnit, originalUnit);
               updated.valor_unit = Number((updated.original_preco_venda * ratio).toFixed(2));
-            } catch (err) {
-              // Conversão falhou — mantém valor
-            }
+            } catch {}
           } else {
             updated.valor_unit = updated.original_preco_venda;
           }
@@ -647,18 +626,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     setPecas(prev => prev.filter(p => p.id !== pid));
   }, []);
 
-  // Persistência local do rascunho de peças
-  useEffect(() => {
-    if (typeof window !== 'undefined' && isLoadedRef.current) {
-      try {
-        localStorage.setItem('os-draft-' + id, JSON.stringify(pecas));
-      } catch (err) {
-        // Ignora erro de localStorage
-      }
-    }
-  }, [pecas, id]);
-
-  // Cálculos Memoizados de Alta Performance
   const totalServicos = useMemo(() => {
     return servicos.reduce((acc, s) => acc + (parseFloat(s.valor_total) || 0), 0);
   }, [servicos]);
@@ -712,182 +679,32 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     return Math.max(0, subtotal - desconto);
   }, [subtotal, desconto]);
 
-  // Lógica de Autosave Inteligente em Background Debounced (800ms)
-  useEffect(() => {
-    if (!isLoadedRef.current || fetching || loading) return;
-
-    setAutosaveStatus('saving');
-    const timer = setTimeout(async () => {
-      try {
-        const rawPayload = {
-          status,
-          cliente_id: ordem?.cliente_id,
-          veiculo_id: ordem?.veiculo_id,
-          mecanico_id: selectedMecanico || null,
-          tipoOS: tipoOS,
-          diagnostico,
-          data_previsao: previsao,
-          observacoes: JSON.stringify({
-            boxElevador,
-            prioridade,
-            statusElevador,
-            lavagem,
-            testeFinal,
-            tempoInterno,
-            checklistOficina,
-            veiculoApoio,
-            horarioSaidaEquipe,
-            horarioChegadaEquipe,
-            tempoDeslocamento,
-            fotosCampo,
-            assinaturaCampo
-          }),
-          servicos: servicos.map(s => ({
-            id: s.id,
-            descricao: s.descricao,
-            tipo_cobranca: s.tipo_cobranca,
-            horas: s.tipo_cobranca === 'HORA' ? parseHoras(s.horas.toString()) : null,
-            valor_hora: s.tipo_cobranca === 'HORA' ? parseFloat(s.valor_hora) : null,
-            valor_pacote: s.tipo_cobranca === 'PACOTE' ? parseFloat(s.valor_pacote) : null,
-            valor_total: parseFloat(s.valor_total)
-          })),
-          pecas: pecas.map(p => ({
-            peca_id: p.peca_id,
-            descricao: p.descricao,
-            quantidade: p.quantidade,
-            unidade: p.unidade,
-            valor_unit: p.valor_unit,
-            valor_total: p.valor_total
-          })),
-          desconto,
-          valor_total: totalGeral,
-          forma_pagamento: formaPagamento === 'BOLETO PARCELADO' ? 'PARCELADO' : formaPagamento,
-          numero_parcelas: formaPagamento === 'BOLETO PARCELADO' ? numParcelas : null,
-          dias_entre_parcelas: formaPagamento === 'BOLETO PARCELADO' ? diasEntreParcelas : null,
-          data_vencimento_primeira: (formaPagamento === 'BOLETO PARCELADO' || formaPagamento === 'PARCELADO') && dataPrimeiraParcela ? new Date(dataPrimeiraParcela).toISOString() : null,
-
-          tipo_atendimento: tipoOS === 'CAMPO' ? 'CAMPO' : 'OFICINA',
-          km_saida: tipoOS === 'CAMPO' ? kmSaida : 0,
-          km_retorno: tipoOS === 'CAMPO' ? kmRetorno : 0,
-          km_total: tipoOS === 'CAMPO' ? kmTotal : 0,
-          valor_km: tipoOS === 'CAMPO' ? valorKm : 0,
-          total_deslocamento: tipoOS === 'CAMPO' ? totalDeslocamento : 0,
-
-          despesa_pedagio: tipoOS === 'CAMPO' ? despesaPedagio : 0,
-          despesa_combustivel: tipoOS === 'CAMPO' ? despesaCombustivel : 0,
-          despesa_hospedagem: tipoOS === 'CAMPO' ? despesaHospedagem : 0,
-          despesa_alimentacao: tipoOS === 'CAMPO' ? despesaAlimentacao : 0,
-          despesa_diaria_tecnica: tipoOS === 'CAMPO' ? despesaDiariaTecnica : 0,
-          despesa_guincho: tipoOS === 'CAMPO' ? despesaGuincho : 0,
-          despesa_outros: tipoOS === 'CAMPO' ? despesaOutros : 0,
-
-          mao_obra_externa_horas: tipoOS === 'CAMPO' ? maoObraExternaHoras : 0,
-          mao_obra_externa_valor: tipoOS === 'CAMPO' ? maoObraExternaValor : 0,
-          mao_obra_externa_total: tipoOS === 'CAMPO' ? maoObraExternaTotal : 0,
-          mao_obra_equipe: tipoOS === 'CAMPO' ? (mecanicosAdicionaisInput ? JSON.stringify(mecanicosAdicionaisInput.split(',').map((name: string) => name.trim())) : '[]') : '[]',
-
-          local_atendimento: tipoOS === 'CAMPO' ? localAtendimento : '',
-          local_cidade: tipoOS === 'CAMPO' ? localCidade : '',
-          local_estado: tipoOS === 'CAMPO' ? localEstado : '',
-          local_gps: tipoOS === 'CAMPO' ? localGps : '',
-
-          km_veiculo: kmVeiculo ? parseInt(kmVeiculo) : undefined,
-          horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : undefined,
-          confirmar_salto_km: confirmarSaltoKm,
-          confirmar_salto_horimetro: confirmarSaltoHorimetro,
-          autorizar_reducao_km: autorizarReducaoKm,
-          autorizar_reducao_horimetro: autorizarReducaoHorimetro,
-          justificativa_ajuste_leitura: justificativaAjuste,
-          preventivas_ids: selectedPreventivas
-        };
-
-        const sanitizedPayload = sanitizeWorkOrderPayload(rawPayload);
-
-        const res = await fetch(`/api/ordens/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sanitizedPayload)
-        });
-
-        if (res.ok) {
-          setAutosaveStatus('saved');
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('os-draft-' + id);
-          }
-        } else {
-          setAutosaveStatus('error');
-        }
-      } catch (err) {
-        setAutosaveStatus('error');
-      }
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [
-    status,
-    diagnostico,
-    previsao,
-    observacoes,
-    servicos,
-    pecas,
-    desconto,
-    formaPagamento,
-    numParcelas,
-    diasEntreParcelas,
-    dataPrimeiraParcela,
-    tipoAtendimento,
-    tipoOS,
-    boxElevador,
-    prioridade,
-    statusElevador,
-    lavagem,
-    testeFinal,
-    tempoInterno,
-    checklistOficina,
-    veiculoApoio,
-    horarioSaidaEquipe,
-    horarioChegadaEquipe,
-    tempoDeslocamento,
-    fotosCampo,
-    assinaturaCampo,
-    kmSaida,
-    kmRetorno,
-    valorKm,
-    despesaPedagio,
-    despesaCombustivel,
-    despesaHospedagem,
-    despesaAlimentacao,
-    despesaDiariaTecnica,
-    despesaGuincho,
-    despesaOutros,
-    maoObraExternaHoras,
-    maoObraExternaValor,
-    mecanicosAdicionaisInput,
-    localAtendimento,
-    localCidade,
-    localEstado,
-    localGps,
-    totalGeral
-  ]);
-
   const capturarGps = () => {
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setLocalGps(`${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`);
         },
-        (err) => {
-          alert('Não foi possível obter a geolocalização automática.');
+        () => {
+          toast.error('Não foi possível obter a geolocalização automática.');
         }
       );
     } else {
-      alert('Geolocalização não suportada por este navegador.');
+      toast.error('Geolocalização não suportada por este navegador.');
     }
   };
 
   const handleSubmit = async () => {
+    if (!ordem) {
+      toast.error('OS não carregada. Recarregue a página.');
+      return;
+    }
+
     setLoading(true);
     try {
+      // C12: só envia os campos que a tela controla.
+      // Campos como assinatura_hash, timeline_viagem, ferramentas_levadas,
+      // despesas_comprovantes não são enviados — o backend não vai sobrescrever.
       const rawPayload = {
         status,
         cliente_id: ordem.cliente_id,
@@ -932,7 +749,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         forma_pagamento: formaPagamento === 'BOLETO PARCELADO' ? 'PARCELADO' : formaPagamento,
         numero_parcelas: formaPagamento === 'BOLETO PARCELADO' ? numParcelas : null,
         dias_entre_parcelas: formaPagamento === 'BOLETO PARCELADO' ? diasEntreParcelas : null,
-        data_vencimento_primeira: (formaPagamento === 'BOLETO PARCELADO' || formaPagamento === 'PARCELADO') && dataPrimeiraParcela ? new Date(dataPrimeiraParcela).toISOString() : null,
+        data_vencimento_primeira: (formaPagamento === 'BOLETO PARCELADO' || formaPagamento === 'PARCELADO') && dataPrimeiraParcela ? new Date(dataPrimeiraParcela + 'T12:00:00').toISOString() : null,
 
         tipo_atendimento: tipoOS === 'CAMPO' ? 'CAMPO' : 'OFICINA',
         km_saida: tipoOS === 'CAMPO' ? kmSaida : 0,
@@ -978,16 +795,13 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
       });
       
       if (res.ok) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('os-draft-' + id);
-        }
         toast.success('Ordem de Serviço atualizada com sucesso!');
         router.push(`/os/${id}`);
       } else {
         const error = await res.json().catch(() => ({ error: 'Falha ao atualizar OS' }));
         toast.error(`Erro: ${error.error || 'Falha ao atualizar OS'}`);
       }
-    } catch (err) { 
+    } catch { 
       toast.error('Erro de rede ao tentar salvar');
     } finally {
       setLoading(false);
@@ -1001,6 +815,25 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
         <p className="text-zinc-500 font-mono text-sm uppercase tracking-widest animate-pulse">Sincronizando dados da OS...</p>
+      </div>
+    );
+  }
+
+  // A37: bloqueia edição se OS não carregou
+  if (loadError || !ordem) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4">
+        <AlertTriangle className="w-12 h-12 text-red-500" />
+        <h2 className="text-lg font-black text-white uppercase tracking-widest italic text-center">Falha ao carregar OS</h2>
+        <p className="text-zinc-500 text-xs text-center max-w-md">
+          Não foi possível carregar os dados desta Ordem de Serviço. Recarregue a página para tentar novamente.
+        </p>
+        <Link
+          href="/os"
+          className="mt-4 px-6 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-xs font-black uppercase tracking-widest text-zinc-300 hover:text-white hover:border-zinc-700 transition"
+        >
+          Voltar para a lista
+        </Link>
       </div>
     );
   }
@@ -1020,29 +853,10 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Indicador de Autosave */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950/40 border border-zinc-900 rounded-xl h-10">
-            {autosaveStatus === 'saving' ? (
-              <>
-                <Loader2 size={12} className="text-orange-500 animate-spin" />
-                <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest font-mono">Salvando...</span>
-              </>
-            ) : autosaveStatus === 'saved' ? (
-              <>
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-[8px] font-black text-green-500 uppercase tracking-widest font-mono">Autosalvo</span>
-              </>
-            ) : autosaveStatus === 'error' ? (
-              <>
-                <div className="w-1.5 h-1.5 bg-red-400 rounded-full" />
-                <span className="text-[8px] font-black text-red-400 uppercase tracking-widest font-mono">Erro ao salvar</span>
-              </>
-            ) : (
-              <>
-                <div className="w-1.5 h-1.5 bg-zinc-700 rounded-full" />
-                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest font-mono">Rascunho Ativo</span>
-              </>
-            )}
+          {/* C13: autosave removido — o usuário salva explicitamente */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/5 border border-amber-500/20 rounded-xl h-10">
+            <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+            <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest font-mono">Alterações não salvas</span>
           </div>
 
           <select 
@@ -1076,20 +890,12 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
 
-      {/* ============================================================
-          GRID PRINCIPAL — RESPONSIVO
-          - Mobile: 1 coluna
-          - Tablet (lg): 2 colunas
-          - Desktop grande (2xl): 3 colunas
-          ============================================================ */}
+      {/* GRID PRINCIPAL */}
       <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-12 gap-6 items-start">
         
-        {/* ============================================================
-            COLUNA 1: DADOS FIXOS
-            ============================================================ */}
+        {/* COLUNA 1: DADOS FIXOS */}
         <div className="lg:col-span-1 2xl:col-span-4 space-y-6 min-w-0">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-7 space-y-6 shadow-xl">
-            {/* Escolha de Tipo de OS */}
             <div className="space-y-2">
               <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">TIPO DE ATENDIMENTO</label>
               <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-inner">
@@ -1129,7 +935,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                  <div className={`w-1.5 h-4 rounded-full ${tipoOS === 'CAMPO' ? 'bg-amber-500' : 'bg-blue-500'}`} />
                  <h2 className="text-sm font-black text-white uppercase italic tracking-tight">Informações</h2>
               </div>
-              <p className="text-[10px] text-zinc-650 font-bold uppercase tracking-widest px-1">Dados de Atendimento e Fluxo Técnico</p>
+              <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest px-1">Dados de Atendimento e Fluxo Técnico</p>
             </div>
             
             <div className="space-y-4 pt-1">
@@ -1150,7 +956,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                 </div>
               </div>
 
-              {/* MANUTENÇÃO PREVENTIVA & LEITURAS */}
               {ordem?.veiculo && (
                 <div className="space-y-4 pt-2">
                   <PreventivaVinculoSelector
@@ -1226,9 +1031,8 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                 </div>
               </div>
 
-              {/* FLUXO EXCLUSIVO 1: OS DE OFICINA */}
               {tipoOS === 'OFICINA' && (
-                <div className="space-y-4 pt-4 border-t border-zinc-800/60 animate-in fade-in slide-in-from-top-1 duration-300">
+                <div className="space-y-4 pt-4 border-t border-zinc-800/60">
                   <div className="flex items-center gap-2 mb-1">
                     <Wrench className="w-4 h-4 text-blue-500" />
                     <span className="text-[10px] text-white font-black tracking-widest uppercase">CONTROLE DE BOX & PRODUTIVIDADE</span>
@@ -1242,28 +1046,28 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         placeholder="EX: BOX 04" 
                         value={boxElevador}
                         onChange={(e) => setBoxElevador(e.target.value.toUpperCase())}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-blue-500"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-blue-500"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold px-1">Tempo de Box</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold px-1">Tempo de Box</label>
                       <input 
                         type="text"
                         placeholder="EX: 4H 30M" 
                         value={tempoInterno}
                         onChange={(e) => setTempoInterno(e.target.value.toUpperCase())}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-blue-500"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-blue-500"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold px-1">Prioridade</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold px-1">Prioridade</label>
                       <select 
                         value={prioridade}
                         onChange={(e) => setPrioridade(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-[10px] text-white font-black uppercase cursor-pointer"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-black uppercase cursor-pointer"
                       >
                         <option value="BAIXA">🟢 BAIXA</option>
                         <option value="NORMAL">🟡 NORMAL</option>
@@ -1271,11 +1075,11 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold px-1">Status Elevador</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold px-1">Status Elevador</label>
                       <select 
                         value={statusElevador}
                         onChange={(e) => setStatusElevador(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-[10px] text-white font-black uppercase cursor-pointer"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-black uppercase cursor-pointer"
                       >
                         <option value="LIVRE">LIVRE</option>
                         <option value="OCUPADO">OCUPADO</option>
@@ -1317,7 +1121,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       className={`flex-1 flex items-center justify-center gap-2 p-3 text-[9px] font-black uppercase border rounded-xl transition-all ${
                         lavagem 
                           ? 'bg-blue-600 border-blue-500 text-white' 
-                          : 'bg-zinc-950 border-zinc-850 text-zinc-600 hover:text-zinc-400'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-600 hover:text-zinc-400'
                       }`}
                     >
                       🧼 Lavagem de Chassi
@@ -1328,7 +1132,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       className={`flex-1 flex items-center justify-center gap-2 p-3 text-[9px] font-black uppercase border rounded-xl transition-all ${
                         testeFinal 
                           ? 'bg-blue-600 border-blue-500 text-white' 
-                          : 'bg-zinc-950 border-zinc-850 text-zinc-600 hover:text-zinc-400'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-600 hover:text-zinc-400'
                       }`}
                     >
                       🚚 Teste Estratégico
@@ -1337,21 +1141,19 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                 </div>
               )}
 
-              {/* FLUXO EXCLUSIVO 2: OS DE CAMPO / EXTERNA */}
               {tipoOS === 'CAMPO' && (
-                <div className="space-y-4 pt-4 border-t border-zinc-800/60 animate-in fade-in slide-in-from-top-1 duration-300">
+                <div className="space-y-4 pt-4 border-t border-zinc-800/60">
                   <div className="flex items-center gap-2 mb-1">
                     <Milestone className="w-4 h-4 text-amber-500" />
                     <span className="text-[10px] text-white font-black tracking-widest uppercase">LOGÍSTICA EXTREMA DE CAMPO</span>
                   </div>
 
-                  {/* Geolocalização */}
                   <div className="space-y-2">
-                    <p className="text-[8px] font-black text-zinc-650 uppercase px-1">1. Local & GPS</p>
+                    <p className="text-[8px] font-black text-zinc-600 uppercase px-1">1. Local & GPS</p>
                     <input 
                       type="text" 
                       placeholder="LOCAL ATENDIMENTO (ENDEREÇO)..." 
-                      className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none focus:border-amber-500" 
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none focus:border-amber-500" 
                       value={localAtendimento} 
                       onChange={(e) => setLocalAtendimento(e.target.value)} 
                     />
@@ -1359,14 +1161,14 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       <input 
                         type="text" 
                         placeholder="CIDADE..." 
-                        className="bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none focus:border-amber-500" 
+                        className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none focus:border-amber-500" 
                         value={localCidade} 
                         onChange={(e) => setLocalCidade(e.target.value)} 
                       />
                       <input 
                         type="text" 
                         placeholder="UF..." 
-                        className="bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none focus:border-amber-500" 
+                        className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-bold uppercase outline-none focus:border-amber-500" 
                         value={localEstado} 
                         maxLength={2} 
                         onChange={(e) => setLocalEstado(e.target.value)} 
@@ -1376,7 +1178,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       <input 
                         type="text" 
                         placeholder="COORDENADAS GPS..." 
-                        className="flex-1 min-w-0 bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white font-mono outline-none focus:border-amber-500" 
+                        className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white font-mono outline-none focus:border-amber-500" 
                         value={localGps} 
                         onChange={(e) => setLocalGps(e.target.value)} 
                       />
@@ -1390,54 +1192,52 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Veículo de Apoio e Cronograma */}
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-950">
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold">Veículo de Apoio</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold">Veículo de Apoio</label>
                       <input 
                         type="text"
                         placeholder="PLACA / PREFIXO" 
                         value={veiculoApoio}
                         onChange={(e) => setVeiculoApoio(e.target.value.toUpperCase())}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-amber-500"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-amber-500"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold">Tempo de Viagem</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold">Tempo de Viagem</label>
                       <input 
                         type="text"
                         placeholder="EX: 1H 40M" 
                         value={tempoDeslocamento}
                         onChange={(e) => setTempoDeslocamento(e.target.value.toUpperCase())}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-amber-500"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-black uppercase outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold">Horário Saída</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold">Horário Saída</label>
                       <input 
                         type="time" 
                         value={horarioSaidaEquipe}
                         onChange={(e) => setHorarioSaidaEquipe(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-xs text-white font-mono outline-none focus:border-amber-500"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-mono outline-none focus:border-amber-500"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] text-zinc-650 uppercase font-bold">Horário Chegada</label>
+                      <label className="text-[8px] text-zinc-600 uppercase font-bold">Horário Chegada</label>
                       <input 
                         type="time" 
                         value={horarioChegadaEquipe}
                         onChange={(e) => setHorarioChegadaEquipe(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-805 rounded-xl p-3 text-xs text-white font-mono outline-none focus:border-amber-500"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white font-mono outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
 
-                  {/* Controle de KM */}
                   <div className="space-y-3 pt-3 border-t border-zinc-950">
-                    <p className="text-[8px] font-black text-zinc-650 uppercase">2. Painel Logístico de KM Rodados ({kmTotal} KM total)</p>
+                    <p className="text-[8px] font-black text-zinc-600 uppercase">2. Painel Logístico de KM Rodados ({kmTotal} KM total)</p>
                     
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-zinc-950/60 border border-zinc-900 rounded-2xl p-3 space-y-1">
@@ -1468,33 +1268,33 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
 
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase">KM Ida</label>
+                        <label className="text-[8px] text-zinc-600 uppercase">KM Ida</label>
                         <input 
                           type="number" 
                           placeholder="Saída/Ida" 
-                          className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
                           value={kmSaida || ''} 
                           onChange={(e) => setKmSaida(Math.max(0, parseFloat(e.target.value) || 0))} 
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase">KM Volta</label>
+                        <label className="text-[8px] text-zinc-600 uppercase">KM Volta</label>
                         <input 
                           type="number" 
                           placeholder="Retorno/Volta" 
-                          className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
                           value={kmRetorno || ''} 
                           onChange={(e) => setKmRetorno(Math.max(0, parseFloat(e.target.value) || 0))} 
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="text-[8px] text-zinc-650 uppercase">Valor por KM (R$)</label>
+                      <label className="text-[8px] text-zinc-600 uppercase">Valor por KM (R$)</label>
                       <input 
                         type="number" 
                         placeholder="Valor por KM" 
                         step="0.01" 
-                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
                         value={valorKm || ''} 
                         onChange={(e) => setValorKm(parseFloat(e.target.value) || 0)} 
                       />
@@ -1505,37 +1305,36 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Mão de Obra Externa */}
                   <div className="space-y-3 pt-3 border-t border-zinc-950">
-                    <p className="text-[8px] font-black text-zinc-650 uppercase">3. Hora Técnica Externa</p>
+                    <p className="text-[8px] font-black text-zinc-600 uppercase">3. Hora Técnica Externa</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase">Quant de Horas</label>
+                        <label className="text-[8px] text-zinc-600 uppercase">Quant de Horas</label>
                         <input 
                           type="number" 
                           placeholder="Horas" 
-                          className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
                           value={maoObraExternaHoras || ''} 
                           onChange={(e) => setMaoObraExternaHoras(parseFloat(e.target.value) || 0)} 
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase">Valor/Hora (R$)</label>
+                        <label className="text-[8px] text-zinc-600 uppercase">Valor/Hora (R$)</label>
                         <input 
                           type="number" 
                           placeholder="Valor/Hora" 
-                          className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-500 font-mono" 
                           value={maoObraExternaValor || ''} 
                           onChange={(e) => setMaoObraExternaValor(parseFloat(e.target.value) || 0)} 
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="text-[8px] text-zinc-650 uppercase">Equipe Adicional / Apoio de Campo</label>
+                      <label className="text-[8px] text-zinc-600 uppercase">Equipe Adicional / Apoio de Campo</label>
                       <input 
                         type="text" 
                         placeholder="EX: CLAUDIOMIRO (SOS), HELDER..." 
-                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-3 text-[10px] text-white uppercase outline-none focus:border-amber-500" 
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] text-white uppercase outline-none focus:border-amber-500" 
                         value={mecanicosAdicionaisInput} 
                         onChange={(e) => setMecanicosAdicionaisInput(e.target.value)} 
                       />
@@ -1546,42 +1345,41 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Despesas de Campo */}
                   <div className="space-y-3 pt-3 border-t border-zinc-950">
-                    <p className="text-[8px] font-black text-zinc-650 uppercase">4. Despesas Reembolsáveis</p>
+                    <p className="text-[8px] font-black text-zinc-600 uppercase">4. Despesas Reembolsáveis</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase flex items-center gap-1">🏦 Pedágio</label>
-                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaPedagio || ''} onChange={(e) => setDespesaPedagio(parseFloat(e.target.value) || 0)} />
+                        <label className="text-[8px] text-zinc-600 uppercase flex items-center gap-1">🏦 Pedágio</label>
+                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaPedagio || ''} onChange={(e) => setDespesaPedagio(parseFloat(e.target.value) || 0)} />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase flex items-center gap-1">⛽ Combustível</label>
-                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaCombustivel || ''} onChange={(e) => setDespesaCombustivel(parseFloat(e.target.value) || 0)} />
+                        <label className="text-[8px] text-zinc-600 uppercase flex items-center gap-1">⛽ Combustível</label>
+                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaCombustivel || ''} onChange={(e) => setDespesaCombustivel(parseFloat(e.target.value) || 0)} />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase flex items-center gap-1">🛏️ Hospedagem</label>
-                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaHospedagem || ''} onChange={(e) => setDespesaHospedagem(parseFloat(e.target.value) || 0)} />
+                        <label className="text-[8px] text-zinc-600 uppercase flex items-center gap-1">🛏️ Hospedagem</label>
+                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaHospedagem || ''} onChange={(e) => setDespesaHospedagem(parseFloat(e.target.value) || 0)} />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase flex items-center gap-1">🍔 Alimentação</label>
-                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaAlimentacao || ''} onChange={(e) => setDespesaAlimentacao(parseFloat(e.target.value) || 0)} />
+                        <label className="text-[8px] text-zinc-600 uppercase flex items-center gap-1">🍔 Alimentação</label>
+                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaAlimentacao || ''} onChange={(e) => setDespesaAlimentacao(parseFloat(e.target.value) || 0)} />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase">🛠️ Diária Técnica</label>
-                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaDiariaTecnica || ''} onChange={(e) => setDespesaDiariaTecnica(parseFloat(e.target.value) || 0)} />
+                        <label className="text-[8px] text-zinc-600 uppercase">🛠️ Diária Técnica</label>
+                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaDiariaTecnica || ''} onChange={(e) => setDespesaDiariaTecnica(parseFloat(e.target.value) || 0)} />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] text-zinc-650 uppercase">🚛 Guincho</label>
-                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaGuincho || ''} onChange={(e) => setDespesaGuincho(parseFloat(e.target.value) || 0)} />
+                        <label className="text-[8px] text-zinc-600 uppercase">🚛 Guincho</label>
+                        <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaGuincho || ''} onChange={(e) => setDespesaGuincho(parseFloat(e.target.value) || 0)} />
                       </div>
                     </div>
                     <div>
-                      <label className="text-[8px] text-zinc-650 uppercase">Outras Despesas</label>
-                      <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-850 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaOutros || ''} onChange={(e) => setDespesaOutros(parseFloat(e.target.value) || 0)} />
+                      <label className="text-[8px] text-zinc-600 uppercase">Outras Despesas</label>
+                      <input type="number" step="any" placeholder="R$ 0,00" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white outline-none focus:border-amber-500 font-mono" value={despesaOutros || ''} onChange={(e) => setDespesaOutros(parseFloat(e.target.value) || 0)} />
                     </div>
                     <div className="flex justify-between text-[10px] font-mono text-zinc-400 bg-zinc-950 p-2.5 rounded-xl border border-zinc-900">
                       <span>Total Outras Despesas:</span>
@@ -1589,10 +1387,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
 
-                  {/* Fotos de Campo */}
                   <div className="space-y-3 pt-3 border-t border-zinc-950">
-                    <p className="text-[8px] font-black text-zinc-650 uppercase">5. Registro Fotográfico de Campo</p>
-                    <label className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-850 hover:border-amber-500 border-dashed rounded-xl p-4 cursor-pointer transition select-none">
+                    <p className="text-[8px] font-black text-zinc-600 uppercase">5. Registro Fotográfico de Campo</p>
+                    <label className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-800 hover:border-amber-500 border-dashed rounded-xl p-4 cursor-pointer transition select-none">
                       <span className="text-xl">📸</span>
                       <span className="text-[9px] font-black text-white uppercase tracking-wider mt-1.5">Enviar Fotos de Serviço</span>
                       <span className="text-[7px] text-zinc-600 font-black tracking-widest leading-none mt-1">PNG, JPG ATÉ 5MB CADA</span>
@@ -1613,7 +1410,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                             <button 
                               type="button" 
                               onClick={() => removerFoto(idx)} 
-                              className="absolute inset-0 bg-red-650/80 text-white font-black text-[8px] uppercase tracking-widest flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                              className="absolute inset-0 bg-red-600/80 text-white font-black text-[8px] uppercase tracking-widest flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
                             >
                               Remover
                             </button>
@@ -1623,10 +1420,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     )}
                   </div>
 
-                  {/* Assinatura Digital */}
                   <div className="space-y-3 pt-2 border-t border-zinc-950">
                     <div className="flex items-center justify-between">
-                      <p className="text-[8px] font-black text-zinc-650 uppercase">6. Assinatura Digital do Motorista</p>
+                      <p className="text-[8px] font-black text-zinc-600 uppercase">6. Assinatura Digital do Motorista</p>
                       <button 
                         type="button" 
                         onClick={clearSignature} 
@@ -1636,12 +1432,12 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       </button>
                     </div>
 
-                    <div className="w-full bg-zinc-950 border border-zinc-850 rounded-xl overflow-hidden relative shadow-inner touch-none select-none">
+                    <div className="w-full bg-white border border-zinc-800 rounded-xl overflow-hidden relative shadow-inner touch-none select-none">
                       <canvas 
                         ref={canvasRef}
                         width={500}
                         height={220}
-                        className="w-full h-[180px] sm:h-[220px] bg-zinc-950 cursor-crosshair block touch-none overflow-hidden select-none"
+                        className="w-full h-[180px] sm:h-[220px] bg-white cursor-crosshair block touch-none overflow-hidden select-none"
                         onMouseDown={startDrawing}
                         onMouseMove={draw}
                         onMouseUp={stopDrawing}
@@ -1651,7 +1447,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         onTouchEnd={stopDrawing}
                       />
                       {!assinaturaCampo && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-[8px] text-zinc-650 uppercase font-black tracking-widest bg-zinc-950/20">
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-[8px] text-zinc-400 uppercase font-black tracking-widest bg-white/60">
                           Desenhe a assinatura aqui
                         </div>
                       )}
@@ -1662,26 +1458,26 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             </div>
           </section>
 
-          <div className="bg-zinc-900 border border-zinc-805 rounded-[2rem] p-7 space-y-4 shadow-xl">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] p-7 space-y-4 shadow-xl">
             <h3 className="text-[10px] font-black text-white uppercase tracking-widest italic flex items-center gap-2">
               <Info size={14} className={tipoOS === 'CAMPO' ? 'text-amber-500' : 'text-blue-500'} /> RESUMO GERAL
             </h3>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
+              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-800 min-w-0">
                 <p className="text-[8px] text-zinc-600 uppercase font-black">Serviços</p>
                 <p className="text-xs font-bold text-white font-mono truncate">{formatCurrency(totalServicos)}</p>
               </div>
-              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
+              <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-800 min-w-0">
                 <p className="text-[8px] text-zinc-600 uppercase font-black">Peças</p>
                 <p className="text-xs font-bold text-white font-mono truncate">{formatCurrency(totalPecas)}</p>
               </div>
               {tipoOS === 'CAMPO' && (
                 <>
-                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
+                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-800 min-w-0">
                     <p className="text-[8px] text-zinc-600 uppercase font-black">Deslocamento</p>
                     <p className="text-xs font-bold text-amber-500 font-mono truncate">{formatCurrency(totalDeslocamento)}</p>
                   </div>
-                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-805 min-w-0">
+                  <div className="p-3 bg-zinc-950/50 rounded-xl border border-zinc-800 min-w-0">
                     <p className="text-[8px] text-zinc-600 uppercase font-black">Diárias/Hosp</p>
                     <p className="text-xs font-bold text-amber-500 font-mono truncate">{formatCurrency(totalDespesas + maoObraExternaTotal)}</p>
                   </div>
@@ -1691,9 +1487,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        {/* ============================================================
-            COLUNA 2: SERVIÇOS E DIAGNÓSTICO
-            ============================================================ */}
+        {/* COLUNA 2: SERVIÇOS E DIAGNÓSTICO */}
         <div className="lg:col-span-1 2xl:col-span-4 space-y-6 min-w-0">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
             <div className="p-6 sm:p-8 border-b border-zinc-800/50 bg-zinc-900/50 flex items-center justify-between">
@@ -1831,7 +1625,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                </table>
             </div>
 
-            {/* Services Mobile Cards View */}
             <div className="block lg:hidden p-4 space-y-4 max-h-[500px] overflow-y-auto">
               <AnimatePresence>
                 {servicos.length > 0 ? (
@@ -1841,7 +1634,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       key={s.id}
-                      className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4 space-y-4"
+                      className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4 space-y-4"
                     >
                       <div className="flex items-center justify-between gap-2 border-b border-zinc-900 pb-3">
                         <div className="flex p-0.5 bg-zinc-950 border border-zinc-800 rounded-lg">
@@ -1971,9 +1764,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
 
-        {/* ============================================================
-            COLUNA 3: PEÇAS E FECHAMENTO
-            ============================================================ */}
+        {/* COLUNA 3: PEÇAS E FECHAMENTO */}
         <div className="lg:col-span-2 2xl:col-span-4 space-y-6 min-w-0">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
             <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-900/50 flex flex-col gap-3">
@@ -2046,7 +1837,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                           >
                             <div className="flex flex-col min-w-0">
                               <span className="text-xs font-black text-white uppercase truncate">{p.descricao}</span>
-                              <span className="text-[9px] text-zinc-650 font-bold tracking-widest mt-1">CÓD: {p.codigo || 'S/ COD'} • ESTOQUE: {p.quantidade} {p.unidadeMedida || 'un'}</span>
+                              <span className="text-[9px] text-zinc-600 font-bold tracking-widest mt-1">CÓD: {p.codigo || 'S/ COD'} • ESTOQUE: {p.quantidade} {p.unidadeMedida || 'un'}</span>
                             </div>
                             <span className="text-[10px] font-black text-green-500 font-mono italic flex-shrink-0">{formatCurrency(p.preco_venda)}</span>
                           </button>
@@ -2056,7 +1847,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                   )}
 
                   {(!pecaSearchTerm || pecaSearchTerm.trim().length < 2) && (
-                    <div className="mt-2 text-center text-zinc-650 text-[8px] font-black uppercase tracking-widest italic">
+                    <div className="mt-2 text-center text-zinc-600 text-[8px] font-black uppercase tracking-widest italic">
                       Digite para pesquisar peças (Mínimo 2 caracteres)
                     </div>
                   )}
@@ -2080,10 +1871,10 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                                onChange={(e) => updatePeca(p.id, 'quantidade', parseFloat(e.target.value) || 0)}
                                className="hidden sm:block w-12 bg-zinc-900 border border-zinc-800 text-[10px] font-black text-orange-500 p-1 text-center focus:outline-none rounded font-mono"
                              />
-                             <div className="flex sm:hidden items-center gap-1 bg-zinc-900/60 p-1 rounded-xl border border-zinc-850">
+                             <div className="flex sm:hidden items-center gap-1 bg-zinc-900/60 p-1 rounded-xl border border-zinc-800">
                                <button
                                  type="button"
-                                 onClick={() => updatePeca(p.id, 'quantidade', Math.max(0, p.quantidade - 1))}
+                                 onClick={() => updatePeca(p.id, 'quantidade', Math.max(0.001, p.quantidade - 1))}
                                  className="w-11 min-h-[44px] flex items-center justify-center bg-zinc-950 border border-zinc-800 text-zinc-400 rounded-lg font-bold text-lg cursor-pointer"
                                >
                                  -
@@ -2104,7 +1895,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                                </button>
                              </div>
                              <select 
-                               className="bg-zinc-900 text-zinc-500 text-[8px] font-black uppercase outline-none cursor-pointer border border-zinc-805 px-1.5 py-1 focus:text-white"
+                               className="bg-zinc-900 text-zinc-500 text-[8px] font-black uppercase outline-none cursor-pointer border border-zinc-800 px-1.5 py-1 focus:text-white"
                                value={p.unidade || 'un'} 
                                onChange={(e) => updatePeca(p.id, 'unidade', e.target.value)}
                              >
@@ -2133,7 +1924,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                     )) : (
                       <div className="py-12 text-center flex flex-col items-center gap-3 opacity-10">
                         <Package size={40} className="text-white" />
-                        <p className="text-[9px] font-black uppercase tracking-[0.4em]">Insumos vázios</p>
+                        <p className="text-[9px] font-black uppercase tracking-[0.4em]">Insumos vazios</p>
                       </div>
                     )}
                   </AnimatePresence>
@@ -2222,7 +2013,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                         </div>
                         {Array.from({ length: numParcelas }).map((_, i) => {
                           const vlrParcela = totalGeral / numParcelas;
-                          const dt = new Date(dataPrimeiraParcela);
+                          const dt = new Date(dataPrimeiraParcela + 'T12:00:00');
                           dt.setDate(dt.getDate() + (i * diasEntreParcelas));
                           return (
                             <div key={i} className="flex justify-between items-center text-[10px] font-mono text-zinc-400 bg-zinc-950 p-3 rounded-xl border border-zinc-800/50 group hover:border-orange-500/30 transition-all">
@@ -2276,7 +2067,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
 
       </div>
 
-      {/* Sticky Bottom Bar for Mobile only */}
+      {/* Sticky Bottom Bar for Mobile */}
       <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-900 p-4 z-50 md:hidden flex items-center justify-between gap-3 pb-safe">
         <button
           type="button"
