@@ -7,8 +7,10 @@ import {
   Search, ChevronLeft, FileText, Trash2, Plus,
   PenTool as Tool, Loader2, Save, Calendar
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { parseHoras, roundDecimal } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
+import { BRANDING } from '@/lib/branding';
 import QuickClientModal from '@/components/QuickClientModal';
 import QuickVehicleModal from '@/components/QuickVehicleModal';
 import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
@@ -20,18 +22,35 @@ interface WorkOrderOfficeProps {
   initialData?: any;
 }
 
+// A16: helper para gerar data ao meio-dia UTC (evita deslocamento de fuso)
+function toMeioDiaUTC(dataStr: string | null | undefined): string | null {
+  if (!dataStr) return null;
+  const d = new Date(dataStr);
+  if (isNaN(d.getTime())) return null;
+  d.setUTCHours(12, 0, 0, 0);
+  return d.toISOString();
+}
+
+// A29: helper para gerar chave de rascunho escopada por empresa + usuário
+function chaveRascunho(empresaId: string, userId: string): string {
+  return `os-draft-new-oficina:${empresaId}:${userId}`;
+}
+
 export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOfficeProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   
-  // Modais de Cadastro Rápido e Almoxarifado
+  // A29: contexto do usuário para escopar o rascunho
+  const [usuarioCtx, setUsuarioCtx] = useState<{ id: string; empresa_id: string } | null>(null);
+  
+  // Modais
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isQuickPartModalOpen, setIsQuickPartModalOpen] = useState(false);
   
-  // Catálogos e buscadores
+  // Catálogos
   const [clientes, setClientes] = useState<any[]>([]);
   const [clientesLoading, setClientesLoading] = useState(false);
   const [clientesError, setClientesError] = useState(false);
@@ -39,26 +58,24 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   const [mecanicos, setMecanicos] = useState<any[]>([]);
   const [availablePecas, setAvailablePecas] = useState<any[]>([]);
   
-  // Seleções principais
+  // Seleções
   const [selectedCliente, setSelectedCliente] = useState<any>(null);
   const [selectedVeiculo, setSelectedVeiculo] = useState<any>(null);
   const [selectedMecanico, setSelectedMecanico] = useState('');
   const [clienteHistorico, setClienteHistorico] = useState<any>(null);
   
-  // Campos Gerais
+  // Campos gerais
   const [diagnostico, setDiagnostico] = useState('');
   const [previsao, setPrevisao] = useState('');
   const [desconto, setDesconto] = useState(0);
 
-  // Campos específicos de Oficina
+  // Campos de oficina
   const [boxElevador, setBoxElevador] = useState('');
   const [prioridade, setPrioridade] = useState('NORMAL');
   const [statusElevador, setStatusElevador] = useState('LIVRE');
   const [lavagem, setLavagem] = useState(false);
   const [testeFinal, setTesteFinal] = useState(false);
   const [tempoInterno, setTempoInterno] = useState('');
-  
-  // Horas técnicas de Entrada e Saída
   const [horarioEntrada, setHorarioEntrada] = useState('');
   const [horarioSaida, setHorarioSaida] = useState('');
 
@@ -79,7 +96,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   const [diasEntreParcelas, setDiasEntreParcelas] = useState(28);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(new Date().toISOString().split('T')[0]);
 
-  // Peças e Serviços locais
+  // Peças e serviços
   const [servicos, setServicos] = useState<any[]>([]);
   const [pecas, setPecas] = useState<any[]>([]);
 
@@ -89,7 +106,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   const [pecaSearchQuery, setPecaSearchQuery] = useState('');
   const [pecasLoading, setPecasLoading] = useState(false);
 
-  // Odômetro, Horímetro e Manutenção Preventiva Explícita
+  // Odômetro, horímetro, preventivas
   const [kmVeiculo, setKmVeiculo] = useState<string>('');
   const [horimetroVeiculo, setHorimetroVeiculo] = useState<string>('');
   const [confirmarSaltoKm, setConfirmarSaltoKm] = useState(false);
@@ -102,15 +119,36 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
 
   const isLoadedRef = useRef(false);
 
-  // Carregar dados básicos (Clientes e Mecânicos)
+  // ============================================================
+  // A29: carrega o contexto (usuário + empresa) para escopar rascunhos
+  // ============================================================
   useEffect(() => {
+    let cancelled = false;
+    fetch('/api/usuario', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.id && data?.empresa_id) {
+          setUsuarioCtx({ id: data.id, empresa_id: data.empresa_id });
+        }
+      })
+      .catch(() => {
+        // silencioso — sem contexto, rascunho não é salvo
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Carregar clientes e mecânicos
+  useEffect(() => {
+    const controller = new AbortController();
     const loadBasics = async () => {
       setClientesLoading(true);
       setClientesError(false);
       try {
         const [cRes, mRes] = await Promise.all([
-          fetch('/api/clientes?limit=1000').catch(() => null),
-          fetch('/api/usuarios?limit=1000').catch(() => null)
+          fetch('/api/clientes?limit=1000', { signal: controller.signal }).catch(() => null),
+          fetch('/api/usuarios?limit=1000', { signal: controller.signal }).catch(() => null),
         ]);
         
         if (cRes && cRes.ok) {
@@ -125,17 +163,19 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
           const users = data.items || [];
           setMecanicos(users.filter((u: any) => u.role === 'MECANICO' || u.role === 'LIDER' || u.role === 'ADMIN'));
         }
-      } catch (err) {
-        console.error(err);
-        setClientesError(true);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          setClientesError(true);
+        }
       } finally {
         setClientesLoading(false);
       }
     };
     loadBasics();
+    return () => controller.abort();
   }, []);
 
-  // Busca dinámica de peças com Debounce
+  // Busca de peças com debounce
   useEffect(() => {
     if (!pecaSearchQuery || pecaSearchQuery.trim().length < 2) {
       return;
@@ -146,7 +186,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
       setPecasLoading(true);
       try {
         const res = await fetch(`/api/pecas?onlySearch=true&q=${encodeURIComponent(pecaSearchQuery.trim())}`, {
-          signal: controller.signal
+          signal: controller.signal,
         });
         if (res.ok) {
           const data = await res.json();
@@ -156,7 +196,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         }
       } catch (err: any) {
         if (err.name !== 'AbortError') {
-          console.error('Erro ao pesquisar peças:', err);
           setAvailablePecas([]);
         }
       } finally {
@@ -170,89 +209,98 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     };
   }, [pecaSearchQuery]);
 
-  // Recupera o rascunho de nova OS Oficina ao montar o componente
+  // ============================================================
+  // A29: restaura rascunho escopado por empresa + usuário
+  // ============================================================
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (!usuarioCtx) return;
+    if (typeof window === 'undefined') return;
+
+    try {
+      const key = chaveRascunho(usuarioCtx.empresa_id, usuarioCtx.id);
+
+      // A29: migração silenciosa — se existir rascunho antigo sem escopo,
+      // remove para não vazar entre usuários do mesmo navegador.
       try {
-        const cached = localStorage.getItem('os-draft-new-oficina');
-        if (cached) {
-          const draft = JSON.parse(cached);
-          if (draft) {
-            setTimeout(() => {
-              if (Array.isArray(draft.pecas)) setPecas(draft.pecas);
-              if (Array.isArray(draft.servicos)) setServicos(draft.servicos);
-              if (draft.diagnostico) setDiagnostico(draft.diagnostico);
-              if (draft.previsao) setPrevisao(draft.previsao);
-              if (draft.desconto) setDesconto(draft.desconto);
-              if (draft.selectedCliente) setSelectedCliente(draft.selectedCliente);
-              if (draft.selectedVeiculo) setSelectedVeiculo(draft.selectedVeiculo);
-              if (draft.selectedMecanico) setSelectedMecanico(draft.selectedMecanico);
-              if (draft.boxElevador) setBoxElevador(draft.boxElevador);
-              if (draft.prioridade) setPrioridade(draft.prioridade);
-              if (draft.statusElevador) setStatusElevador(draft.statusElevador);
-              if (draft.tempoInterno) setTempoInterno(draft.tempoInterno);
-              if (draft.horarioEntrada) setHorarioEntrada(draft.horarioEntrada);
-              if (draft.horarioSaida) setHorarioSaida(draft.horarioSaida);
-              if (draft.lavagem !== undefined) setLavagem(draft.lavagem);
-              if (draft.testeFinal !== undefined) setTesteFinal(draft.testeFinal);
-              if (draft.checklistOficina) setChecklistOficina(draft.checklistOficina);
-              if (draft.formaPagamento) setFormaPagamento(draft.formaPagamento);
-              if (draft.numParcelas) setNumParcelas(draft.numParcelas);
-              if (draft.diasEntreParcelas) setDiasEntreParcelas(draft.diasEntreParcelas);
-              if (draft.dataPrimeiraParcela) setDataPrimeiraParcela(draft.dataPrimeiraParcela);
-              if (draft.fotosOficina) setFotosOficina(draft.fotosOficina);
-              
-              // Se tiver cliente, carregar veículos dele
-              if (draft.selectedCliente?.id) {
-                fetch(`/api/veiculos?cliente_id=${draft.selectedCliente.id}`)
-                  .then(res => res.json())
-                  .then(data => setVeiculos(data.items || []))
-                  .catch(console.error);
-
-                fetch(`/api/clientes/${draft.selectedCliente.id}/historico`)
-                  .then(res => res.json())
-                  .then(setClienteHistorico)
-                  .catch(console.error);
-              }
-
-              console.log('Rascunho de OS Oficina carregado!');
-              isLoadedRef.current = true;
-            }, 100);
-            return;
-          }
+        if (localStorage.getItem('os-draft-new-oficina')) {
+          localStorage.removeItem('os-draft-new-oficina');
         }
+      } catch {}
 
-        // Se veio parâmetros de URL (ex: preventiva_id, veiculo_id, diagnostico)
-        const urlVeiculoId = searchParams?.get('veiculo_id');
-        const urlDiagnostico = searchParams?.get('diagnostico');
-        if (urlDiagnostico) {
-          setDiagnostico(urlDiagnostico);
+      const cached = localStorage.getItem(key);
+      if (cached) {
+        const draft = JSON.parse(cached);
+        if (draft) {
+          setTimeout(() => {
+            if (Array.isArray(draft.pecas)) setPecas(draft.pecas);
+            if (Array.isArray(draft.servicos)) setServicos(draft.servicos);
+            if (draft.diagnostico) setDiagnostico(draft.diagnostico);
+            if (draft.previsao) setPrevisao(draft.previsao);
+            if (draft.desconto) setDesconto(draft.desconto);
+            if (draft.selectedCliente) setSelectedCliente(draft.selectedCliente);
+            if (draft.selectedVeiculo) setSelectedVeiculo(draft.selectedVeiculo);
+            if (draft.selectedMecanico) setSelectedMecanico(draft.selectedMecanico);
+            if (draft.boxElevador) setBoxElevador(draft.boxElevador);
+            if (draft.prioridade) setPrioridade(draft.prioridade);
+            if (draft.statusElevador) setStatusElevador(draft.statusElevador);
+            if (draft.tempoInterno) setTempoInterno(draft.tempoInterno);
+            if (draft.horarioEntrada) setHorarioEntrada(draft.horarioEntrada);
+            if (draft.horarioSaida) setHorarioSaida(draft.horarioSaida);
+            if (draft.lavagem !== undefined) setLavagem(draft.lavagem);
+            if (draft.testeFinal !== undefined) setTesteFinal(draft.testeFinal);
+            if (draft.checklistOficina) setChecklistOficina(draft.checklistOficina);
+            if (draft.formaPagamento) setFormaPagamento(draft.formaPagamento);
+            if (draft.numParcelas) setNumParcelas(draft.numParcelas);
+            if (draft.diasEntreParcelas) setDiasEntreParcelas(draft.diasEntreParcelas);
+            if (draft.dataPrimeiraParcela) setDataPrimeiraParcela(draft.dataPrimeiraParcela);
+            if (draft.fotosOficina) setFotosOficina(draft.fotosOficina);
+            
+            if (draft.selectedCliente?.id) {
+              fetch(`/api/veiculos?cliente_id=${draft.selectedCliente.id}`)
+                .then((res) => res.json())
+                .then((data) => setVeiculos(data.items || []))
+                .catch(() => {});
+
+              fetch(`/api/clientes/${draft.selectedCliente.id}/historico`)
+                .then((res) => res.json())
+                .then(setClienteHistorico)
+                .catch(() => {});
+            }
+
+            isLoadedRef.current = true;
+          }, 100);
+          return;
         }
-        if (urlVeiculoId) {
-          fetch(`/api/veiculos/${urlVeiculoId}`)
-            .then(res => res.json())
-            .then(v => {
-              if (v && !v.error) {
-                setSelectedVeiculo(v);
-                if (v.cliente) {
-                  setSelectedCliente(v.cliente);
-                  fetch(`/api/veiculos?cliente_id=${v.cliente.id}`)
-                    .then(r => r.json())
-                    .then(data => setVeiculos(data.items || []))
-                    .catch(console.error);
-                }
-              }
-            })
-            .catch(console.error);
-        }
-      } catch (err) {
-        console.error('Falha ao restaurar rascunho de nova OS Oficina:', err);
       }
-      isLoadedRef.current = true;
-    }
-  }, [searchParams]);
 
-  // Carregar Preventivas do Veículo e odômetro inicial
+      // Sem rascunho: verifica parâmetros de URL
+      const urlVeiculoId = searchParams?.get('veiculo_id');
+      const urlDiagnostico = searchParams?.get('diagnostico');
+      if (urlDiagnostico) setDiagnostico(urlDiagnostico);
+      if (urlVeiculoId) {
+        fetch(`/api/veiculos/${urlVeiculoId}`)
+          .then((res) => res.json())
+          .then((v) => {
+            if (v && !v.error) {
+              setSelectedVeiculo(v);
+              if (v.cliente) {
+                setSelectedCliente(v.cliente);
+                fetch(`/api/veiculos?cliente_id=${v.cliente.id}`)
+                  .then((r) => r.json())
+                  .then((data) => setVeiculos(data.items || []))
+                  .catch(() => {});
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {
+      // rascunho corrompido — ignora
+    }
+    isLoadedRef.current = true;
+  }, [usuarioCtx, searchParams]);
+
+  // Carregar preventivas do veículo
   useEffect(() => {
     if (selectedVeiculo?.id) {
       if (selectedVeiculo.quilometragem && !kmVeiculo) {
@@ -262,13 +310,13 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         setHorimetroVeiculo(String(selectedVeiculo.horimetro_atual));
       }
       fetch(`/api/preventivas?veiculo_id=${selectedVeiculo.id}`)
-        .then(res => res.json())
-        .then(data => {
+        .then((res) => res.json())
+        .then((data) => {
           if (Array.isArray(data)) {
             setPreventivasVeiculo(data.filter((p: any) => p.ativo !== false));
           }
         })
-        .catch(console.error);
+        .catch(() => {});
     } else {
       setPreventivasVeiculo([]);
       setSelectedPreventivas([]);
@@ -279,11 +327,11 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   useEffect(() => {
     const urlPrevId = searchParams?.get('preventiva_id');
     if (urlPrevId) {
-      setSelectedPreventivas(prev => prev.includes(urlPrevId) ? prev : [...prev, urlPrevId]);
+      setSelectedPreventivas((prev) => (prev.includes(urlPrevId) ? prev : [...prev, urlPrevId]));
     }
   }, [searchParams]);
 
-  // Hidratar dados existentes (edição de OS ou reabertura)
+  // Hidratar dados existentes (edição)
   useEffect(() => {
     if (initialData) {
       if (initialData.cliente) setSelectedCliente(initialData.cliente);
@@ -301,66 +349,38 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     }
   }, [initialData]);
 
-  // Salvar rascunho ao mudar dados relevantes
+  // ============================================================
+  // A29: salva rascunho escopado por empresa + usuário
+  // ============================================================
   useEffect(() => {
-    if (typeof window !== 'undefined' && isLoadedRef.current) {
-      try {
-        const draft = {
-          pecas,
-          servicos,
-          diagnostico,
-          previsao,
-          desconto,
-          selectedCliente,
-          selectedVeiculo,
-          selectedMecanico,
-          boxElevador,
-          prioridade,
-          statusElevador,
-          lavagem,
-          testeFinal,
-          tempoInterno,
-          horarioEntrada,
-          horarioSaida,
-          checklistOficina,
-          formaPagamento,
-          numParcelas,
-          diasEntreParcelas,
-          dataPrimeiraParcela,
-          fotosOficina
-        };
-        localStorage.setItem('os-draft-new-oficina', JSON.stringify(draft));
-      } catch (err) {
-        console.error('Erro ao salvar rascunho de nova OS Oficina:', err);
-      }
+    if (typeof window === 'undefined') return;
+    if (!usuarioCtx) return;
+    if (!isLoadedRef.current) return;
+
+    try {
+      const key = chaveRascunho(usuarioCtx.empresa_id, usuarioCtx.id);
+      const draft = {
+        pecas, servicos, diagnostico, previsao, desconto,
+        selectedCliente, selectedVeiculo, selectedMecanico,
+        boxElevador, prioridade, statusElevador, lavagem, testeFinal, tempoInterno,
+        horarioEntrada, horarioSaida, checklistOficina,
+        formaPagamento, numParcelas, diasEntreParcelas, dataPrimeiraParcela,
+        fotosOficina,
+      };
+      localStorage.setItem(key, JSON.stringify(draft));
+    } catch {
+      // localStorage indisponível — ignora
     }
   }, [
-    pecas,
-    servicos,
-    diagnostico,
-    previsao,
-    desconto,
-    selectedCliente,
-    selectedVeiculo,
-    selectedMecanico,
-    boxElevador,
-    prioridade,
-    statusElevador,
-    lavagem,
-    testeFinal,
-    tempoInterno,
-    horarioEntrada,
-    horarioSaida,
-    checklistOficina,
-    formaPagamento,
-    numParcelas,
-    diasEntreParcelas,
-    dataPrimeiraParcela,
-    fotosOficina
+    usuarioCtx, pecas, servicos, diagnostico, previsao, desconto,
+    selectedCliente, selectedVeiculo, selectedMecanico,
+    boxElevador, prioridade, statusElevador, lavagem, testeFinal, tempoInterno,
+    horarioEntrada, horarioSaida, checklistOficina,
+    formaPagamento, numParcelas, diasEntreParcelas, dataPrimeiraParcela, fotosOficina,
   ]);
 
   const handleClienteChange = async (id: string) => {
-    const cliente = clientes.find(c => c.id === id);
+    const cliente = clientes.find((c) => c.id === id);
     setSelectedCliente(cliente);
     setSelectedVeiculo(null);
     setVeiculos([]);
@@ -378,53 +398,51 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
       const hRes = await fetch(`/api/clientes/${id}/historico`);
       if (hRes.ok) setClienteHistorico(await hRes.json());
       else setClienteHistorico({ totalOS: 0, totalGasto: 0 });
-    } catch (err) { 
-      console.error(err); 
+    } catch {
+      // silencioso
     }
   };
 
   const handleQuickClientCreated = (newClient: any) => {
-    setClientes(prev => {
-      const exists = prev.some(c => c.id === newClient.id);
+    setClientes((prev) => {
+      const exists = prev.some((c) => c.id === newClient.id);
       return exists ? prev : [newClient, ...prev];
     });
     setSelectedCliente(newClient);
     setSelectedVeiculo(null);
     setVeiculos([]);
     fetch(`/api/veiculos?cliente_id=${newClient.id}`)
-      .then(r => r.json())
-      .then(data => setVeiculos(data.items || []))
+      .then((r) => r.json())
+      .then((data) => setVeiculos(data.items || []))
       .catch(() => setVeiculos([]));
   };
 
   const handleQuickVehicleCreated = (newVehicle: any) => {
-    setVeiculos(prev => {
-      const exists = prev.some(v => v.id === newVehicle.id);
+    setVeiculos((prev) => {
+      const exists = prev.some((v) => v.id === newVehicle.id);
       return exists ? prev : [newVehicle, ...prev];
     });
     setSelectedVeiculo(newVehicle);
     if (newVehicle.cliente_id && (!selectedCliente || selectedCliente.id !== newVehicle.cliente_id)) {
-      const matchingCliente = clientes.find(c => c.id === newVehicle.cliente_id) || newVehicle.cliente;
-      if (matchingCliente) {
-        setSelectedCliente(matchingCliente);
-      }
+      const matchingCliente = clientes.find((c) => c.id === newVehicle.cliente_id) || newVehicle.cliente;
+      if (matchingCliente) setSelectedCliente(matchingCliente);
     }
   };
 
   const addServico = useCallback(() => {
-    setServicos(prev => [...prev, { 
+    setServicos((prev) => [...prev, { 
       id: crypto.randomUUID(), 
       descricao: '', 
       tipo_cobranca: 'HORA',
       horas: '1:00', 
       valor_hora: 150, 
       valor_pacote: 0,
-      valor_total: 150 
+      valor_total: 150,
     }]);
   }, []);
 
   const updateServico = useCallback((sid: string, field: string, value: any) => {
-    setServicos(prev => prev.map(s => {
+    setServicos((prev) => prev.map((s) => {
       if (s.id === sid) {
         const updated = { ...s, [field]: value };
         if (updated.tipo_cobranca === 'HORA') {
@@ -440,24 +458,20 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   }, []);
 
   const removeServico = useCallback((sid: string) => {
-    setServicos(prev => prev.filter(s => s.id !== sid));
+    setServicos((prev) => prev.filter((s) => s.id !== sid));
   }, []);
 
   const addPeca = useCallback((pecaRef: any) => {
     const defaultUnit = pecaRef.unidadeMedida || 'un';
     const compativeis = obterUnidadesCompativeis(defaultUnit);
-    setPecas(prev => {
-      const existingIndex = prev.findIndex(p => p.peca_id === pecaRef.id);
+    setPecas((prev) => {
+      const existingIndex = prev.findIndex((p) => p.peca_id === pecaRef.id);
       if (existingIndex >= 0) {
         const updatedList = [...prev];
         const existing = updatedList[existingIndex];
         const novaQtd = roundDecimal(existing.quantidade + 1);
         const novoTotal = roundDecimal(novaQtd * existing.valor_unit);
-        updatedList[existingIndex] = {
-          ...existing,
-          quantidade: novaQtd,
-          valor_total: novoTotal
-        };
+        updatedList[existingIndex] = { ...existing, quantidade: novaQtd, valor_total: novoTotal };
         return updatedList;
       }
       return [
@@ -473,8 +487,8 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
           valor_total: pecaRef.preco_venda,
           maxQuantidade: pecaRef.quantidade,
           original_preco_venda: pecaRef.preco_venda,
-          compativeis
-        }
+          compativeis,
+        },
       ];
     });
   }, []);
@@ -490,21 +504,16 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     const defaultUnit = unidade || peca.unidadeMedida || 'un';
     const compativeis = obterUnidadesCompativeis(peca.unidadeMedida || 'un');
 
-    setPecas(prev => {
-      const existingIndex = prev.findIndex(p => p.peca_id === peca.id);
+    setPecas((prev) => {
+      const existingIndex = prev.findIndex((p) => p.peca_id === peca.id);
       if (existingIndex >= 0) {
         const updatedList = [...prev];
         const existing = updatedList[existingIndex];
         const novaQtd = roundDecimal(existing.quantidade + quantidade);
         const novoTotal = roundDecimal(novaQtd * existing.valor_unit);
-        updatedList[existingIndex] = {
-          ...existing,
-          quantidade: novaQtd,
-          valor_total: novoTotal
-        };
+        updatedList[existingIndex] = { ...existing, quantidade: novaQtd, valor_total: novoTotal };
         return updatedList;
       }
-
       return [
         ...prev,
         {
@@ -518,18 +527,15 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
           valor_total: valorTotal,
           original_preco_venda: peca.preco_venda,
           maxQuantidade: peca.quantidade,
-          compativeis
-        }
+          compativeis,
+        },
       ];
     });
   }, []);
 
   const handleQuickPartCreated = useCallback((data: QuickPartSuccessData) => {
     const { peca, applyToOrder } = data;
-    // Atualiza catálogo disponível local
-    setAvailablePecas(prev => [peca, ...prev.filter(p => p.id !== peca.id)]);
-
-    // Se usuário solicitou aplicar na OS
+    setAvailablePecas((prev) => [peca, ...prev.filter((p) => p.id !== peca.id)]);
     if (applyToOrder) {
       handleAddPartFromStockModal({
         peca,
@@ -542,10 +548,9 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   }, [handleAddPartFromStockModal]);
 
   const updatePeca = useCallback((pid: string, field: string, value: any) => {
-    setPecas(prev => prev.map(p => {
+    setPecas((prev) => prev.map((p) => {
       if (p.id === pid) {
         const updated = { ...p, [field]: value };
-        
         if (field === 'unidade') {
           const targetUnit = value;
           const originalUnit = updated.unidadeMedidaOriginal;
@@ -553,14 +558,13 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             try {
               const ratio = converterUnidade(1, targetUnit, originalUnit);
               updated.valor_unit = Number((updated.original_preco_venda * ratio).toFixed(2));
-            } catch (err) {
-              console.error('Falha ao converter preço unitário:', err);
+            } catch {
+              // conversão falhou — mantém valor original
             }
           } else {
             updated.valor_unit = updated.original_preco_venda;
           }
         }
-
         updated.valor_total = Number((updated.quantidade * updated.valor_unit).toFixed(2));
         return updated;
       }
@@ -569,7 +573,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   }, []);
 
   const removePeca = useCallback((pid: string) => {
-    setPecas(prev => prev.filter(p => p.id !== pid));
+    setPecas((prev) => prev.filter((p) => p.id !== pid));
   }, []);
 
   const handleFotoChange = (e: any) => {
@@ -578,14 +582,14 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     Array.from(files).forEach((file: any) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFotosOficina(prev => [...prev, reader.result as string]);
+        setFotosOficina((prev) => [...prev, reader.result as string]);
       };
       reader.readAsDataURL(file);
     });
   };
 
   const removerFoto = (index: number) => {
-    setFotosOficina(prev => prev.filter((_, i) => i !== index));
+    setFotosOficina((prev) => prev.filter((_, i) => i !== index));
   };
 
   const totalServicos = useMemo(() => {
@@ -597,23 +601,23 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   }, [pecas]);
 
   const totalGeral = useMemo(() => {
-    return Math.max(0, totalServicos + totalPecas - discountValue(desconto));
+    const d = parseFloat(String(desconto));
+    const descontoNum = isNaN(d) ? 0 : d;
+    return Math.max(0, totalServicos + totalPecas - descontoNum);
   }, [totalServicos, totalPecas, desconto]);
 
-  function discountValue(val: any) {
-    const parsed = parseFloat(val);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-
-  const formatCurrency = useCallback((val: number) => (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), []);
+  const formatCurrency = useCallback(
+    (val: number) => (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+    []
+  );
 
   const handleSubmit = async () => {
     if (!selectedCliente || !selectedVeiculo) {
-      alert('Selecione o proprietário e o veículo do atendimento.');
+      toast.error('Selecione o proprietário e o veículo do atendimento.');
       return;
     }
 
-    // Validar estoque somando ocorrências da mesma peça
+    // Validação de estoque
     const pecasAgrupadas: Record<string, { totalQty: number; maxQty: number; descricao: string }> = {};
     for (const p of pecas) {
       const pId = p.peca_id;
@@ -621,7 +625,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         pecasAgrupadas[pId] = {
           totalQty: 0,
           maxQty: p.maxQuantidade !== undefined ? p.maxQuantidade : Infinity,
-          descricao: p.descricao
+          descricao: p.descricao,
         };
       }
       pecasAgrupadas[pId].totalQty += p.quantidade;
@@ -630,59 +634,55 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     for (const pId in pecasAgrupadas) {
       const group = pecasAgrupadas[pId];
       if (group.maxQty < group.totalQty) {
-        alert(`Estoque insuficiente para a peça: ${group.descricao}. Disponível no estoque: ${group.maxQty}, Solicitado na OS: ${group.totalQty}`);
+        toast.error(`Estoque insuficiente para ${group.descricao}. Disponível: ${group.maxQty}, Solicitado: ${group.totalQty}`);
         return;
       }
     }
 
     setLoading(true);
     try {
+      const descontoNum = parseFloat(String(desconto)) || 0;
       const rawPayload = {
         cliente_id: selectedCliente.id,
         veiculo_id: selectedVeiculo.id,
-        mecanico_id: selectedMecanico && selectedMecanico !== "" && selectedMecanico !== "null" && selectedMecanico !== "undefined" ? selectedMecanico : null,
+        mecanico_id: selectedMecanico && selectedMecanico !== '' && selectedMecanico !== 'null' && selectedMecanico !== 'undefined' ? selectedMecanico : null,
         tipoOS: 'OFICINA',
         diagnostico,
         observacoes: JSON.stringify({
-          boxElevador,
-          prioridade,
-          statusElevador,
-          lavagem,
-          testeFinal,
-          tempoInterno,
-          checklistOficina,
-          horarioEntrada,
-          horarioSaida,
-          fotosOficina
+          boxElevador, prioridade, statusElevador, lavagem, testeFinal, tempoInterno,
+          checklistOficina, horarioEntrada, horarioSaida, fotosOficina,
         }),
         data_previsao: previsao,
-        servicos: (servicos || []).map(s => ({
+        servicos: (servicos || []).map((s) => ({
           descricao: s.descricao ? s.descricao.trim() : 'Serviço',
           tipo_cobranca: s.tipo_cobranca,
           horas: s.tipo_cobranca === 'HORA' ? parseHoras(s.horas.toString()) : null,
           valor_hora: s.tipo_cobranca === 'HORA' ? parseFloat(s.valor_hora || '0') : null,
           valor_pacote: s.tipo_cobranca === 'PACOTE' ? parseFloat(s.valor_pacote || '0') : null,
-          valor_total: parseFloat(s.valor_total || '0')
+          valor_total: parseFloat(s.valor_total || '0'),
         })),
         pecas: (pecas || [])
           .filter((p: any) => p.peca_id || p.pecaId)
           .map((p: any) => ({
             peca_id: p.peca_id || p.pecaId,
             descricao: p.descricao || 'Peça',
-            quantidade: Math.max(1, Number(p.quantidade || 1)),
+            // A06: aceita quantidade fracionada (antes forçava mínimo 1)
+            quantidade: Math.max(0.001, Number(p.quantidade || 1)),
             unidade: p.unidade || 'un',
             valor_unit: parseFloat(p.valor_unit || '0'),
             valor_total: parseFloat(p.valor_total || '0'),
-            origem: p.origem || 'OFICINA'
+            origem: p.origem || 'OFICINA',
           })),
-        desconto: parseFloat(discountValue(desconto) as any) || 0,
+        desconto: descontoNum,
         valor_total: totalGeral,
         forma_pagamento: formaPagamento === 'BOLETO PARCELADO' ? 'PARCELADO' : formaPagamento,
         numero_parcelas: formaPagamento === 'BOLETO PARCELADO' ? numParcelas : 1,
         dias_entre_parcelas: formaPagamento === 'BOLETO PARCELADO' ? diasEntreParcelas : null,
-        data_vencimento_primeira: formaPagamento === 'BOLETO PARCELADO' && dataPrimeiraParcela ? new Date(dataPrimeiraParcela).toISOString() : null,
+        // A16: grava ao meio-dia UTC (evita deslocamento de fuso)
+        data_vencimento_primeira: formaPagamento === 'BOLETO PARCELADO' && dataPrimeiraParcela
+          ? toMeioDiaUTC(dataPrimeiraParcela)
+          : null,
 
-        // Campos de Atendimento Oficina Fixos
         tipo_atendimento: 'OFICINA',
         km_saida: 0,
         km_retorno: 0,
@@ -690,7 +690,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         valor_km: 0,
         total_deslocamento: 0,
 
-        // Leituras de Odômetro e Horímetro com Proteção
         km_veiculo: kmVeiculo ? parseInt(kmVeiculo, 10) : null,
         horimetro_veiculo: horimetroVeiculo ? parseFloat(horimetroVeiculo) : null,
         confirmar_salto_km: confirmarSaltoKm,
@@ -699,29 +698,29 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         autorizar_reducao_horimetro: autorizarReducaoHorimetro,
         justificativa_ajuste_leitura: justificativaAjuste,
 
-        // Vinculação Explícita de Planos Preventivos
-        preventivas_ids: selectedPreventivas
+        preventivas_ids: selectedPreventivas,
       };
-
-      console.log("Payload Final OS (Oficina)", rawPayload);
 
       const res = await fetch('/api/ordens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rawPayload)
+        body: JSON.stringify(rawPayload),
       });
       if (res.ok) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('os-draft-new-oficina');
+        // A29: remove o rascunho escopado correto
+        if (typeof window !== 'undefined' && usuarioCtx) {
+          try {
+            localStorage.removeItem(chaveRascunho(usuarioCtx.empresa_id, usuarioCtx.id));
+          } catch {}
         }
         router.push('/os');
         router.refresh();
       } else {
         const error = await res.json();
-        alert(`Erro: ${error.error || 'Falha ao salvar a OS'}`);
+        toast.error(error.error || 'Falha ao salvar a OS');
       }
-    } catch (err) { 
-      alert('Erro de conexão com o banco.'); 
+    } catch {
+      toast.error('Erro de conexão com o banco.');
     }
     setLoading(false);
   };
@@ -729,7 +728,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   return (
     <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-6 pb-24 animate-in fade-in duration-300">
       
-      {/* HEADER DE CONTROLE */}
+      {/* HEADER */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-5 sm:p-6 rounded-2xl md:rounded-3xl shadow-xl">
         <div className="flex items-center gap-3 sm:gap-4">
           <button 
@@ -742,7 +741,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
           </button>
           <div className="flex flex-col">
             <h1 className="text-lg sm:text-xl font-black text-white uppercase tracking-tighter italic flex items-center gap-2">
-              PINHEIRO DIESEL PRO <span className="text-zinc-700">|</span> <span className="text-blue-500">Fluxo de Oficina</span>
+              {BRANDING.name} <span className="text-zinc-700">|</span> <span className="text-blue-500">Fluxo de Oficina</span>
             </h1>
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em] leading-none mt-1">
               Processo e Produtividade de Pátio Interno
@@ -768,10 +767,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
         
-        {/* COLUNA PRINCIPAL: OPERACIONAL E SERVIÇOS (7/12) */}
+        {/* COLUNA PRINCIPAL */}
         <div className="lg:col-span-7 xl:col-span-7 space-y-6">
           
-          {/* CARD 1: ATIVO, PROPRIETÁRIO & AGENDAMENTO */}
+          {/* CARD 1: ATIVO & PROPRIETÁRIO */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
             <div className="flex items-center gap-2.5 border-b border-zinc-800 pb-4">
               <div className="w-1.5 h-4 rounded-full bg-blue-600" />
@@ -782,9 +781,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             </div>
             
             <div className="space-y-4">
-              {/* Linha 1: Cliente e Veículo */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Pesquisar Cliente */}
                 <div className="space-y-1.5 relative">
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">Proprietário / Cliente</label>
@@ -828,10 +825,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                             </div>
                           ) : clientesError ? (
                             <div className="p-6 text-center text-red-400 text-xs">⚠️ Erro ao obter clientes</div>
-                          ) : (clientes || []).filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).length === 0 ? (
+                          ) : (clientes || []).filter((c) => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).length === 0 ? (
                             <div className="p-6 text-center text-zinc-500 text-xs">Nenhum proprietário localizado</div>
                           ) : (
-                            (clientes || []).filter(c => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).map(c => (
+                            (clientes || []).filter((c) => c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf_cnpj?.includes(searchTerm)).map((c) => (
                               <button 
                                 key={c.id} 
                                 type="button"
@@ -848,7 +845,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                   </div>
                 </div>
 
-                {/* Vincular Veículo */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">Ativo em Operação</label>
@@ -865,11 +861,11 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                     <select 
                       className="w-full min-h-[46px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 pr-10 text-xs text-white outline-none transition font-bold uppercase cursor-pointer shadow-inner appearance-none disabled:opacity-30 focus:border-blue-500" 
                       value={selectedVeiculo?.id || ''} 
-                      onChange={(e) => { const v = veiculos.find(v => v.id === e.target.value); if (v) setSelectedVeiculo(v); }} 
+                      onChange={(e) => { const v = veiculos.find((v) => v.id === e.target.value); if (v) setSelectedVeiculo(v); }} 
                       disabled={!selectedCliente}
                     >
                       <option value="">{selectedCliente ? 'SELECIONAR VEÍCULO...' : 'AGUARDANDO CLIENTE...'}</option>
-                      {(veiculos || []).map(v => (
+                      {(veiculos || []).map((v) => (
                         <option key={v.id} value={v.id}>
                           {v.placa} • {v.marca} {v.modelo}
                         </option>
@@ -880,9 +876,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 </div>
               </div>
 
-              {/* Linha 2: Mecânico e Previsão de Entrega */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Selecionar Mecânico de Pátio */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Mecânico Responsável</label>
                   <div className="relative group">
@@ -892,13 +886,12 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                       onChange={(e) => setSelectedMecanico(e.target.value)} 
                     >
                       <option value="">ATRIBUIR TÉCNICO RESPONSÁVEL...</option>
-                      {mecanicos.map(m => <option key={m.id} value={m.id}>{m.name.toUpperCase()}</option>)}
+                      {mecanicos.map((m) => <option key={m.id} value={m.id}>{m.name.toUpperCase()}</option>)}
                     </select>
                     <Wrench size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none transition-colors group-hover:text-blue-500" />
                   </div>
                 </div>
 
-                {/* Previsão de Entrega */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-zinc-400 uppercase font-black tracking-wider px-1">Previsão de Entrega</label>
                   <div className="relative group">
@@ -913,7 +906,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 </div>
               </div>
 
-              {/* SELETOR DE PREVENTIVAS & LEITURAS DE ODÔMETRO/HORÍMETRO */}
               {selectedVeiculo && (
                 <PreventivaVinculoSelector
                   veiculo={selectedVeiculo}
@@ -937,7 +929,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 />
               )}
 
-              {/* Histórico do Cliente (LTV) */}
               {selectedCliente && (
                 <div className="bg-zinc-950 border border-zinc-800/80 p-4 rounded-xl space-y-3 shadow-inner">
                   <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
@@ -964,7 +955,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 </div>
               )}
 
-              {/* DADOS TÉCNICOS DE PÁTIO / PATIOPRO */}
               <div className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-5 space-y-4 shadow-inner">
                 <div className="flex items-center justify-between border-b border-zinc-900 pb-2.5">
                   <p className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2">
@@ -974,7 +964,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                   <span className="text-[9px] font-mono text-zinc-500 uppercase">Gestão Operacional</span>
                 </div>
 
-                {/* Box, Estado, Prioridade, Tempo */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <label className="text-[9px] text-zinc-400 uppercase font-black">Nº Box / Elevador</label>
@@ -1026,7 +1015,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                   </div>
                 </div>
 
-                {/* Horários Oficina */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div className="space-y-1">
                     <label className="text-[9px] text-zinc-400 uppercase font-black">Horário Entrada Pátio</label>
@@ -1048,7 +1036,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                   </div>
                 </div>
 
-                {/* Flags extras */}
                 <div className="flex flex-wrap items-center gap-6 pt-1 border-t border-zinc-900">
                   <label className="flex items-center gap-2 cursor-pointer text-xs uppercase font-bold text-zinc-300 select-none">
                     <input 
@@ -1070,7 +1057,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                   </label>
                 </div>
 
-                {/* Checklist de Entrada Oficina */}
                 <div className="space-y-2 pt-2 border-t border-zinc-900">
                   <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider">Checklist de Entrada Oficina</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs font-semibold text-zinc-300">
@@ -1104,7 +1090,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             </div>
           </section>
 
-          {/* CARD 2: DIAGNÓSTICO E QUEIXA TÉCNICA (DEFEITO RECLAMADO) */}
+          {/* CARD 2: DIAGNÓSTICO */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 space-y-3 shadow-xl">
             <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
               <FileText size={16} className="text-orange-500" />
@@ -1112,13 +1098,13 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             </div>
             <textarea 
               placeholder="DESCREVA OS VÍCIOS APRESENTADOS, AVALIAÇÃO PRELIMINAR, ANÁLISE DE CÓDIGOS DE FALHA (DTC) E SERVIÇOS SOLICITADOS PELO CLIENTE..." 
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-blue-500 transition font-medium tracking-wide shadow-inner h-28 resize-none placeholder:text-zinc-650 leading-relaxed uppercase" 
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-blue-500 transition font-medium tracking-wide shadow-inner h-28 resize-none placeholder:text-zinc-600 leading-relaxed uppercase" 
               value={diagnostico} 
               onChange={(e) => setDiagnostico(e.target.value)} 
             />
           </section>
 
-          {/* CARD 3: MÃO DE OBRA E PROCEDIMENTOS */}
+          {/* CARD 3: MÃO DE OBRA */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl shadow-xl flex flex-col overflow-hidden">
             <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-950/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1140,10 +1126,9 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
               </button>
             </div>
 
-            {/* Lista de Serviços */}
             <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
               {servicos.map((servico) => (
-                <div key={servico.id} className="bg-zinc-950 border border-zinc-850 rounded-2xl p-4 sm:p-5 space-y-4 hover:border-blue-500/40 transition-all">
+                <div key={servico.id} className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-5 space-y-4 hover:border-blue-500/40 transition-all">
                   <div className="flex items-center justify-between gap-2 border-b border-zinc-900 pb-3">
                     <div className="flex items-center gap-2">
                       <button 
@@ -1249,7 +1234,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
               )}
             </div>
 
-            {/* Rodapé da Caixa de Serviços */}
             <div className="p-5 sm:p-6 border-t border-zinc-800 bg-zinc-950/40 flex justify-between items-center">
               <div>
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Total de Mão de Obra</p>
@@ -1259,7 +1243,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             </div>
           </section>
 
-          {/* CARD 4: FOTOS DE EVIDÊNCIA */}
+          {/* CARD 4: FOTOS */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h4 className="text-sm font-black text-white uppercase italic tracking-tight">Galeria de Evidências (Fotos)</h4>
@@ -1296,10 +1280,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
 
         </div>
 
-        {/* COLUNA LATERAL: INSUMOS, FINANCEIRO & FINALIZAÇÃO (5/12) */}
+        {/* COLUNA LATERAL */}
         <div className="lg:col-span-5 xl:col-span-5 space-y-6">
           
-          {/* CARD 1: INSUMOS & REPOSIÇÃO (ALMOXARIFADO) */}
+          {/* CARD 1: INSUMOS */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800 pb-3 mb-4 gap-2">
               <div className="flex items-center gap-2.5">
@@ -1352,7 +1336,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                   </div>
                 )}
 
-                {/* Dropdown de Busca */}
                 {pecaSearchQuery && pecaSearchQuery.trim().length >= 2 && (
                   <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar">
                     {pecasLoading ? (
@@ -1365,7 +1348,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                         Nenhum insumo encontrado
                       </div>
                     ) : (
-                      availablePecas.map(p => (
+                      availablePecas.map((p) => (
                         <button
                           key={p.id}
                           type="button"
@@ -1388,10 +1371,9 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 )}
               </div>
 
-              {/* Peças vinculadas */}
               <div className="space-y-2.5 max-h-[320px] overflow-y-auto custom-scrollbar pt-1">
-                {pecas.map(peca => (
-                  <div key={peca.id} className="bg-zinc-950 border border-zinc-850 rounded-xl p-3.5 flex items-center justify-between gap-3 border-l-4 border-l-blue-600/50 hover:border-l-blue-500 transition-all">
+                {pecas.map((peca) => (
+                  <div key={peca.id} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 flex items-center justify-between gap-3 border-l-4 border-l-blue-600/50 hover:border-l-blue-500 transition-all">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-white uppercase truncate">{peca.descricao}</p>
                       <p className="text-[10px] text-zinc-400 font-mono mt-0.5">Unit: {formatCurrency(peca.valor_unit)} • Total: <span className="text-green-400 font-black">{formatCurrency(peca.valor_total)}</span></p>
@@ -1445,7 +1427,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             </div>
           </section>
 
-          {/* CARD 2: LIQUIDAÇÃO FINANCEIRA */}
+          {/* CARD 2: FINANCEIRO */}
           <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl space-y-5">
             <div className="flex items-center gap-2.5 border-b border-zinc-800 pb-3">
               <FileText size={16} className="text-green-500" />
@@ -1455,7 +1437,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
               </div>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-850 rounded-2xl p-5 space-y-3.5 shadow-inner">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-3.5 shadow-inner">
               <div className="flex justify-between items-center text-xs text-zinc-400 font-semibold uppercase">
                 <span>Mão de Obra</span>
                 <span className="text-white font-mono font-bold">{formatCurrency(totalServicos)}</span>
@@ -1465,7 +1447,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 <span className="text-white font-mono font-bold">{formatCurrency(totalPecas)}</span>
               </div>
               
-              {/* Desconto */}
               <div className="space-y-1 pt-1 border-t border-zinc-900">
                 <label className="text-[10px] text-zinc-400 uppercase font-black">Conceder Desconto (R$)</label>
                 <input 
@@ -1478,7 +1459,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 />
               </div>
 
-              {/* Forma de Pagamento */}
               <div className="space-y-1 pt-2 border-t border-zinc-900">
                 <label className="text-[10px] text-zinc-400 uppercase font-black">Condição de Pagamento</label>
                 <select 
@@ -1534,7 +1514,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                     />
                   </div>
 
-                  {/* Simulação rápida de parcelas */}
                   <div className="pt-2 max-h-36 overflow-y-auto custom-scrollbar space-y-1 border-t border-zinc-900">
                     <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold block mb-1">
                       Parcelas Simuladas ({numParcelas}x de {formatCurrency(totalGeral / numParcelas)})
@@ -1554,7 +1533,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
                 </div>
               )}
 
-              {/* Total Geral Consolidado */}
               <div className="pt-3 border-t border-zinc-900 flex justify-between items-end">
                 <div>
                   <span className="text-[10px] font-black text-blue-400 uppercase tracking-wider block">Consolidado Geral</span>
@@ -1566,7 +1544,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
               </div>
             </div>
 
-            {/* Ações de Envio */}
             <div className="space-y-3 pt-2">
               <button 
                 type="button"
@@ -1592,7 +1569,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
 
       </div>
 
-      {/* Modais de Cadastro Rápido Integrados */}
       <QuickClientModal
         isOpen={isClientModalOpen}
         onClose={() => setIsClientModalOpen(false)}
@@ -1612,7 +1588,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         }}
       />
 
-      {/* Modal de Almoxarifado / Adicionar Peças do Estoque */}
       <StockPartsModal
         isOpen={isStockModalOpen}
         onClose={() => setIsStockModalOpen(false)}
@@ -1622,7 +1597,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         colorScheme="blue"
       />
 
-      {/* Modal de Cadastro Rápido de Peças */}
       <QuickPartModal
         isOpen={isQuickPartModalOpen}
         onClose={() => setIsQuickPartModalOpen(false)}
