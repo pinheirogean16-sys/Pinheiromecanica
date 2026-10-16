@@ -3,9 +3,9 @@
 
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Plus, Search, Edit, Trash2, Phone, Mail, MapPin, Truck, Terminal, 
+  Plus, Search, Edit, Phone, Truck, Terminal, 
   User as UserIcon, Loader2, Building, UserCheck, AlertCircle, 
-  Eye, Car, MoreHorizontal, Filter, ChevronRight, X, Save
+  Eye, Car, X, Save
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -31,20 +31,17 @@ interface Cliente {
   _count: { veiculos: number; ordens: number };
 }
 
-// Componente de Linha Memoizado
 const ClienteRow = memo(({ 
   cliente, 
   maskCPF_CNPJ, 
   maskPhone, 
   formatDate, 
-  formatCurrency, 
   openEditModal 
 }: { 
   cliente: Cliente, 
   maskCPF_CNPJ: any, 
   maskPhone: any, 
   formatDate: any, 
-  formatCurrency: any, 
   openEditModal: any 
 }) => {
   return (
@@ -133,7 +130,6 @@ export default function ClientesPage() {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ATIVO' | 'INATIVO'>('ALL');
   const [page, setPage] = useState(1);
 
-  // Debounce effect
   useEffect(() => {
     const hand = setTimeout(() => {
       setDebouncedSearch(search);
@@ -141,12 +137,10 @@ export default function ClientesPage() {
     return () => clearTimeout(hand);
   }, [search]);
 
-  // Reset page to 1 when search or filter changes
   useEffect(() => {
     setPage(1);
   }, [search, filterType, filterStatus]);
   
-  // Modal states
   const [showModal, setShowModal] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -176,10 +170,11 @@ export default function ClientesPage() {
     try {
       const params = new URLSearchParams();
       if (filterStatus !== 'ALL') params.append('status', filterStatus);
+      if (filterType !== 'ALL') params.append('tipo', filterType);
       if (debouncedSearch) params.append('q', debouncedSearch);
       params.append('perfil', 'CLIENTE');
       params.append('page', page.toString());
-      params.append('limit', '10');
+      params.append('limit', '20');
       
       const result = await apiFetch<any>(`/api/clientes?${params.toString()}`, { signal });
       const items = Array.isArray(result) ? result : (result.items || []);
@@ -188,14 +183,13 @@ export default function ClientesPage() {
       setData({ items, total, totalPages });
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        console.error(err);
         setError(true);
         handleApiError(err, { defaultMessage: 'Ocorreu uma falha ao sincronizar o banco de dados.' });
       }
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, debouncedSearch, page]);
+  }, [filterStatus, filterType, debouncedSearch, page]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -205,7 +199,6 @@ export default function ClientesPage() {
     };
   }, [fetchClientes]);
 
-  // Mask functions
   const maskPhone = (v: string) => {
     v = v.replace(/\D/g, "");
     if (v.length > 11) v = v.substring(0, 11);
@@ -301,35 +294,8 @@ export default function ClientesPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Deseja realmente remover permanentemente o cliente "${name}"?`)) return;
-    
-    try {
-      await apiFetch(`/api/clientes/${id}`, { method: 'DELETE' });
-      toast.success('Cliente removido do registro.');
-      fetchClientes();
-    } catch (err: any) {
-      handleApiError(err, { defaultMessage: 'Erro ao conectar com a API' });
-    }
-  };
-
-  const filteredClientes = useMemo(() => {
-    if (filterType === 'ALL') return data.items;
-    return data.items.filter(c => c.tipo === filterType);
-  }, [data.items, filterType]);
-
-  const stats = useMemo(() => {
-    return {
-      total: data.total,
-      pf: data.items.filter(c => c.tipo === 'PF').length, // This won't be accurate for total PF if paginated, but user didn't ask to update stats API
-      pj: data.items.filter(c => c.tipo === 'PJ').length,
-      totalSpent: data.items.reduce((acc, c) => acc + (c.ordens?.reduce((sum, o) => sum + (o.valor_total || 0), 0) || 0), 0)
-    };
-  }, [data]);
-
-  const formatCurrency = (val: number) => {
-    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  };
+  // A38: filtros aplicados no servidor. Não há mais re-filtro client-side.
+  // Total de páginas e total de itens vêm da API.
 
   const formatDate = (date: string) => {
     if (!date) return 'N/A';
@@ -357,35 +323,37 @@ export default function ClientesPage() {
         </button>
       </div>
 
-      {/* STATS DE ALTO NÍVEL */}
+      {/* STATS — APENAS DADOS REAIS DA API */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-3xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
             <UserIcon className="w-4 h-4 text-orange-500" /> Total de Clientes
           </p>
           <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-black text-white tracking-tighter">{stats.total}</p>
+            <p className="text-5xl font-black text-white tracking-tighter">{data.total}</p>
             <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest leading-none">Registrados</span>
           </div>
         </div>
 
         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-3xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
-            <UserCheck className="w-4 h-4 text-green-500" /> Clientes Ativos
+            <UserCheck className="w-4 h-4 text-green-500" /> Mostrando Nesta Página
           </p>
           <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-black text-white tracking-tighter">{stats.total - Math.floor(stats.total * 0.15)}</p>
-            <span className="text-[10px] text-green-600 font-black uppercase tracking-widest leading-none">Operacionais</span>
+            <p className="text-5xl font-black text-white tracking-tighter">{data.items.length}</p>
+            <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest leading-none">Registros</span>
           </div>
         </div>
 
         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-3xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-500" /> Inadimplentes
+            <AlertCircle className="w-4 h-4 text-orange-500" /> Paginação
           </p>
           <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-black text-red-500 tracking-tighter">{Math.floor(stats.total * 0.15)}</p>
-            <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest leading-none">Restritos</span>
+            <p className="text-5xl font-black text-white tracking-tighter">{data.totalPages}</p>
+            <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest leading-none">
+              {data.totalPages === 1 ? 'Página' : 'Páginas'}
+            </span>
           </div>
         </div>
       </div>
@@ -399,7 +367,7 @@ export default function ClientesPage() {
              placeholder="BUSCAR POR NOME, DOCUMENTO OU EMAIL..."
              value={search}
              onChange={(e) => setSearch(e.target.value)}
-             className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-16 text-xs text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-850 min-h-[44px]"
+             className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-16 text-xs text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800 min-h-[44px]"
            />
          </div>
          
@@ -436,7 +404,7 @@ export default function ClientesPage() {
                onClick={() => setFilterStatus(s.id as any)}
                className={`flex-1 lg:flex-none px-4 py-3 lg:p-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all min-h-[44px] lg:min-h-0 ${
                  filterStatus === s.id 
-                   ? s.id === 'ATIVO' ? 'bg-green-600/25 text-green-400 font-black' : 'bg-red-650/25 text-red-400 font-black'
+                   ? s.id === 'ATIVO' ? 'bg-green-600/25 text-green-400 font-black' : 'bg-red-600/25 text-red-400 font-black'
                    : 'text-zinc-600 hover:text-white'
                }`}
              >
@@ -477,21 +445,20 @@ export default function ClientesPage() {
                     Falha na Sincronização de Dados
                   </td>
                 </tr>
-              ) : filteredClientes.length === 0 ? (
+              ) : data.items.length === 0 ? (
                 <tr>
                    <td colSpan={7} className="p-20 text-center opacity-30">
                      <AlertCircle className="w-12 h-12 mx-auto mb-4" />
                      <p className="font-black uppercase tracking-widest text-xs italic">Nenhum cliente catalogado na base</p>
                    </td>
                 </tr>
-              ) : filteredClientes.map((cliente) => (
+              ) : data.items.map((cliente) => (
                 <ClienteRow 
                   key={cliente.id} 
                   cliente={cliente} 
                   maskCPF_CNPJ={maskCPF_CNPJ} 
                   maskPhone={maskPhone} 
                   formatDate={formatDate} 
-                  formatCurrency={formatCurrency} 
                   openEditModal={openEditModal} 
                 />
               ))}
@@ -519,7 +486,7 @@ export default function ClientesPage() {
           <div className="p-12 text-center bg-zinc-900/50 border border-zinc-800 text-red-500 rounded-2xl italic font-black uppercase tracking-widest text-[10px]">
             Falha na Sincronização de Dados
           </div>
-        ) : filteredClientes.length === 0 ? (
+        ) : data.items.length === 0 ? (
           <div className="p-12 text-center bg-zinc-900/50 border border-zinc-800 rounded-2xl space-y-3 opacity-35">
             <AlertCircle className="w-10 h-10 mx-auto" />
             <p className="font-black uppercase tracking-widest text-xs italic">Nenhum cliente catalogado na base</p>
@@ -527,7 +494,7 @@ export default function ClientesPage() {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredClientes.map((cliente) => (
+              {data.items.map((cliente) => (
                 <div key={cliente.id} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex flex-col gap-3 relative overflow-hidden">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -556,20 +523,22 @@ export default function ClientesPage() {
                   <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-zinc-900/30 pb-2">
                     <div>
                       <p className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">CPF/CNPJ</p>
-                      <p className="font-mono text-zinc-350 mt-1">{maskCPF_CNPJ(cliente.cpf_cnpj, cliente.tipo)}</p>
+                      <p className="font-mono text-zinc-300 mt-1">{maskCPF_CNPJ(cliente.cpf_cnpj, cliente.tipo)}</p>
                     </div>
                     <div>
                       <p className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Telefone</p>
-                      <p className="font-mono text-zinc-350 mt-1">{maskPhone(cliente.telefone)}</p>
+                      <p className="font-mono text-zinc-300 mt-1">{maskPhone(cliente.telefone)}</p>
                     </div>
                     <div className="col-span-2 grid grid-cols-2 gap-2 mt-1">
                       <div>
-                        <p className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Cidade</p>
-                        <p className="text-zinc-350 mt-1 uppercase truncate font-medium">{(cliente as any).cidade || 'Não informada'}</p>
+                        <p className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Última OS</p>
+                        <p className="text-zinc-300 mt-1 uppercase font-bold italic truncate">
+                          {cliente.ordens?.[0] ? `#${cliente.ordens[0].numero}` : 'Nenhuma'}
+                        </p>
                       </div>
                       <div>
                         <p className="text-[8px] text-zinc-500 uppercase font-black tracking-widest leading-none">Ativos (VEIC)</p>
-                        <p className="text-zinc-350 mt-1 uppercase font-bold italic">{cliente._count?.veiculos || 0} {cliente._count?.veiculos === 1 ? 'veículo' : 'veículos'}</p>
+                        <p className="text-zinc-300 mt-1 uppercase font-bold italic">{cliente._count?.veiculos || 0} {cliente._count?.veiculos === 1 ? 'veículo' : 'veículos'}</p>
                       </div>
                     </div>
                   </div>
@@ -577,7 +546,7 @@ export default function ClientesPage() {
                   <div className="grid grid-cols-3 gap-2 mt-1 pt-2 border-t border-zinc-900/30">
                     <Link 
                       href={`/clientes/${cliente.id}`}
-                      className="flex items-center justify-center gap-1.5 min-h-[44px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 rounded-xl text-zinc-300 hover:text-white transition text-[10px] font-black uppercase tracking-wider text-center"
+                      className="flex items-center justify-center gap-1.5 min-h-[44px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-300 hover:text-white transition text-[10px] font-black uppercase tracking-wider text-center"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       Dossiê
@@ -585,13 +554,13 @@ export default function ClientesPage() {
                     <button 
                       type="button"
                       onClick={() => openEditModal(cliente)}
-                      className="flex items-center justify-center gap-1.5 min-h-[44px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 rounded-xl text-zinc-300 hover:text-white transition text-[10px] font-black uppercase tracking-wider text-center cursor-pointer"
+                      className="flex items-center justify-center gap-1.5 min-h-[44px] bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-300 hover:text-white transition text-[10px] font-black uppercase tracking-wider text-center cursor-pointer"
                     >
                       <Edit className="w-3.5 h-3.5" />
                       Editar
                     </button>
                     <Link 
-                      href={`/os/nova?cliente_id={cliente.id}`}
+                      href={`/os/nova?cliente_id=${cliente.id}`}
                       className="flex items-center justify-center gap-1.5 min-h-[44px] bg-orange-600 hover:bg-orange-500 text-white rounded-xl transition text-[10px] font-black uppercase tracking-wider shadow-lg shadow-orange-950/20 text-center"
                     >
                       Nova OS
@@ -601,7 +570,7 @@ export default function ClientesPage() {
               ))}
             </div>
             
-            <div className="p-4 bg-zinc-900/50 border border-zinc-850 rounded-2xl">
+            <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl">
               <Pagination 
                 page={page} 
                 totalPages={data.totalPages || 0} 
@@ -621,7 +590,6 @@ export default function ClientesPage() {
           />
           
           <div className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-4xl bg-zinc-900 border-0 sm:border sm:border-zinc-800 rounded-none sm:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden shadow-orange-950/20">
-            {/* STICKY HEADER */}
             <div className="sticky top-0 bg-zinc-900 z-10 p-6 sm:p-8 border-b border-zinc-800/60 flex items-center justify-between">
               <div className="space-y-1">
                  <h2 className="text-lg sm:text-xl font-black text-white uppercase flex items-center gap-3 italic">
@@ -640,10 +608,8 @@ export default function ClientesPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-              {/* SCROLLABLE BODY */}
               <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
                 
-                {/* Segmentação & Status Selection */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl">
                     <button
@@ -652,7 +618,7 @@ export default function ClientesPage() {
                       className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.tipo === 'PF' 
                           ? 'bg-zinc-800 text-white shadow-md' 
-                          : 'text-zinc-650 hover:text-white'
+                          : 'text-zinc-600 hover:text-white'
                       }`}
                     >
                       <UserIcon className="w-4 h-4" />
@@ -665,7 +631,7 @@ export default function ClientesPage() {
                       className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.tipo === 'PJ' 
                           ? 'bg-zinc-800 text-white shadow-md' 
-                          : 'text-zinc-650 hover:text-white'
+                          : 'text-zinc-600 hover:text-white'
                       }`}
                     >
                       <Building className="w-4 h-4" />
@@ -680,7 +646,7 @@ export default function ClientesPage() {
                       className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.status === 'ATIVO' 
                           ? 'bg-green-600/20 text-green-500 border border-green-600/30' 
-                          : 'text-zinc-650 hover:text-zinc-400'
+                          : 'text-zinc-600 hover:text-zinc-400'
                       }`}
                     >
                       <span className="text-[10px] font-mono font-black uppercase tracking-widest italic">ATIVO</span>
@@ -691,8 +657,8 @@ export default function ClientesPage() {
                       onClick={() => setFormData({ ...formData, status: 'INATIVO' })}
                       className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.status === 'INATIVO' 
-                          ? 'bg-red-655/20 text-red-500 border border-red-655/30' 
-                          : 'text-zinc-650 hover:text-zinc-400'
+                          ? 'bg-red-600/20 text-red-500 border border-red-600/30' 
+                          : 'text-zinc-600 hover:text-zinc-400'
                       }`}
                     >
                       <span className="text-[10px] font-mono font-black uppercase tracking-widest italic">INATIVO</span>
@@ -862,7 +828,6 @@ export default function ClientesPage() {
 
               </div>
 
-              {/* STICKY FOOTER */}
               <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 p-6 sm:p-8 flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="button"
