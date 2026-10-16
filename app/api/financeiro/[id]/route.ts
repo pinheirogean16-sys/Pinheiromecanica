@@ -148,6 +148,26 @@ export async function PUT(
       );
     }
 
+    // A27: bloqueia transição de status para PAGO via PUT.
+    // A baixa de pagamento só pode acontecer via POST /api/financeiro/[id]/pagar,
+    // que limpa as notificações de atraso e não desvincula OS/cliente.
+    if (body.status === 'PAGO' && antes.status !== 'PAGO') {
+      log(
+        'WARN',
+        'FINANCEIRO',
+        'Tentativa de baixa via PUT bloqueada (A27)',
+        { movimentacaoId: id, statusAnterior: antes.status },
+        user?.name
+      );
+      return NextResponse.json(
+        {
+          error:
+            'Para dar baixa em um lançamento, use o botão "Pagar" da tela de alertas. A edição via PUT não registra a baixa corretamente e desvincula a OS.',
+        },
+        { status: 400 }
+      );
+    }
+
     // M09: valida que os_id e cliente_id pertencem à empresa
     if (body.os_id) {
       const osOk = await prisma.ordemServico.findFirst({
@@ -211,6 +231,7 @@ export async function PUT(
       entidade: 'MovimentacaoFinanceira',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
       dados_depois: movimentacao,
     });
@@ -285,6 +306,7 @@ export async function DELETE(
       entidade: 'MovimentacaoFinanceira',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
     });
 
