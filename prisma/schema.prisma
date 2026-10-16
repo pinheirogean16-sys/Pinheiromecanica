@@ -193,6 +193,18 @@ model EventoAgenda {
   @@index([veiculo_id], map: "EventoAgenda_veiculo_id_fkey")
 }
 
+model LoginAttempt {
+  id           String   @id
+  key_hash     String   @unique
+  count        Int      @default(1)
+  window_start DateTime
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([expires_at])
+}
+
 model MovimentacaoEstoque {
   id           String                   @id
   peca_id      String
