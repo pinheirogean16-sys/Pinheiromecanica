@@ -1,6 +1,6 @@
 export type Role = 'ADMIN' | 'LIDER' | 'MECANICO' | 'ESTOQUISTA' | 'FINANCEIRO';
 
-export type Modulo = 
+export type Modulo =
   | 'dashboard'
   | 'os'
   | 'orcamentos'
@@ -8,17 +8,20 @@ export type Modulo =
   | 'fornecedores'
   | 'veiculos'
   | 'pecas'
+  | 'estoque'
   | 'financeiro'
   | 'checklist'
   | 'logs'
   | 'usuarios'
   | 'nfe'
   | 'configuracoes'
+  | 'empresa_publica'
   | 'relatorios'
   | 'notificacoes'
-  | 'preventivas';
+  | 'preventivas'
+  | 'agenda';
 
-export type Acao = 
+export type Acao =
   | 'visualizar'
   | 'criar'
   | 'editar'
@@ -31,6 +34,7 @@ export const ROLES: Record<Role, string[]> = {
   LIDER: [
     'ler',
     'dashboard.visualizar',
+    'empresa_publica.visualizar',
     'os.visualizar', 'os.criar', 'os.editar', 'os.excluir', 'os.gerenciar',
     'os.editar_proprio', 'os.excluir_proprio',
     'orcamentos.visualizar', 'orcamentos.criar', 'orcamentos.editar', 'orcamentos.excluir',
@@ -39,6 +43,7 @@ export const ROLES: Record<Role, string[]> = {
     'fornecedores.visualizar', 'fornecedores.criar', 'fornecedores.editar', 'fornecedores.excluir',
     'veiculos.visualizar', 'veiculos.criar', 'veiculos.editar', 'veiculos.excluir',
     'pecas.visualizar', 'pecas.criar', 'pecas.editar', 'pecas.gerenciar', 'pecas.excluir',
+    'estoque.visualizar', 'estoque.editar',
     'usuarios.visualizar',
     'financeiro.visualizar',
     'checklist.visualizar', 'checklist.executar', 'checklist.criar', 'checklist.editar', 'checklist.excluir',
@@ -47,6 +52,8 @@ export const ROLES: Record<Role, string[]> = {
   ],
   MECANICO: [
     'ler',
+    'dashboard.visualizar',
+    'empresa_publica.visualizar',
     'os.visualizar', 'os.criar', 'os.editar_proprio', 'os.excluir_proprio',
     'checklist.*',
     'agenda.visualizar',
@@ -54,11 +61,11 @@ export const ROLES: Record<Role, string[]> = {
     'veiculos.visualizar',
     'pecas.visualizar',
     'usuarios.visualizar',
-    'dashboard.visualizar',
     'preventivas.visualizar', 'preventivas.criar'
   ],
   FINANCEIRO: [
     'dashboard.visualizar',
+    'empresa_publica.visualizar',
     'financeiro.visualizar', 'financeiro.criar', 'financeiro.editar', 'financeiro.gerenciar', 'financeiro.excluir',
     'clientes.visualizar', 'clientes.criar', 'clientes.editar',
     'usuarios.visualizar',
@@ -69,7 +76,9 @@ export const ROLES: Record<Role, string[]> = {
   ],
   ESTOQUISTA: [
     'dashboard.visualizar',
+    'empresa_publica.visualizar',
     'pecas.visualizar', 'pecas.criar', 'pecas.editar', 'pecas.gerenciar', 'pecas.excluir',
+    'estoque.visualizar', 'estoque.editar',
     'usuarios.visualizar',
     'clientes.visualizar',
     'fornecedores.visualizar', 'fornecedores.criar', 'fornecedores.editar',
@@ -79,7 +88,6 @@ export const ROLES: Record<Role, string[]> = {
   ],
 };
 
-// Normalização para evitar quebras de chamadas singulares e plurais (ex: cliente -> clientes)
 function normalizeModulo(modulo: string): string {
   const map: Record<string, string> = {
     'cliente': 'clientes',
@@ -94,23 +102,25 @@ function normalizeModulo(modulo: string): string {
   return normalized || modulo;
 }
 
-export function checkPermission(user: { role: string } | null | undefined, modulo: string, acao: string): boolean {
+export function checkPermission(
+  user: { role: string } | null | undefined,
+  modulo: string,
+  acao: string
+): boolean {
   if (!user || !user.role) return false;
-  
+
   const userRole = user.role as Role;
   if (userRole === 'ADMIN') return true;
-  
+
   const permissoes = ROLES[userRole] || [];
-  
+
   const normModulo = normalizeModulo(modulo);
-  
-  // Verifica permissão curinga ou específica do módulo
+
   return (
-    permissoes.includes('*') || 
+    permissoes.includes('*') ||
     permissoes.includes(`${normModulo}.*`) ||
     permissoes.includes(`${normModulo}.${acao}`) ||
     permissoes.includes(`${modulo}.*`) ||
     permissoes.includes(`${modulo}.${acao}`)
   );
 }
-
