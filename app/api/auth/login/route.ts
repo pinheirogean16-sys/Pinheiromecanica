@@ -5,14 +5,8 @@ import { signToken } from '@/lib/auth';
 import { log } from '@/lib/logger';
 import { isRateLimited, resetRateLimit } from '@/lib/rate-limit';
 
-// ============================================================
-// A11: rate limit persistido no banco (LoginAttempt)
-// - Sobrevive a restart
-// - Compartilhado entre workers (se houver mais de um)
-// - Limite: 5 tentativas por email+IP em 5 minutos
-// ============================================================
 const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 5 * 60 * 1000; // 5 minutos
+const WINDOW_MS = 5 * 60 * 1000;
 
 function extrairIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -24,9 +18,6 @@ export async function POST(request: NextRequest) {
   const ip = extrairIp(request);
 
   try {
-    // ============================================================
-    // 1. Validar entrada primeiro (para ter o email antes do rate limit)
-    // ============================================================
     const body = await request.json();
     const { email, password } = body;
 
@@ -38,13 +29,6 @@ export async function POST(request: NextRequest) {
     }
 
     const emailNormalizado = String(email).toLowerCase().trim();
-
-    // ============================================================
-    // 2. Rate limit composto: email + IP
-    // A chave inclui email para não bloquear todos os usuários de um
-    // mesmo IP (escritório compartilhado), e inclui IP para não permitir
-    // que um atacante teste a mesma conta por vários IPs sem limite.
-    // ============================================================
     const rateLimitKey = `login:${emailNormalizado}:${ip}`;
 
     const rateCheck = await isRateLimited(rateLimitKey, MAX_ATTEMPTS, WINDOW_MS);
@@ -61,21 +45,23 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json(
-        {
-          error: `Muitas tentativas. Tente novamente em ${minutesLeft} min.`,
-        },
+        { error: `Muitas tentativas. Tente novamente em ${minutesLeft} min.` },
         { status: 429 }
       );
     }
 
     // ============================================================
-    // 3. Buscar usuário
+    // A24: e-mail agora é único POR EMPRESA, não global.
+    // Pode haver múltiplos usuários com o mesmo email (empresas diferentes).
+    // Estratégia: busca todos, itera com bcrypt.compare até achar o que casa.
+    // bcrypt.compare é a prova de timing; mesmo que dois usuários com mesmo
+    // email e senhas diferentes existam, só o certo autentica.
     // ============================================================
-    const user = await prisma.user.findUnique({
+    const candidatos = await prisma.user.findMany({
       where: { email: emailNormalizado },
     });
 
-    if (!user) {
+    if (candidatos.length === 0) {
       log('WARN', 'AUTH', 'Tentativa de login com email inexistente', {
         email: emailNormalizado,
         ip,
@@ -83,12 +69,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
-    // ============================================================
-    // 4. Validar senha
-    // ============================================================
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    let user: typeof candidatos[number] | null = null;
+    for (const candidato of candidatos) {
+      const ok = await bcrypt.compare(password, candidato.password_hash);
+      if (ok) {
+        user = candidato;
+        break;
+      }
+    }
 
-    if (!validPassword) {
+    if (!user) {
       log('WARN', 'AUTH', 'Tentativa de login falhou', {
         email: emailNormalizado,
         ip,
@@ -96,9 +86,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
-    // ============================================================
-    // 5. Validar empresa (multi-tenancy)
-    // ============================================================
     if (!user.empresa_id || user.empresa_id === 'default') {
       log('ERROR', 'AUTH', 'Usuário sem empresa válida', { userId: user.id });
       return NextResponse.json(
@@ -107,9 +94,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ============================================================
-    // 5b. C06: bloquear login de usuário desativado
-    // ============================================================
     if (user.ativo === false) {
       log('WARN', 'AUTH', 'Tentativa de login de usuário desativado', {
         userId: user.id,
@@ -122,13 +106,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ============================================================
-    // 6. Sucesso: limpa o rate limit desta chave
-    // ============================================================
     await resetRateLimit(rateLimitKey);
 
-    // C06: inclui token_version no JWT. Se a senha for trocada depois,
-    // o valor no banco é incrementado e este token deixa de valer.
     const token = await signToken({
       id: user.id,
       email: user.email,
@@ -138,9 +117,6 @@ export async function POST(request: NextRequest) {
       token_version: user.token_version ?? 0,
     });
 
-    // ============================================================
-    // 7. Resposta + Cookie seguro
-    // ============================================================
     const response = NextResponse.json({
       success: true,
       redirect: '/dashboard',
@@ -157,7 +133,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 8, // 8 horas (alinha com o JWT)
+      maxAge: 60 * 60 * 8,
       path: '/',
     });
 
