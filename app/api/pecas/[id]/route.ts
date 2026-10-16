@@ -10,11 +10,14 @@ import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
 import { apiError } from '@/lib/api-error';
 
-// A15: `quantidade` NÃO pode ser alterada por este endpoint.
-// Alteração de saldo de estoque só pode acontecer via
-// POST /api/estoque/movimentacao, que grava MovimentacaoEstoque e usa
-// increment/decrement atômico. Isso evita "estoque fantasma" e garante
-// rastreabilidade de toda entrada/saída.
+// A15 + A32: `quantidade` NÃO pode ser alterada por este endpoint.
+// Alteração de saldo só via POST /api/estoque/movimentacao
+// (que grava MovimentacaoEstoque e usa increment/decrement atômico).
+//
+// Se alguém enviar `quantidade` no body, o Zod STRIPa silenciosamente
+// (não tem o campo no schema). Mas adicionamos uma checagem explícita
+// depois, para devolver erro 400 com mensagem clara — assim o front
+// sabe que a operação não fez o que ele queria.
 const updatePecaSchema = z.object({
   codigo: z.string().min(2).trim().optional(),
   descricao: z.string().min(3).trim().optional(),
@@ -111,7 +114,27 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const data = updatePecaSchema.parse(await request.json());
+    const rawBody = await request.json();
+
+    // A32: bloqueio explícito — quantidade não pode ser alterada aqui.
+    if (rawBody && (rawBody.quantidade !== undefined || rawBody.quantidade === 0)) {
+      log(
+        'WARN',
+        'PECA',
+        'Tentativa de alterar quantidade via PUT bloqueada (A32)',
+        { pecaId: id, userId: user.id },
+        user.name
+      );
+      return NextResponse.json(
+        {
+          error:
+            'Alteração de quantidade não é permitida por esta rota. Use POST /api/estoque/movimentacao (entrada/saída/ajuste) para alterar o saldo com registro de movimentação.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const data = updatePecaSchema.parse(rawBody);
 
     const antes = await prisma.peca.findFirst({
       where: {
@@ -161,9 +184,7 @@ export async function PUT(
     if (peca.quantidade <= peca.estoque_minimo) {
       try {
         await notificarEstoqueBaixo(peca);
-      } catch {
-        // notificação é efeito colateral; não quebra a atualização
-      }
+      } catch {}
     }
 
     await createAuditLog({
@@ -223,7 +244,6 @@ export async function DELETE(
     }
 
     // Verificar dependências antes de tentar deletar.
-    // Evita 500 por violação de FK (PecaAplicada e MovimentacaoEstoque usam Restrict).
     const [aplicacoesCount, movimentacoesCount] = await Promise.all([
       prisma.pecaAplicada.count({ where: { peca_id: id } }),
       prisma.movimentacaoEstoque.count({ where: { peca_id: id } }),
