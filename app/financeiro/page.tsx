@@ -1,7 +1,7 @@
 'use client';
-/* eslint-disable react-hooks/set-state-in-effect */
 
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   DollarSign, TrendingUp, TrendingDown, Clock, Plus, 
   Search, Filter, ArrowUpRight, ArrowDownLeft, Calendar,
@@ -37,13 +37,14 @@ const MovimentoRow = memo(({
   formatCurrency: any,
   onReconcile: (item: any) => void
 }) => {
+  const router = useRouter();
   const badge = getStatusBadge(item.status);
   const parcelado = isParcelado(item.descricao);
 
   return (
     <tr 
       className="border-zinc-800 border-b hover:bg-zinc-900/50 transition-all cursor-pointer" 
-      onClick={() => window.location.href = `/financeiro/${item.id}`}
+      onClick={() => router.push(`/financeiro/${item.id}`)}
     >
       <td className="p-4 text-sm whitespace-nowrap">
         <div className="flex items-center gap-3">
@@ -109,6 +110,7 @@ const MovimentoRow = memo(({
 MovimentoRow.displayName = 'MovimentoRow';
 
 export default function FinanceiroDashboard() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('resumo');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<any>(null);
@@ -127,7 +129,7 @@ export default function FinanceiroDashboard() {
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState('');
 
-  // Debounce search effect to protect server memory and CPU
+  // Debounce search
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm);
@@ -138,13 +140,20 @@ export default function FinanceiroDashboard() {
     };
   }, [searchTerm]);
 
-  // Fetch standard summary and list with AbortController to prevent race conditions
   const fetchDashboardData = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
+      // M33: encodeURIComponent nos parâmetros
+      const params = new URLSearchParams({
+        q: debouncedSearch,
+        tipo: filterTipo,
+        status: filterStatus,
+        page: String(page),
+        limit: '10',
+      });
       const [summaryRes, listRes] = await Promise.all([
         fetch('/api/financeiro/resumo', { credentials: 'include', signal }),
-        fetch(`/api/financeiro?q=${debouncedSearch}&tipo=${filterTipo}&status=${filterStatus}&page=${page}&limit=10`, { credentials: 'include', signal })
+        fetch(`/api/financeiro?${params.toString()}`, { credentials: 'include', signal })
       ]);
 
       if (summaryRes.ok && listRes.ok) {
@@ -157,7 +166,6 @@ export default function FinanceiroDashboard() {
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        console.error(error);
         toast.error('Erro ao carregar dados financeiros');
       }
     } finally {
@@ -165,7 +173,6 @@ export default function FinanceiroDashboard() {
     }
   }, [debouncedSearch, filterTipo, filterStatus, page]);
 
-  // Fetch Enterprise deep analysis (DRE, Forecast, Inadimplência, Centro de Custo)
   const fetchAnaliseData = useCallback(async () => {
     try {
       setAnaliseLoading(true);
@@ -173,8 +180,8 @@ export default function FinanceiroDashboard() {
       if (res.ok) {
         setAnalise(await res.json());
       }
-    } catch (err) {
-      console.error('Erro ao buscar analise:', err);
+    } catch {
+      // silencioso
     } finally {
       setAnaliseLoading(false);
     }
@@ -194,7 +201,6 @@ export default function FinanceiroDashboard() {
     }
   }, [activeTab, fetchAnaliseData]);
 
-  // Watch filters
   useEffect(() => {
     if (filterQuick === 'TODOS') {
       setFilterTipo('TODOS');
@@ -211,38 +217,57 @@ export default function FinanceiroDashboard() {
     } else if (filterQuick === 'PARCELADOS') {
       setFilterTipo('TODOS');
       setFilterStatus('TODOS');
-      // Special handle if any
     }
     setPage(1);
   }, [filterQuick]);
 
+  /**
+   * A27: baixa de pagamento usa rota específica (/pagar).
+   * O PUT /api/financeiro/[id] bloqueia mudança para PAGO para evitar
+   * desvincular OS/cliente e não limpar notificações.
+   */
   const handleStatusReconcile = async (id: string, newStatus: string, receipt?: string) => {
     try {
-      const payload: any = { status: newStatus };
-      if (newStatus === 'PAGO') {
-        payload.data_pagamento = new Date().toISOString();
-      }
-      if (receipt) {
-        payload.comprovante_url = receipt;
-      }
+      let res: Response;
 
-      const res = await fetch(`/api/financeiro/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include'
-      });
+      if (newStatus === 'PAGO') {
+        // Rota específica de baixa
+        res = await fetch(`/api/financeiro/${id}/pagar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            comprovante_url: receipt || undefined,
+          }),
+          credentials: 'include',
+        });
+      } else {
+        // Outros status (PENDENTE, CANCELADO) via PUT
+        res = await fetch(`/api/financeiro/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: newStatus,
+            comprovante_url: receipt || undefined,
+          }),
+          credentials: 'include',
+        });
+      }
 
       if (res.ok) {
-        toast.success(`Lançamento conciliado como ${newStatus}`);
+        toast.success(
+          newStatus === 'PAGO'
+            ? 'Pagamento conciliado com sucesso'
+            : `Lançamento marcado como ${newStatus}`
+        );
         setReconcilingItem(null);
         setReceiptUrl('');
         fetchDashboardData();
         fetchAnaliseData();
       } else {
-        toast.error('Erro ao conciliar lançamento');
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || `Erro ao atualizar lançamento`);
       }
-    } catch (error) {
+    } catch {
       toast.error('Erro de conexão ao conciliar');
     }
   };
@@ -269,7 +294,7 @@ export default function FinanceiroDashboard() {
       } else {
         toast.error('Erro ao realizar upload do comprovante');
       }
-    } catch (error) {
+    } catch {
       toast.error('Falha de comunicação no upload');
     } finally {
       setUploadingReceipt(false);
@@ -353,7 +378,7 @@ export default function FinanceiroDashboard() {
             <div className="w-2 h-7 bg-orange-600 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)]" />
             <h1 className="text-3xl font-black uppercase tracking-tight italic">Central Financeira Enterprise</h1>
           </div>
-          <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.3em] mt-1 ml-5">Pinheiro Diesel Pro Management Terminal</p>
+          <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.3em] mt-1 ml-5">VEHLOX Management Terminal</p>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -373,7 +398,7 @@ export default function FinanceiroDashboard() {
         </div>
       </div>
 
-      {/* TABS DE CONTRÔLE ENTERPRISE */}
+      {/* TABS */}
       <div className="flex overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&-::-webkit-scrollbar]:hidden snap-x snap-mandatory border-b border-zinc-900 gap-2 p-1 bg-zinc-950 rounded-2xl">
         <button
           onClick={() => setActiveTab('resumo')}
@@ -425,10 +450,9 @@ export default function FinanceiroDashboard() {
         </button>
       </div>
 
-      {/* VIEW: FLUXO DE CAIXA MAIN */}
+      {/* VIEW: FLUXO DE CAIXA */}
       {activeTab === 'resumo' && (
-        <div className="space-y-12 animate-fadeIn text-white">
-          {/* KPI CARDS */}
+        <div className="space-y-12">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
             <div className="bg-zinc-900/40 border border-zinc-800 p-6 sm:p-8 rounded-3xl relative overflow-hidden group hover:border-zinc-700 transition shadow-2xl">
               <div className="relative z-10">
@@ -471,7 +495,6 @@ export default function FinanceiroDashboard() {
             </div>
           </div>
 
-          {/* CHART */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-6 bg-zinc-900/30 border border-zinc-900 p-6 sm:p-8 rounded-3xl shadow-2xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -488,23 +511,9 @@ export default function FinanceiroDashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={summary?.chartData || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="#4b5563" 
-                      fontSize={10} 
-                      tickLine={false}
-                      className="font-mono uppercase tracking-widest"
-                    />
-                    <YAxis 
-                      stroke="#4b5563" 
-                      fontSize={10} 
-                      tickLine={false}
-                      tickFormatter={(value) => `R$${(value/1000).toFixed(0)}k`}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#09090b', border: '1px solid #1f2937', borderRadius: '12px' }}
-                      itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: '900' }}
-                    />
+                    <XAxis dataKey="name" stroke="#4b5563" fontSize={10} tickLine={false} className="font-mono uppercase tracking-widest" />
+                    <YAxis stroke="#4b5563" fontSize={10} tickLine={false} tickFormatter={(value) => `R$${(value/1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid #1f2937', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: '900' }} />
                     <Bar dataKey="entradas" fill="#22c55e" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="saidas" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -512,7 +521,6 @@ export default function FinanceiroDashboard() {
               </div>
             </div>
 
-            {/* PERFORMANCE / ATIVOS EM ALERTA */}
             <div className="bg-zinc-900/40 border border-zinc-800 p-6 sm:p-8 rounded-3xl space-y-6">
               <div>
                 <h3 className="text-sm font-black uppercase text-white">Análise Operacional</h3>
@@ -537,9 +545,9 @@ export default function FinanceiroDashboard() {
               </div>
 
               <div className="pt-4 border-t border-zinc-800 space-y-2">
-                <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">Sla de Conciliações</p>
+                <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">SLA de Conciliações</p>
                 <div className="flex justify-between items-center text-[10px]">
-                  <span className="text-zinc-500 font-medium">Auto-Sincronia Hostinger:</span>
+                  <span className="text-zinc-500 font-medium">Auto-Sincronia:</span>
                   <span className="font-mono text-green-500 font-bold">100% OPERANTE</span>
                 </div>
               </div>
@@ -548,9 +556,9 @@ export default function FinanceiroDashboard() {
         </div>
       )}
 
-       {/* VIEW: CONTAS A PAGAR / RECEBER E TABELA */}
+      {/* VIEW: TABELA */}
       {(activeTab === 'resumo' || activeTab === 'pagar_receber') && (
-        <div className="space-y-6 animate-fadeIn">
+        <div className="space-y-6">
           <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center bg-zinc-900/50 border border-zinc-800 p-4 rounded-3xl shadow-xl w-full max-w-full">
             <div className="relative flex-1 group w-full">
               <div className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-orange-500 transition-colors"><Search size={18} /></div>
@@ -583,7 +591,7 @@ export default function FinanceiroDashboard() {
                   onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
                 >
                   <option value="TODOS">TODOS STATUS</option>
-                  <option value="PAGO">LIGUIDADOS / PAGOS</option>
+                  <option value="PAGO">LIQUIDADOS / PAGOS</option>
                   <option value="PENDENTE">A VENCER / PENDENTES</option>
                   <option value="ATRASADO">INADIMPLENTES / ATRASADOS</option>
                   <option value="CANCELADO">REJEITADOS / CANCELADO</option>
@@ -656,7 +664,6 @@ export default function FinanceiroDashboard() {
               </div>
             </div>
 
-            {/* Pagination */}
             <div className="p-6 border-t border-zinc-900 bg-zinc-950/20">
               <Pagination 
                 page={page} 
@@ -668,13 +675,13 @@ export default function FinanceiroDashboard() {
         </div>
       )}
 
-      {/* VIEW: DRE SIMPLIFICADO */}
+      {/* VIEW: DRE */}
       {activeTab === 'dre' && (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="space-y-8">
           {analiseLoading ? (
             <div className="py-24 flex flex-col items-center justify-center space-y-4">
               <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-              <p className="text-[10px] font-black uppercase text-zinc-450 tracking-widest">Processando DRE e Margem Diesel...</p>
+              <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Processando DRE e Margem Diesel...</p>
             </div>
           ) : !analise?.dre ? (
             <div className="bg-zinc-900/30 p-12 text-center text-zinc-500 font-bold uppercase tracking-widest rounded-3xl border border-zinc-800">
@@ -682,8 +689,6 @@ export default function FinanceiroDashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              
-              {/* DRE Summary Card */}
               <div className="bg-zinc-900/40 border border-zinc-800 p-8 rounded-3xl space-y-6">
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider text-orange-500">DRE Simplificado</h3>
@@ -714,7 +719,6 @@ export default function FinanceiroDashboard() {
                 </div>
               </div>
 
-              {/* Categorias no DRE */}
               <div className="lg:col-span-2 bg-zinc-900/30 border border-zinc-900 p-8 rounded-[2.5rem] shadow-2xl space-y-6">
                 <div>
                   <h3 className="text-sm font-black uppercase">Resultado por Categoria de Operação</h3>
@@ -746,19 +750,18 @@ export default function FinanceiroDashboard() {
                   </table>
                 </div>
               </div>
-
             </div>
           )}
         </div>
       )}
 
-      {/* VIEW: PREVISÃO FINANCEIRA & INADIMPLÊNCIA */}
+      {/* VIEW: PREVISÃO */}
       {activeTab === 'previsao' && (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="space-y-8">
           {analiseLoading ? (
             <div className="py-24 flex flex-col items-center justify-center space-y-4">
               <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-              <p className="text-[10px] font-black uppercase text-zinc-450 tracking-widest">Coletando estimativas de faturamento e custos...</p>
+              <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Coletando estimativas de faturamento e custos...</p>
             </div>
           ) : !analise ? (
             <div className="bg-zinc-900/30 p-12 text-center text-zinc-500 font-bold uppercase tracking-widest rounded-3xl border border-zinc-800">
@@ -766,8 +769,6 @@ export default function FinanceiroDashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              
-              {/* Previsão Futura */}
               <div className="lg:col-span-2 bg-zinc-900/30 border border-zinc-900 p-8 rounded-[2.5rem] shadow-2xl space-y-6">
                 <div>
                   <h3 className="text-sm font-black uppercase">Previsão de Caixa (Próximos 4 Meses)</h3>
@@ -779,18 +780,17 @@ export default function FinanceiroDashboard() {
                     <div key={idx} className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl space-y-3 hover:border-zinc-800 transition-colors">
                       <div>
                         <p className="text-sm font-black text-orange-500 font-mono italic">{p.mes}</p>
-                        <p className="text-[8px] text-zinc-650 font-bold tracking-widest">{p.ano}</p>
+                        <p className="text-[8px] text-zinc-600 font-bold tracking-widest">{p.ano}</p>
                       </div>
                       <div className="space-y-1.5 font-mono text-[10px]">
                         <div className="flex justify-between"><span className="text-zinc-500">Rec:</span><span className="text-green-400">+{p.entradas ? (p.entradas / 1000).toFixed(1) : '0'}k</span></div>
                         <div className="flex justify-between"><span className="text-zinc-500">Pag:</span><span className="text-red-400">-{p.saidas ? (p.saidas / 1000).toFixed(1) : '0'}k</span></div>
-                        <div className="border-t border-zinc-900 pt-1.5 flex justify-between font-bold"><span className="text-zinc-450">Est:</span><span className={p.saldoEstimado >= 0 ? 'text-white' : 'text-red-500'}>{(p.saldoEstimado / 1000).toFixed(1)}k</span></div>
+                        <div className="border-t border-zinc-900 pt-1.5 flex justify-between font-bold"><span className="text-zinc-500">Est:</span><span className={p.saldoEstimado >= 0 ? 'text-white' : 'text-red-500'}>{(p.saldoEstimado / 1000).toFixed(1)}k</span></div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Centro de custos breakdown */}
                 <div className="pt-6 border-t border-zinc-900">
                   <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4">Investimentos / Rateio por Centro de Custos</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -807,7 +807,6 @@ export default function FinanceiroDashboard() {
                 </div>
               </div>
 
-              {/* Inadimplência Alerta */}
               <div className="bg-zinc-900/40 border border-zinc-800 p-8 rounded-3xl space-y-6">
                 <div className="flex justify-between items-start">
                   <div>
@@ -817,7 +816,7 @@ export default function FinanceiroDashboard() {
                   <ShieldAlert className="text-red-500 animate-pulse" size={20} />
                 </div>
 
-                <div className="p-5 bg-red-950/20 border border-red-550/10 rounded-2xl">
+                <div className="p-5 bg-red-950/20 border border-red-500/10 rounded-2xl">
                   <p className="text-[9px] text-red-400 font-black uppercase tracking-widest mb-1">Total Negativado/Atrasado</p>
                   <p className="text-3xl font-black text-red-500 font-mono italic tracking-tighter">{formatCurrency(analise.inadimplencia.total)}</p>
                 </div>
@@ -831,7 +830,7 @@ export default function FinanceiroDashboard() {
                       <div key={idx} className="bg-zinc-950 border border-zinc-900 p-3 rounded-xl flex items-center justify-between font-mono text-[10px] hover:border-zinc-800 transition">
                         <div className="min-w-0">
                           <p className="text-white font-black uppercase truncate italic">{ln.cliente?.nome || 'Cliente não identificado'}</p>
-                          <p className="text-zinc-650 text-[8px] truncate">Ref: {ln.descricao}</p>
+                          <p className="text-zinc-600 text-[8px] truncate">Ref: {ln.descricao}</p>
                         </div>
                         <span className="text-red-400 font-black ml-2 whitespace-nowrap">{formatCurrency(ln.valor)}</span>
                       </div>
@@ -839,24 +838,21 @@ export default function FinanceiroDashboard() {
                   )}
                 </div>
               </div>
-
             </div>
           )}
         </div>
       )}
 
-      {/* VIEW: CONCILIAÇÃO & RECORRÊNCIAS */}
+      {/* VIEW: CONCILIAÇÃO */}
       {activeTab === 'conciliacao' && (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="space-y-8">
           {analiseLoading ? (
             <div className="py-24 flex flex-col items-center justify-center space-y-4">
               <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-              <p className="text-[10px] font-black uppercase text-zinc-450 tracking-widest">Coletando lançamentos de conciliação...</p>
+              <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Coletando lançamentos de conciliação...</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              
-              {/* Lançamentos recorrentes e parcelados */}
               <div className="lg:col-span-2 bg-zinc-900/30 border border-zinc-900 p-8 rounded-[2.5rem] shadow-2xl space-y-6">
                 <div>
                   <h3 className="text-sm font-black uppercase">Fila de Recorrências & Parcelamentos</h3>
@@ -911,7 +907,6 @@ export default function FinanceiroDashboard() {
                 </div>
               </div>
 
-              {/* Conciliação manual instrução */}
               <div className="bg-zinc-900/40 border border-zinc-800 p-8 rounded-3xl space-y-6">
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider text-green-500">Conciliação Bancária</h3>
@@ -919,7 +914,7 @@ export default function FinanceiroDashboard() {
                 </div>
 
                 <div className="prose text-zinc-400 text-xs leading-relaxed space-y-3">
-                  <p>A conciliação manual do ERP Pinheiro Diesel Pro permite:</p>
+                  <p>A conciliação manual do VEHLOX permite:</p>
                   <ul className="list-disc pl-5 space-y-1 text-zinc-500 uppercase font-bold text-[9px]">
                     <li>Vincular comprovantes de transferência bancária em PDF/Imagem.</li>
                     <li>Registrar datas oficiais de pagamentos (fato realizador).</li>
@@ -928,24 +923,23 @@ export default function FinanceiroDashboard() {
                   <p className="text-[10px] text-orange-500/60 font-black">Selecione qualquer transação na listagem oficial ou no card de parcelas para iniciar a conciliação manual imediata.</p>
                 </div>
               </div>
-
             </div>
           )}
         </div>
       )}
 
-      {/* CONTROLE INATIVO FOOTER */}
+      {/* FOOTER */}
       <div className="pt-10 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between gap-6">
          <div className="flex items-center gap-6">
             <div className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full animate-ping" /><span className="text-[10px] text-zinc-600 font-bold uppercase">SISTEMA FINANCEIRO SEGURO (BRL)</span></div>
          </div>
-         <p className="text-[9px] text-zinc-800 font-bold uppercase">Pinheiro Diesel Pro ERP Enterprise 2026</p>
+         <p className="text-[9px] text-zinc-800 font-bold uppercase">VEHLOX Sistema de Gestão</p>
       </div>
 
-      {/* MODAL DE CONCILIAÇÃO MANUAL */}
+      {/* MODAL DE CONCILIAÇÃO */}
       {reconcilingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-3xl p-8 space-y-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-3xl p-8 space-y-6 shadow-2xl relative">
             <button 
               onClick={() => { setReconcilingItem(null); setReceiptUrl(''); }}
               className="absolute top-6 right-6 p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white transition"
@@ -1020,7 +1014,6 @@ export default function FinanceiroDashboard() {
   );
 }
 
-// Simple chart icon sub-component
 function LineChartIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
