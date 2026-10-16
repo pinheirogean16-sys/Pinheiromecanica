@@ -14,6 +14,22 @@ import { converterUnidade } from '@/lib/unidades';
 import { validarEProcessarLeiturasVeiculo } from '@/lib/odometro-horimetro';
 
 // ============================================================
+// A07: alíquota de imposto por regime tributário da empresa
+// ============================================================
+const ALIQUOTAS_POR_REGIME: Record<string, number> = {
+  'Simples Nacional': 6,
+  'MEI': 0,
+  'Lucro Presumido': 13.33,
+  'Lucro Real': 16.33,
+};
+
+function obterAliquotaImposto(regime: string | null | undefined): number {
+  if (!regime) return 0;
+  const trimmed = String(regime).trim();
+  return ALIQUOTAS_POR_REGIME[trimmed] ?? 0;
+}
+
+// ============================================================
 // SERIALIZAÇÃO DE DECIMAIS
 // ============================================================
 function serializeDecimals(obj: any): any {
@@ -315,7 +331,6 @@ const updateOsSchema = z
     preventivas_ids: z.array(z.string()).optional().default([]),
     preventiva_id: z.string().optional().nullable(),
     motivo_cancelamento: z.string().max(500).optional().nullable(),
-    // A26: permite ao ADMIN forçar reescrita de assinatura (caso extremo)
     forcar_reescrita_assinatura: z.boolean().optional().default(false),
   })
   .partial();
@@ -513,6 +528,13 @@ export async function PATCH(
         { status: 403 }
       );
     }
+
+    // A07: busca a alíquota de imposto do regime tributário da empresa
+    const configEmpresaPatch = await prisma.configuracaoEmpresa.findFirst({
+      where: { empresa_id: user.empresa_id },
+      select: { regime_tributario: true },
+    });
+    const aliquotaImpostoPatch = obterAliquotaImposto(configEmpresaPatch?.regime_tributario);
 
     // ============================================================
     // A26: bloqueia alteração de assinatura se já existe hash registrado.
@@ -819,7 +841,6 @@ export async function PATCH(
       if (body.centro_custo !== undefined) updateData.centro_custo = body.centro_custo;
       if (body.custo_km !== undefined) updateData.custo_km = body.custo_km;
 
-      // A26: só atualiza assinatura se não estiver bloqueada
       if (body.assinatura_cliente !== undefined)
         updateData.assinatura_cliente = body.assinatura_cliente;
       if (body.assinatura_mecanico !== undefined)
@@ -995,7 +1016,8 @@ export async function PATCH(
         updateData.valor_total > 0
           ? roundDecimal((lucro_bruto / updateData.valor_total) * 100)
           : 0;
-      const impostosSimulados = roundDecimal(updateData.valor_total * 0.06);
+      // A07: usa a alíquota do regime tributário da empresa
+      const impostosSimulados = roundDecimal(updateData.valor_total * (aliquotaImpostoPatch / 100));
       const total_liquido = roundDecimal(lucro_bruto - impostosSimulados);
 
       updateData.custo_pecas = custo_pecas;
@@ -1136,6 +1158,13 @@ export async function PUT(
         { status: 403 }
       );
     }
+
+    // A07: busca a alíquota de imposto do regime tributário da empresa
+    const configEmpresaPut = await prisma.configuracaoEmpresa.findFirst({
+      where: { empresa_id: user.empresa_id },
+      select: { regime_tributario: true },
+    });
+    const aliquotaImpostoPut = obterAliquotaImposto(configEmpresaPut?.regime_tributario);
 
     // ============================================================
     // A26: mesma proteção no PUT.
@@ -1526,7 +1555,8 @@ export async function PUT(
         const lucro_bruto = roundDecimal(valor_total - custo_real);
         const margem_lucro =
           valor_total > 0 ? roundDecimal((lucro_bruto / valor_total) * 100) : 0;
-        const impostosSimulados = roundDecimal(valor_total * 0.06);
+        // A07: usa a alíquota do regime tributário da empresa
+        const impostosSimulados = roundDecimal(valor_total * (aliquotaImpostoPut / 100));
         const total_liquido = roundDecimal(lucro_bruto - impostosSimulados);
 
         const rawOrdemFinal = await tx.ordemServico.update({
