@@ -44,9 +44,6 @@ export default function ImportarNFePage() {
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(new Date().toISOString().split('T')[0]);
   const [categoriaPecas, setCategoriaPecas] = useState('OUTROS');
 
-  // A14: contadores reais vindos da API (não mais por índice)
-  const [stats, setStats] = useState<{ criados: number; atualizados: number }>({ criados: 0, atualizados: 0 });
-
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setHasDraft(!!localStorage.getItem('nfe_import_draft'));
@@ -219,14 +216,14 @@ export default function ImportarNFePage() {
     }
   };
 
-  // A14: contadores reais. Sem "idx % 3".
+  // A14/A35: contadores reais. Sem "idx % 3".
   // Como não sabemos no cliente se a peça existe no banco, mostramos o total
   // e deixamos a distinção "novo/atualizado" para depois da importação.
   const totalItens = nfeData ? nfeData.itens.length : 0;
   const valorTotal = nfeData ? nfeData.totais.valorNF : 0;
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 pb-36 min-w-0 max-w-full overflow-hidden">
+    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 pb-36 min-w-0 overflow-hidden">
 
       {/* HEADER PRINCIPAL */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-6">
