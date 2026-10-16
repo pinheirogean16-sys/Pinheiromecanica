@@ -93,17 +93,19 @@ export default function ImprimirOSPage() {
   const [company, setCompany] = useState<any>(null);
 
   useEffect(() => {
+    // A31: usa a rota pública (acessível a todos os papéis).
+    // Dados bancários/PIX/token NFe NÃO são enviados por essa rota.
     const fetchCompany = async () => {
       try {
-        const res = await fetch('/api/configuracoes/empresa');
+        const res = await fetch('/api/configuracoes/empresa/publico');
         if (res.ok) {
           const data = await res.json();
-          if (data.id) {
+          if (data && Object.keys(data).length > 0) {
             setCompany(data);
           }
         }
-      } catch (err) {
-        // Silencioso
+      } catch {
+        // Silencioso — impressão usa fallback BRANDING
       }
     };
     fetchCompany();
@@ -116,7 +118,7 @@ export default function ImprimirOSPage() {
           const data = await res.json();
           setOs(data);
         }
-      } catch (err) {
+      } catch {
         // Silencioso
       } finally {
         setLoading(false);
@@ -176,9 +178,6 @@ export default function ImprimirOSPage() {
 
   return (
     <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-mono text-black">
-      {/* ============================================================
-          CSS DE IMPRESSÃO A4
-          ============================================================ */}
       <style jsx global>{`
         @media print {
           @page {
@@ -221,9 +220,6 @@ export default function ImprimirOSPage() {
         }
       `}</style>
 
-      {/* ============================================================
-          CONTROLE SUPERIOR (escondido na impressão)
-          ============================================================ */}
       <div className="max-w-4xl mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl">
         <Link
           href={`/os/${id}`}
@@ -239,16 +235,10 @@ export default function ImprimirOSPage() {
         </button>
       </div>
 
-      {/* ============================================================
-          DOCUMENTO PRINCIPAL
-          ============================================================ */}
       <div className="max-w-4xl mx-auto bg-white shadow-2xl p-4 sm:p-8 print:shadow-none print:p-0 border border-black print-container">
 
-        {/* ============================================================
-            CABEÇALHO — DADOS DA EMPRESA + LOGO VEHLOX
-            ============================================================ */}
+        {/* CABEÇALHO */}
         <div className="flex border-b-2 border-black pb-4 mb-4 avoid-break">
-          {/* Logo — AUMENTADA */}
           <div className="w-1/3 flex items-center justify-center border-r border-black pr-4">
             {logo ? (
               <img
@@ -263,7 +253,6 @@ export default function ImprimirOSPage() {
             )}
           </div>
 
-          {/* Dados da empresa */}
           <div className="w-2/3 pl-4 space-y-1">
             <h1 className="text-lg font-black uppercase leading-tight">
               {company?.razao_social || company?.nome_fantasia || 'RAZÃO SOCIAL NÃO CONFIGURADA'}
@@ -293,9 +282,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* ============================================================
-            TÍTULO E NÚMERO DA OS
-            ============================================================ */}
+        {/* TÍTULO E NÚMERO */}
         <div className="flex border-b-2 border-black mb-4 avoid-break">
           <div className="flex-1 p-2 bg-zinc-100 flex flex-col items-center justify-center border-r border-black">
             <h2 className="text-2xl font-black uppercase tracking-widest">ORDEM DE SERVIÇO</h2>
@@ -314,9 +301,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* ============================================================
-            DADOS DO CLIENTE
-            ============================================================ */}
+        {/* CLIENTE */}
         <div className="border border-black mb-3 avoid-break">
           <div className="bg-black text-white p-1">
             <p className="text-[10px] font-black uppercase px-1 tracking-widest">DADOS DO CLIENTE</p>
@@ -348,9 +333,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* ============================================================
-            DADOS DO VEÍCULO
-            ============================================================ */}
+        {/* VEÍCULO */}
         <div className="border border-black mb-3 avoid-break">
           <div className="bg-black text-white p-1">
             <p className="text-[10px] font-black uppercase px-1 tracking-widest">DADOS DO VEÍCULO</p>
@@ -390,9 +373,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* ============================================================
-            SERVIÇOS REALIZADOS
-            ============================================================ */}
+        {/* SERVIÇOS */}
         <div className="border border-black mb-3 avoid-break">
           <div className="bg-black text-white p-1">
             <p className="text-[10px] font-black uppercase px-1 tracking-widest">SERVIÇOS REALIZADOS</p>
@@ -443,9 +424,7 @@ export default function ImprimirOSPage() {
           </table>
         </div>
 
-        {/* ============================================================
-            PEÇAS E MATERIAIS
-            ============================================================ */}
+        {/* PEÇAS */}
         <div className="border border-black mb-3 avoid-break">
           <div className="bg-black text-white p-1">
             <p className="text-[10px] font-black uppercase px-1 tracking-widest">PEÇAS E MATERIAIS APLICADOS</p>
@@ -500,11 +479,8 @@ export default function ImprimirOSPage() {
           </table>
         </div>
 
-        {/* ============================================================
-            OBSERVAÇÕES + RESUMO FINANCEIRO
-            ============================================================ */}
+        {/* OBSERVAÇÕES + RESUMO */}
         <div className="flex border border-black mb-3 avoid-break">
-          {/* Observações */}
           <div className="flex-1 p-2 border-r border-black min-h-[110px]">
             <p className="text-[10px] font-black uppercase mb-1.5">
               OBSERVAÇÕES / RELATO TÉCNICO
@@ -524,7 +500,6 @@ export default function ImprimirOSPage() {
             )}
           </div>
 
-          {/* Resumo Financeiro */}
           <div className="w-72 bg-zinc-50 flex flex-col">
             <div className="p-1.5 border-b border-black flex justify-between items-center">
               <span className="text-[10px] font-bold uppercase">TOTAL SERVIÇOS</span>
@@ -555,9 +530,7 @@ export default function ImprimirOSPage() {
           </p>
         </div>
 
-        {/* ============================================================
-            DATAS E RESPONSÁVEIS
-            ============================================================ */}
+        {/* DATAS E RESPONSÁVEIS */}
         <div className="grid grid-cols-3 border border-black mb-3 divide-x divide-black text-[10px] avoid-break">
           <div className="p-2">
             <p className="text-[9px] font-bold uppercase text-zinc-600 mb-0.5">
@@ -588,7 +561,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* Assinatura digital (se houver) */}
+        {/* Assinatura digital */}
         {os.assinatura_hash && (
           <div className="border border-black p-2 mb-3 text-[9px] avoid-break">
             <p className="font-bold uppercase text-zinc-600 mb-0.5">
@@ -606,9 +579,7 @@ export default function ImprimirOSPage() {
           </div>
         )}
 
-        {/* ============================================================
-            ASSINATURAS — espaço reduzido
-            ============================================================ */}
+        {/* ASSINATURAS */}
         <div className="grid grid-cols-2 gap-16 pt-12 pb-4 px-8 avoid-break">
           <div className="border-t border-black pt-2 text-center text-[10px]">
             <p className="font-black uppercase">RESPONSÁVEL PELA OFICINA</p>
@@ -624,9 +595,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* ============================================================
-            RODAPÉ
-            ============================================================ */}
+        {/* RODAPÉ */}
         <div className="text-center pt-3 border-t border-black avoid-break">
           <p className="text-[8px] uppercase font-bold text-zinc-500">
             ESTE DOCUMENTO É UMA REPRESENTAÇÃO DOS SERVIÇOS EXECUTADOS E PEÇAS APLICADAS, NÃO TENDO VALOR FISCAL.
