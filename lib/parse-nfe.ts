@@ -5,6 +5,7 @@ export interface NFeItem {
   descricao: string;
   ncm: string;
   quantidade: number;
+  unidade: string;
   valorUnitario: number;
   valorTotal: number;
 }
@@ -36,20 +37,25 @@ export interface NFeData {
   };
 }
 
+// Códigos de status SEFAZ que autorizam a NF-e a ser usada
+const CSTAT_AUTORIZADO = new Set(['100', '150']);
+
 export function parseNFeXML(xmlString: string): NFeData {
+  if (!xmlString || typeof xmlString !== 'string') {
+    throw new Error('XML vazio ou inválido.');
+  }
+
   const parser = new XMLParser({
     ignoreAttributes: false,
-    attributeNamePrefix: "@_",
+    attributeNamePrefix: '@_',
   });
-  
+
   const jsonObj = parser.parse(xmlString);
-  
-  // Helper to find a key recursively ignoring case and namespace prefixes
+
   const findNestedKey = (obj: any, targetKey: string): any => {
     if (!obj || typeof obj !== 'object') return null;
     if (obj[targetKey] !== undefined) return obj[targetKey];
-    
-    // Check key case-insensitively and without prefix
+
     const keys = Object.keys(obj);
     for (const key of keys) {
       const cleanKey = key.includes(':') ? key.split(':').pop() : key;
@@ -57,8 +63,7 @@ export function parseNFeXML(xmlString: string): NFeData {
         return obj[key];
       }
     }
-    
-    // Recursive check
+
     for (const key of keys) {
       if (typeof obj[key] === 'object') {
         const found = findNestedKey(obj[key], targetKey);
@@ -72,7 +77,22 @@ export function parseNFeXML(xmlString: string): NFeData {
   const prot = findNestedKey(jsonObj, 'infProt') || findNestedKey(jsonObj, 'protNFe');
 
   if (!nfe) {
-    throw new Error('Formato de XML de NF-e inválido ou não reconhecido. Certifique-se de que é um documento auxiliar de NF-e válido.');
+    throw new Error('Formato de XML de NF-e inválido ou não reconhecido.');
+  }
+
+  // A03: validar cStat se o protocolo estiver presente.
+  // NF-e não autorizada (cancelada, denegada, em processamento) NÃO deve ser importada.
+  if (prot) {
+    const rawCStat = findNestedKey(prot, 'cStat');
+    const cStat = rawCStat !== null && rawCStat !== undefined ? String(rawCStat).trim() : null;
+
+    if (cStat && !CSTAT_AUTORIZADO.has(cStat)) {
+      const rawMotivo = findNestedKey(prot, 'xMotivo');
+      const motivo = rawMotivo ? String(rawMotivo).trim() : 'sem motivo informado';
+      throw new Error(
+        `NF-e não está autorizada pela SEFAZ (cStat=${cStat}: ${motivo}). Importação bloqueada.`
+      );
+    }
   }
 
   const ide = findNestedKey(nfe, 'ide') || {};
@@ -86,43 +106,63 @@ export function parseNFeXML(xmlString: string): NFeData {
   const detArray = Array.isArray(det) ? det : [det];
 
   const itens: NFeItem[] = detArray.map((item: any, idx: number) => {
-    console.log('[XML QUANTIDADE]', {
-      descricao: item.prod?.xProd,
-      qCom: item.prod?.qCom,
-      qTrib: item.prod?.qTrib,
-      vUnCom: item.prod?.vUnCom
-    });
-    
-    // Resolve prod container recursively or directly
     const prod = findNestedKey(item, 'prod') || item.prod || {};
-    
-    // Use recursive key locator to resolve keys that might have namespace prefixes (e.g. "nfe:qCom")
+
     const rawCodigo = findNestedKey(prod, 'cProd') || prod.cProd;
     const rawDescricao = findNestedKey(prod, 'xProd') || prod.xProd;
     const rawNcm = findNestedKey(prod, 'NCM') || prod.NCM;
     const rawQuantidade = findNestedKey(prod, 'qCom') || prod.qCom;
+    const rawUnidade = findNestedKey(prod, 'uCom') || prod.uCom;
     const rawValorUnitario = findNestedKey(prod, 'vUnCom') || prod.vUnCom;
     const rawValorTotal = findNestedKey(prod, 'vProd') || prod.vProd;
 
-    const codigo = rawCodigo ? String(rawCodigo).trim() : `SEM_CODIGO_${idx + 1}`;
-    const descricao = rawDescricao ? String(rawDescricao).trim() : 'PRODUTO SEM DESCRICAO';
-    const ncm = rawNcm ? String(rawNcm).trim() : '00000000';
+    // A03: exigir código e descrição. Não inventar.
+    if (!rawCodigo || String(rawCodigo).trim() === '') {
+      throw new Error(
+        `Item #${idx + 1} da NF-e não possui código (cProd). Importação bloqueada.`
+      );
+    }
+    if (!rawDescricao || String(rawDescricao).trim() === '') {
+      throw new Error(
+        `Item #${idx + 1} da NF-e não possui descrição (xProd). Importação bloqueada.`
+      );
+    }
 
-    // Parse values robustly under any standard-violating or empty formats
+    const codigo = String(rawCodigo).trim();
+    const descricao = String(rawDescricao).trim().toUpperCase();
+    const ncm = rawNcm ? String(rawNcm).trim() : '';
+    const unidade = rawUnidade ? String(rawUnidade).trim().toUpperCase() : 'UN';
+
+    // A03: quantidade precisa ser número positivo. Sem fallback para 1.
     const parsedQtd = Number(rawQuantidade);
-    const quantidade = (!rawQuantidade || isNaN(parsedQtd) || parsedQtd <= 0) ? 1 : parsedQtd;
+    if (!rawQuantidade || isNaN(parsedQtd) || parsedQtd <= 0) {
+      throw new Error(
+        `Item "${descricao}" tem quantidade inválida (qCom=${rawQuantidade}). Importação bloqueada.`
+      );
+    }
+    const quantidade = parsedQtd;
 
     const parsedVUn = Number(rawValorUnitario);
-    const valorUnitario = (!rawValorUnitario || isNaN(parsedVUn)) ? 0 : parsedVUn;
+    if (!rawValorUnitario || isNaN(parsedVUn) || parsedVUn < 0) {
+      throw new Error(
+        `Item "${descricao}" tem valor unitário inválido (vUnCom=${rawValorUnitario}). Importação bloqueada.`
+      );
+    }
+    const valorUnitario = parsedVUn;
 
+    // A03: valor total — usa vProd se disponível, senão calcula. Sem aceitar "0 silencioso".
     const parsedVProd = Number(rawValorTotal);
-    const valorTotal = (!rawValorTotal || isNaN(parsedVProd)) ? (quantidade * valorUnitario) : parsedVProd;
+    const valorTotal =
+      rawValorTotal !== undefined && !isNaN(parsedVProd) && parsedVProd >= 0
+        ? parsedVProd
+        : quantidade * valorUnitario;
 
     return {
       codigo,
-      descricao: descricao.toUpperCase(),
+      descricao,
       ncm,
       quantidade,
+      unidade,
       valorUnitario,
       valorTotal,
     };
@@ -133,48 +173,83 @@ export function parseNFeXML(xmlString: string): NFeData {
   }
 
   const enderEmit = findNestedKey(emit, 'enderEmit') || {};
-  
-  // Resolve cnpj, reasoning with namespace prefixes like nfe:CNPJ
+
   const rawCnpj = findNestedKey(emit, 'CNPJ') || findNestedKey(emit, 'CPF') || emit.CNPJ || emit.CPF;
-  const cnpj = String(rawCnpj || '').trim();
+  const cnpj = String(rawCnpj || '').replace(/\D/g, '').trim();
   if (!cnpj) {
     throw new Error('CNPJ ou CPF do emitente não identificado no arquivo XML.');
   }
 
   const rawRazaoSocial = findNestedKey(emit, 'xNome') || emit.xNome;
+  if (!rawRazaoSocial || String(rawRazaoSocial).trim() === '') {
+    throw new Error('Razão social do emitente (xNome) não informada na NF-e.');
+  }
+
   const rawNomeFantasia = findNestedKey(emit, 'xFant') || emit.xFant;
   const rawIe = findNestedKey(emit, 'IE') || emit.IE;
 
   const fornecedor: NFeSupplier = {
     cnpj,
-    razaoSocial: rawRazaoSocial ? String(rawRazaoSocial).trim().toUpperCase() : 'FORNECEDOR INTEGRADO',
+    razaoSocial: String(rawRazaoSocial).trim().toUpperCase(),
     nomeFantasia: rawNomeFantasia ? String(rawNomeFantasia).trim().toUpperCase() : undefined,
     ie: rawIe ? String(rawIe).trim() : 'ISENTO',
-    endereco: findNestedKey(enderEmit, 'xLgr') ? `${String(findNestedKey(enderEmit, 'xLgr')).trim()}, ${String(findNestedKey(enderEmit, 'nro') || '').trim()}`.toUpperCase() : undefined,
+    endereco: findNestedKey(enderEmit, 'xLgr')
+      ? `${String(findNestedKey(enderEmit, 'xLgr')).trim()}, ${String(findNestedKey(enderEmit, 'nro') || '').trim()}`.toUpperCase()
+      : undefined,
     bairro: findNestedKey(enderEmit, 'xBairro') ? String(findNestedKey(enderEmit, 'xBairro')).trim().toUpperCase() : undefined,
     cidade: findNestedKey(enderEmit, 'xMun') ? String(findNestedKey(enderEmit, 'xMun')).trim().toUpperCase() : undefined,
     uf: findNestedKey(enderEmit, 'UF') ? String(findNestedKey(enderEmit, 'UF')).trim().toUpperCase() : undefined,
     cep: findNestedKey(enderEmit, 'CEP') ? String(findNestedKey(enderEmit, 'CEP')).trim().replace(/\D/g, '') : undefined,
   };
 
-  const chaveAcesso = prot ? (findNestedKey(prot, 'chNFe') || '') : '';
+  // A03: chave de acesso correta vem do atributo `Id` do infNFe (formato "NFe<44 dígitos>").
+  // Fallback para <chNFe> do protocolo quando o Id estiver ausente.
+  let chaveAcesso = '';
+  const rawId = nfe['@_Id'] || nfe.Id || (nfe as any)['@_id'];
+  if (rawId) {
+    const limpo = String(rawId).replace(/^NFe/i, '').replace(/\D/g, '');
+    if (limpo.length === 44) chaveAcesso = limpo;
+  }
+  if (!chaveAcesso && prot) {
+    const rawCh = findNestedKey(prot, 'chNFe');
+    if (rawCh) {
+      const limpo = String(rawCh).replace(/\D/g, '');
+      if (limpo.length === 44) chaveAcesso = limpo;
+    }
+  }
+  if (!chaveAcesso) {
+    throw new Error('Chave de acesso da NF-e não encontrada no XML. Importação bloqueada.');
+  }
+
   const rawNumero = findNestedKey(ide, 'nNF') || ide.nNF;
-  const numero = rawNumero ? String(rawNumero) : '000000000';
+  if (!rawNumero) {
+    throw new Error('Número da NF-e (nNF) não informado.');
+  }
+  const numero = String(rawNumero).trim();
+
   const rawSerie = findNestedKey(ide, 'serie') || ide.serie;
-  const serie = rawSerie ? String(rawSerie) : '1';
-  const dataEmissao = findNestedKey(ide, 'dhEmi') || findNestedKey(ide, 'dEmi') || ide.dhEmi || ide.dEmi || new Date().toISOString();
+  const serie = rawSerie ? String(rawSerie).trim() : '1';
+
+  const rawDataEmissao = findNestedKey(ide, 'dhEmi') || findNestedKey(ide, 'dEmi') || ide.dhEmi || ide.dEmi;
+  if (!rawDataEmissao) {
+    throw new Error('Data de emissão (dhEmi/dEmi) não informada na NF-e.');
+  }
+  const dataEmissao = String(rawDataEmissao);
 
   const valorProdutos = Number(findNestedKey(total, 'vProd') || total.vProd || 0);
-  const valorFrete = Number(findNestedKey(total, 'vFrete') || findNestedKey(total, 'vOutro') || total.vFrete || total.vOutro || 0);
+  const valorFrete = Number(
+    findNestedKey(total, 'vFrete') ||
+    findNestedKey(total, 'vOutro') ||
+    total.vFrete ||
+    total.vOutro ||
+    0
+  );
   const valorDesconto = Number(findNestedKey(total, 'vDesc') || total.vDesc || 0);
   let valorNF = Number(findNestedKey(total, 'vNF') || total.vNF || 0);
 
   if (valorNF === 0) {
     valorNF = itens.reduce((sum, item) => sum + item.valorTotal, 0);
   }
-
-  console.log('[FORNECEDOR XML]', fornecedor);
-  console.log('[ITENS XML]', itens);
 
   return {
     numero,
