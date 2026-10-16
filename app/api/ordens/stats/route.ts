@@ -2,11 +2,19 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { requireAuth } from '@/lib/api-auth';
+import { checkPermission } from '@/lib/rbac';
+import { log } from '@/lib/logger';
 
 export async function GET() {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
+
+    // A25: stats agregadas financeiras — exige permissão de OS.visualizar
+    // (todos os papéis operacionais têm, mas impede chamada anônima)
+    if (!checkPermission(user, 'os', 'visualizar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
 
     const today = new Date();
     const startMonth = startOfMonth(today);
@@ -22,7 +30,7 @@ export async function GET() {
     const totalOS = await prisma.ordemServico.count({
       where: { empresa_id: user.empresa_id }
     });
-    
+
     const faturamentoMes = await prisma.ordemServico.aggregate({
       _sum: { valor_total: true },
       where: {
@@ -32,10 +40,10 @@ export async function GET() {
       }
     });
 
-    const startDay = new Date(today.setHours(0,0,0,0));
-    const endDay = new Date(today.setHours(23,59,59,999));
+    const startDay = new Date(today.setHours(0, 0, 0, 0));
+    const endDay = new Date(today.setHours(23, 59, 59, 999));
 
-    const concluídasHoje = await prisma.ordemServico.aggregate({
+    const concluidasHoje = await prisma.ordemServico.aggregate({
       _count: { id: true },
       _sum: { valor_total: true },
       where: {
@@ -53,11 +61,12 @@ export async function GET() {
       AGUARDANDO_APROVACAO: { count: 0, total: 0 },
       FINALIZADA: { count: 0, total: 0 },
       ENTREGUE: { count: 0, total: 0 },
+      CANCELADA: { count: 0, total: 0 },
       total: totalOS,
       faturamentoMes: faturamentoMes._sum.valor_total || 0,
       concluidasHoje: {
-        count: concluídasHoje._count.id || 0,
-        total: concluídasHoje._sum.valor_total || 0
+        count: concluidasHoje._count.id || 0,
+        total: concluidasHoje._sum.valor_total || 0
       }
     };
 
@@ -71,8 +80,8 @@ export async function GET() {
     });
 
     return NextResponse.json(result);
-  } catch (error) {
-    console.error('Stats error:', error);
+  } catch (error: any) {
+    log('ERROR', 'OS', 'Erro ao buscar estatísticas de OS', { error: error?.message }, 'sistema');
     return NextResponse.json({ error: 'Erro ao buscar estatísticas' }, { status: 500 });
   }
 }
