@@ -30,8 +30,7 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
           toast.error('Movimentação não encontrada');
           router.push('/financeiro');
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
         toast.error('Erro ao buscar dados');
       } finally {
         setLoading(false);
@@ -41,34 +40,29 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
     fetchMovimentacao();
   }, [id, router, refreshKey]);
 
+  /**
+   * A27: baixa via rota específica /pagar.
+   * Não usa PUT com o objeto inteiro — envia apenas o necessário.
+   */
   const handleDarBaixa = async () => {
+    if (!movimentacao) return;
+
     setSaving(true);
     try {
-      const valor = movimentacao.valor;
-      console.log('VALOR ENVIADO');
-      console.log(valor);
-      console.log(typeof valor);
-
-      const res = await fetch(`/api/financeiro/${id}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/financeiro/${id}/pagar`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...movimentacao,
-          valor: valor !== undefined && valor !== null ? Number(valor) : undefined,
-          status: 'PAGO',
-          data_pagamento: new Date().toISOString().split('T')[0]
-        }),
-        credentials: 'include'
+        credentials: 'include',
       });
 
       if (res.ok) {
         toast.success('Baixa realizada com sucesso!');
         setRefreshKey(prev => prev + 1);
       } else {
-        toast.error('Erro ao realizar baixa');
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Erro ao realizar baixa');
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast.error('Erro de conexão');
     } finally {
       setSaving(false);
@@ -77,7 +71,7 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
 
   const handleExcluir = async () => {
     if (!confirm('Deseja realmente excluir este lançamento? Esta ação é irreversível.')) return;
-    
+
     try {
       const res = await fetch(`/api/financeiro/${id}`, {
         method: 'DELETE',
@@ -88,10 +82,11 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
         toast.success('Lançamento excluído permanentemente');
         router.push('/financeiro');
       } else {
-        toast.error('Erro ao excluir');
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Erro ao excluir');
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      toast.error('Erro de conexão ao excluir');
     }
   };
 
@@ -171,10 +166,8 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
       <main className="p-8 md:p-12 max-w-6xl mx-auto w-full space-y-12 pb-32">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
           
-          {/* Main Info Columns */}
           <div className="lg:col-span-2 space-y-12">
             
-            {/* Section 1: Financial Core */}
             <div className="space-y-6">
                <div className="flex items-center gap-3 px-2">
                  <DollarSign size={20} className="text-orange-500" />
@@ -221,7 +214,6 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
                </div>
             </div>
 
-            {/* Section 2: Classification */}
             <div className="space-y-6">
                <div className="flex items-center gap-3 px-2">
                  <Tag size={20} className="text-orange-500" />
@@ -243,7 +235,6 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
                </div>
             </div>
 
-            {/* Section 3: Document Content */}
             <div className="space-y-6">
                <div className="flex items-center gap-3 px-2">
                  <FileText size={20} className="text-orange-500" />
@@ -258,9 +249,7 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
 
           </div>
 
-          {/* Sidebar Info */}
           <div className="space-y-12">
-            {/* Vínculos */}
             <div className="space-y-6">
                <div className="flex items-center gap-3 px-2">
                  <Layers size={20} className="text-zinc-600" />
@@ -296,7 +285,6 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
                </div>
             </div>
 
-            {/* Comprovante */}
             <div className="space-y-6">
                <div className="flex items-center gap-3 px-2">
                  <Download size={20} className="text-zinc-600" />
@@ -326,7 +314,6 @@ export default function DetalheMovimentacao({ params }: { params: Promise<{ id: 
                )}
             </div>
 
-            {/* Audit log basics */}
             <div className="p-8 bg-zinc-950 border border-zinc-900 rounded-[2rem] space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-[8px] font-black uppercase text-zinc-600">Criado por</span>
