@@ -7,7 +7,7 @@ import {
   Calendar, FileText, Wrench, Package, DollarSign,
   Terminal, ShieldCheck, ChevronRight, ClipboardCheck, Plus, Eye,
   MapPin, Navigation, Milestone, Receipt, Users, Clock, AlertTriangle, Loader2,
-  XCircle
+  XCircle, Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
