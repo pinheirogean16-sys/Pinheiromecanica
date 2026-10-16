@@ -13,15 +13,18 @@ export default function ImprimirOrcamentoPage() {
   const [company, setCompany] = useState<any>(null);
 
   useEffect(() => {
+    // A31: usa a rota pública (acessível a todos os papéis).
     const fetchCompany = async () => {
       try {
-        const res = await fetch('/api/configuracoes/empresa');
+        const res = await fetch('/api/configuracoes/empresa/publico');
         if (res.ok) {
           const data = await res.json();
-          setCompany(data);
+          if (data && Object.keys(data).length > 0) {
+            setCompany(data);
+          }
         }
-      } catch (err) {
-        console.error('Erro ao buscar dados da empresa:', err);
+      } catch {
+        // Silencioso — impressão usa fallback
       }
     };
     fetchCompany();
@@ -34,8 +37,8 @@ export default function ImprimirOrcamentoPage() {
           const data = await res.json();
           setOrcamento(data);
         }
-      } catch (err) { 
-        console.error('Erro ao buscar orçamento:', err); 
+      } catch {
+        // Silencioso
       } finally {
         setLoading(false);
       }
@@ -111,20 +114,24 @@ export default function ImprimirOrcamentoPage() {
               <img src={logo} alt="Logo" className="max-h-24 object-contain" />
             ) : (
               <div className="text-xl font-black italic uppercase leading-none text-center">
-                {company?.nome_fantasia || 'PINHEIRO DIESEL'}
+                {company?.nome_fantasia || 'RAZÃO SOCIAL NÃO CONFIGURADA'}
               </div>
             )}
           </div>
           <div className="w-2/3 pl-4 space-y-1">
-            <h1 className="text-xl font-black uppercase">{company?.razao_social || company?.nome_fantasia || 'PINHEIRO DIESEL LTDA'}</h1>
+            <h1 className="text-xl font-black uppercase">
+              {company?.razao_social || company?.nome_fantasia || 'RAZÃO SOCIAL NÃO CONFIGURADA'}
+            </h1>
             <p className="text-[10px] leading-tight font-bold">
-              CNPJ: {company?.cnpj || '00.000.000/0001-00'} | IE: {company?.inscricao_estadual || 'ISENTO'}
+              CNPJ: {company?.cnpj || '—'} | IE: {company?.inscricao_estadual || 'ISENTO'}
             </p>
             <p className="text-[10px] leading-tight text-zinc-800">
-              {company?.endereco || 'RUA EXEMPLO, 123 - CENTRO - SÃO PAULO/SP'}
+              {company?.endereco
+                ? `${company.endereco}${company.numero ? `, ${company.numero}` : ''}${company.cidade ? ` - ${company.cidade}` : ''}${company.uf ? `/${company.uf}` : ''}`
+                : 'Endereço não configurado'}
             </p>
             <p className="text-[10px] leading-tight text-zinc-800">
-              TEL: {company?.telefone || '(00) 00000-0000'} | EMAIL: {company?.email || 'CONTATO@EXEMPLO.COM'}
+              TEL: {company?.telefone || '—'} | EMAIL: {company?.email || '—'}
             </p>
           </div>
         </div>
@@ -295,8 +302,13 @@ export default function ImprimirOrcamentoPage() {
           <p className="text-[8px] uppercase font-bold text-zinc-400">
             PROPOSTA COMERCIAL VÁLIDA POR TEMPO LIMITADO. ESTE DOCUMENTO NÃO POSSUI VALOR FISCAL.
           </p>
+          {company?.rodape_personalizado && (
+            <p className="text-[9px] font-bold text-zinc-700 mt-1.5 italic whitespace-pre-wrap">
+              {company.rodape_personalizado}
+            </p>
+          )}
           <p className="text-[9px] uppercase font-black text-zinc-800 mt-2">
-            {company?.cidade || 'GERADO PELO SISTEMA'}, {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()}
+            {company?.cidade || 'CIDADE'}, {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()}
           </p>
         </div>
 
