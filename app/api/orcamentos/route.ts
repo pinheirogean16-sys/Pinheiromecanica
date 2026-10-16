@@ -1,325 +1,253 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
-import { Veiculo_tipo } from '@prisma/client';
-import { validarEProcessarLeiturasVeiculo } from '@/lib/odometro-horimetro';
+import { roundDecimal } from '@/lib/utils';
 
-// A22: alinhado com o schema de POST (placa 3-20, ano ≤2035)
-const updateVeiculoSchema = z.object({
-  placa: z
-    .string()
-    .min(3, 'Placa/identificador muito curto')
-    .max(20, 'Placa/identificador muito longo')
-    .trim()
-    .transform((v) => v.toUpperCase())
-    .optional(),
-  modelo: z.string().min(2, 'Modelo muito curto').trim().optional(),
-  marca: z.string().min(2, 'Marca muito curta').trim().optional(),
-  ano: z.coerce
-    .number()
-    .int()
-    .min(1900, 'Ano inválido')
-    .max(2035, 'Ano inválido')
-    .optional(),
-  tipo: z.nativeEnum(Veiculo_tipo).optional(),
-  quilometragem: z.coerce.number().nonnegative().optional().nullable(),
-  horimetro_atual: z.coerce.number().nonnegative().optional().nullable(),
-  cliente_id: z.string().min(1).optional(),
-  confirmar_salto_km: z.boolean().optional().default(false),
-  confirmar_salto_horimetro: z.boolean().optional().default(false),
-  autorizar_reducao_km: z.boolean().optional().default(false),
-  autorizar_reducao_horimetro: z.boolean().optional().default(false),
-  justificativa_ajuste_leitura: z.string().max(500).optional().nullable(),
+const STATUS_CRIACAO_VALIDOS = ['RASCUNHO'] as const;
+
+const orcamentoSchema = z.object({
+  cliente_id: z.string().min(1, 'Cliente é obrigatório'),
+  veiculo_id: z.string().min(1, 'Veículo é obrigatório'),
+  data_validade: z.string().optional().nullable(),
+  status: z.enum(STATUS_CRIACAO_VALIDOS).optional().default('RASCUNHO'),
+  servicos: z
+    .array(
+      z.object({
+        descricao: z.string().min(1, 'Descrição do serviço é obrigatória').trim(),
+        horas: z.number().nonnegative().default(0),
+        valor_hora: z.number().nonnegative().default(0),
+      })
+    )
+    .optional()
+    .default([]),
+  pecas: z
+    .array(
+      z.object({
+        peca_id: z.string().optional().nullable(),
+        descricao: z.string().min(1, 'Descrição da peça é obrigatória').trim(),
+        quantidade: z.number().nonnegative().default(0),
+        valor_unit: z.number().nonnegative().default(0),
+      })
+    )
+    .optional()
+    .default([]),
+  desconto: z.number().nonnegative().default(0),
+  observacoes: z.string().max(2000).optional().nullable(),
+  termos_condicoes: z.string().max(2000).optional().nullable(),
 });
 
-// ============================================================
-// GET — Buscar veículo
-// ============================================================
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { error, user } = await requireAuth();
-    if (error) return error;
-
-    if (!checkPermission(user, 'veiculos', 'visualizar')) {
-      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
-    }
-
-    const { id } = await params;
-    const rawVeiculo = await prisma.veiculo.findFirst({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
-      include: {
-        Cliente: true,
-        OrdemServico: {
-          orderBy: { created_at: 'desc' },
-          take: 5,
-        },
-      },
-    });
-
-    if (!rawVeiculo) {
-      return NextResponse.json({ error: 'Veículo não encontrado' }, { status: 404 });
-    }
-
-    const { Cliente, OrdemServico, ...rest } = rawVeiculo;
-    const veiculo = {
-      ...rest,
-      cliente: Cliente,
-      ordens: OrdemServico,
-    };
-
-    return NextResponse.json(veiculo);
-  } catch (error: any) {
-    log(
-      'ERROR',
-      'VEICULO',
-      'Erro ao buscar veículo',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json({ error: 'Erro ao buscar veículo' }, { status: 500 });
+async function obterProximoNumeroOrcamento(tx: any, empresaId: string): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefixo = `ORC-${year}-`;
+  const ultimo = await tx.orcamento.findFirst({
+    where: { empresa_id: empresaId, numero: { startsWith: prefixo } },
+    orderBy: { numero: 'desc' },
+    select: { numero: true },
+  });
+  let proximoSeq = 1;
+  if (ultimo?.numero) {
+    const partes = ultimo.numero.split('-');
+    const seq = parseInt(partes[partes.length - 1], 10);
+    if (!isNaN(seq)) proximoSeq = seq + 1;
   }
+  return `${prefixo}${proximoSeq.toString().padStart(4, '0')}`;
 }
 
-// ============================================================
-// PUT — Atualizar veículo
-// ============================================================
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    if (!checkPermission(user, 'veiculos', 'editar')) {
+    if (!checkPermission(user, 'orcamentos', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    const { id } = await params;
-    const body = updateVeiculoSchema.parse(await request.json());
+    const { searchParams } = new URL(request.url);
+    const q = (searchParams.get('q') || '').slice(0, 100);
+    const status = searchParams.get('status');
+    const cliente_id = searchParams.get('cliente_id');
 
-    const antes = await prisma.veiculo.findFirst({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
-    });
-    if (!antes) {
-      return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
+    const rawPage = parseInt(searchParams.get('page') || '1', 10);
+    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
+    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
+
+    const where: any = { empresa_id: user.empresa_id };
+    if (q) {
+      where.OR = [
+        { numero: { contains: q } },
+        { Cliente: { nome: { contains: q } } },
+        { Veiculo: { placa: { contains: q } } },
+      ];
     }
+    if (status) where.status = status;
+    if (cliente_id) where.cliente_id = cliente_id;
 
-    if (body.cliente_id && body.cliente_id !== antes.cliente_id) {
-      const clienteExistente = await prisma.cliente.findFirst({
-        where: { id: body.cliente_id, empresa_id: user.empresa_id },
-        select: { id: true },
-      });
-      if (!clienteExistente) {
-        return NextResponse.json(
-          { error: 'Cliente não encontrado nesta empresa' },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (body.placa && body.placa !== antes.placa) {
-      const existing = await prisma.veiculo.findFirst({
-        where: {
-          placa: body.placa,
-          empresa_id: user.empresa_id,
-          id: { not: id },
+    const [items, total] = await Promise.all([
+      prisma.orcamento.findMany({
+        where,
+        include: {
+          Cliente: {
+            select: {
+              id: true,
+              nome: true,
+              cpf_cnpj: true,
+              endereco: true,
+              cidade: true,
+              estado: true,
+              uf: true,
+              telefone: true,
+              email: true,
+            },
+          },
+          Veiculo: {
+            select: {
+              id: true,
+              placa: true,
+              modelo: true,
+              marca: true,
+              horimetro_atual: true,
+              quilometragem: true,
+            },
+          },
         },
-        select: { id: true },
-      });
-
-      if (existing) {
-        return NextResponse.json(
-          { error: 'Placa já cadastrada em outro veículo nesta empresa' },
-          { status: 409 }
-        );
-      }
-    }
-
-    // ============================================================
-    // A22: validação de leituras e uso do valor efetivo retornado
-    // ============================================================
-    let kmEfetivo: number | undefined = undefined;
-    let horimetroEfetivo: number | undefined = undefined;
-    let avisoLeitura: string | null = null;
-
-    if (body.quilometragem !== undefined || body.horimetro_atual !== undefined) {
-      const leiturasRes = await validarEProcessarLeiturasVeiculo({
-        veiculoId: id,
-        empresaId: user.empresa_id,
-        kmInformado: body.quilometragem,
-        horimetroInformado: body.horimetro_atual,
-        confirmarSaltoKm: body.confirmar_salto_km,
-        confirmarSaltoHorimetro: body.confirmar_salto_horimetro,
-        autorizarReducaoKm: body.autorizar_reducao_km,
-        autorizarReducaoHorimetro: body.autorizar_reducao_horimetro,
-        justificativa: body.justificativa_ajuste_leitura,
-        usuario: user,
-        contexto: 'EDICAO_VEICULO',
-      });
-
-      if (!leiturasRes.sucesso) {
-        return NextResponse.json({ error: leiturasRes.erro }, { status: 400 });
-      }
-
-      // A22: usa o valor efetivo calculado pela lib de validação.
-      // Isso garante que autorizações de redução/salto são persistidas.
-      if (leiturasRes.kmFinalAtualizar !== undefined && leiturasRes.kmFinalAtualizar !== null) {
-        kmEfetivo = Number(leiturasRes.kmFinalAtualizar);
-      }
-      if (
-        leiturasRes.horimetroFinalAtualizar !== undefined &&
-        leiturasRes.horimetroFinalAtualizar !== null
-      ) {
-        horimetroEfetivo = Number(leiturasRes.horimetroFinalAtualizar);
-      }
-
-      // A22: se a lib devolveu algum aviso, propaga ao front
-      if ((leiturasRes as any).aviso) {
-        avisoLeitura = String((leiturasRes as any).aviso);
-      }
-    }
-
-    // ============================================================
-    // Whitelist de campos cadastrais (impede injeção de campos de sistema)
-    // ============================================================
-    const updateData: any = {
-      updated_by: user?.name || user?.email || 'Sistema',
-    };
-
-    if (body.placa !== undefined) updateData.placa = body.placa;
-    if (body.modelo !== undefined) updateData.modelo = body.modelo;
-    if (body.marca !== undefined) updateData.marca = body.marca;
-    if (body.ano !== undefined) updateData.ano = body.ano;
-    if (body.tipo !== undefined) updateData.tipo = body.tipo;
-    if (body.cliente_id !== undefined) updateData.cliente_id = body.cliente_id;
-
-    // A22: só grava km/horímetro se a validação retornou valor efetivo
-    if (kmEfetivo !== undefined) updateData.quilometragem = kmEfetivo;
-    if (horimetroEfetivo !== undefined) updateData.horimetro_atual = horimetroEfetivo;
-
-    const veiculo = await prisma.veiculo.update({
-      where: { id },
-      data: updateData,
-    });
-
-    await createAuditLog({
-      modulo: 'VEICULO',
-      acao: 'EDITAR',
-      entidade: 'Veiculo',
-      entidade_id: id,
-      usuario: user?.name || user?.email || 'Sistema',
-      empresa_id: user.empresa_id,
-      dados_antes: antes,
-      dados_depois: veiculo,
-    });
-
-    log('INFO', 'VEICULO', 'Veículo atualizado', { id }, user?.name);
-
-    return NextResponse.json({
-      ...veiculo,
-      ...(avisoLeitura ? { aviso: avisoLeitura } : {}),
-    });
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues[0].message },
-        { status: 400 }
-      );
-    }
-    log(
-      'ERROR',
-      'VEICULO',
-      'Erro ao atualizar veículo',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json({ error: 'Erro ao atualizar veículo' }, { status: 500 });
-  }
-}
-
-// ============================================================
-// DELETE — Excluir veículo (somente se sem vínculos)
-// ============================================================
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { error, user } = await requireAuth();
-    if (error) return error;
-
-    if (!checkPermission(user, 'veiculos', 'excluir')) {
-      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
-    }
-
-    const { id } = await params;
-    const antes = await prisma.veiculo.findFirst({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
-    });
-    if (!antes) {
-      return NextResponse.json({ error: 'Veículo não encontrado' }, { status: 404 });
-    }
-
-    // A22: verificar vínculos antes de excluir (evita 500 por FK)
-    const [osCount, orcamentosCount, preventivasCount, checklistsCount] = await Promise.all([
-      prisma.ordemServico.count({ where: { veiculo_id: id } }),
-      prisma.orcamento.count({ where: { veiculo_id: id } }),
-      prisma.preventiva.count({ where: { veiculo_id: id } }),
-      prisma.checklistExecucao.count({ where: { veiculo_id: id } }),
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.orcamento.count({ where }),
     ]);
 
-    if (osCount > 0 || orcamentosCount > 0 || preventivasCount > 0 || checklistsCount > 0) {
-      return NextResponse.json(
-        {
-          error:
-            'Este veículo possui histórico (OS, orçamentos, preventivas ou checklists) e não pode ser excluído.',
-        },
-        { status: 409 }
-      );
+    const mapped = items.map((item: any) => {
+      const { Cliente, Veiculo, ...rest } = item;
+      return { ...rest, Cliente, Veiculo, cliente: Cliente, veiculo: Veiculo };
+    });
+
+    return NextResponse.json({
+      items: mapped,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (error: any) {
+    log('ERROR', 'ORCAMENTO', 'Erro ao listar orçamentos', { error: error?.message }, 'sistema');
+    return NextResponse.json({ error: 'Erro ao listar orçamentos' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
+    if (!checkPermission(user, 'orcamentos', 'criar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    await prisma.veiculo.delete({
-      where: { id },
+    const body = orcamentoSchema.parse(await request.json());
+    const empresa_id = user.empresa_id;
+
+    const clienteExistente = await prisma.cliente.findFirst({
+      where: { id: body.cliente_id, empresa_id },
+      select: { id: true },
+    });
+    if (!clienteExistente) {
+      return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    const veiculoExistente = await prisma.veiculo.findFirst({
+      where: { id: body.veiculo_id, empresa_id },
+      select: { id: true },
+    });
+    if (!veiculoExistente) {
+      return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const numero = await obterProximoNumeroOrcamento(tx, empresa_id);
+
+      const valor_servicos = roundDecimal(
+        body.servicos.reduce((acc, s) => acc + (s.horas || 0) * (s.valor_hora || 0), 0)
+      );
+      const valor_pecas = roundDecimal(
+        body.pecas.reduce((acc, p) => acc + (p.quantidade || 0) * (p.valor_unit || 0), 0)
+      );
+      const valor_total = roundDecimal(valor_servicos + valor_pecas - (body.desconto || 0));
+
+      const orcamentoId = globalThis.crypto.randomUUID();
+
+      const orcamento = await tx.orcamento.create({
+        data: {
+          id: orcamentoId,
+          empresa_id,
+          numero,
+          cliente_id: body.cliente_id,
+          veiculo_id: body.veiculo_id,
+          data_validade: body.data_validade ? new Date(body.data_validade) : null,
+          status: 'RASCUNHO',
+          desconto: roundDecimal(body.desconto),
+          valor_servicos,
+          valor_pecas,
+          valor_total,
+          observacoes: body.observacoes || null,
+          termos_condicoes: body.termos_condicoes || null,
+          created_by: user?.name || user?.email || 'Sistema',
+          updated_at: new Date(),
+        },
+      });
+
+      if (body.servicos.length > 0) {
+        await tx.orcamentoServico.createMany({
+          data: body.servicos.map((s) => ({
+            id: globalThis.crypto.randomUUID(),
+            orcamento_id: orcamentoId,
+            descricao: s.descricao,
+            horas: s.horas || 0,
+            valor_hora: roundDecimal(s.valor_hora || 0),
+            valor_total: roundDecimal((s.horas || 0) * (s.valor_hora || 0)),
+          })),
+        });
+      }
+
+      if (body.pecas.length > 0) {
+        await tx.orcamentoPeca.createMany({
+          data: body.pecas.map((p) => ({
+            id: globalThis.crypto.randomUUID(),
+            orcamento_id: orcamentoId,
+            peca_id: p.peca_id || null,
+            descricao: p.descricao,
+            quantidade: p.quantidade || 0,
+            valor_unit: roundDecimal(p.valor_unit || 0),
+            valor_total: roundDecimal((p.quantidade || 0) * (p.valor_unit || 0)),
+          })),
+        });
+      }
+
+      return orcamento;
     });
 
     await createAuditLog({
-      modulo: 'VEICULO',
-      acao: 'EXCLUIR',
-      entidade: 'Veiculo',
-      entidade_id: id,
+      modulo: 'ORCAMENTO',
+      acao: 'CRIAR',
+      entidade: 'Orcamento',
+      entidade_id: result.id,
       usuario: user?.name || user?.email || 'Sistema',
-      empresa_id: user.empresa_id,
-      dados_antes: antes,
+      empresa_id,
+      dados_depois: result,
     });
 
-    log('INFO', 'VEICULO', 'Veículo excluído', { id }, user?.name);
+    log('INFO', 'ORCAMENTO', 'Orçamento criado', { id: result.id, numero: result.numero }, user?.name);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
-    log(
-      'ERROR',
-      'VEICULO',
-      'Erro ao excluir veículo',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json({ error: 'Erro ao excluir veículo' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+    }
+    log('ERROR', 'ORCAMENTO', 'Erro ao criar orçamento', { error: error?.message }, 'sistema');
+    return NextResponse.json({ error: error.message || 'Erro ao criar orçamento' }, { status: 500 });
   }
 }
