@@ -1,35 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getSession } from '@/lib/auth';
+import { requireAuth } from '@/lib/api-auth';
+import { checkPermission } from '@/lib/rbac';
+import { log } from '@/lib/logger';
+import { createAuditLog } from '@/lib/audit';
+import { parseNFeXML } from '@/lib/parse-nfe';
+import { roundDecimal } from '@/lib/utils';
+import { z } from 'zod';
+
+// ============================================================
+// A03: o servidor NÃO confia no `nfeData` enviado pelo cliente.
+// Recebe o XML bruto, reparseia e usa SOMENTE a saída do parser.
+// ============================================================
+const confirmSchema = z.object({
+  xml: z.string().min(20, 'XML da NF-e é obrigatório'),
+  importFornecedor: z.boolean().optional().default(true),
+  itensParaImportar: z.array(z.number().int().nonnegative()).optional().default([]),
+  importarFinanceiro: z.boolean().optional().default(false),
+  formaPagamento: z.string().optional().default('BOLETO À VISTA'),
+  numParcelas: z.number().int().positive().max(60).optional().default(1),
+  diasEntreParcelas: z.number().int().positive().max(180).optional().default(28),
+  dataPrimeiraParcela: z.string().optional().nullable(),
+  categoriaPecas: z.string().optional().default('OUTROS'),
+});
 
 export async function POST(req: NextRequest) {
-  const sanitize = (val: any): string | null => {
-    if (val === null || val === undefined) return null;
-    return String(val).trim();
-  };
-
   try {
-    const session = await getSession();
-    if (!session || !session.empresa_id) {
-      return NextResponse.json({ error: 'Não autorizado ou empresa não identificada' }, { status: 401 });
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
+    if (!checkPermission(user, 'nfe', 'importar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const body = await req.json();
-    const { 
-      nfeData, 
-      fornecedorId, // If already exists
+    const parsed = confirmSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message },
+        { status: 400 }
+      );
+    }
+
+    const {
+      xml,
       importFornecedor,
-      itensParaImportar, // Array of item indices
+      itensParaImportar,
       importarFinanceiro,
       formaPagamento,
       numParcelas,
       diasEntreParcelas,
       dataPrimeiraParcela,
-      categoriaPecas // Default category for new parts
-    } = body;
+      categoriaPecas,
+    } = parsed.data;
 
-    if (!nfeData) {
-      return NextResponse.json({ error: 'Dados da NF-e não fornecidos.' }, { status: 400 });
+    // A03: parsear o XML no servidor. Se estiver inválido, o parser lança.
+    let nfeData;
+    try {
+      nfeData = parseNFeXML(xml);
+    } catch (err: any) {
+      log('WARN', 'NFE', 'XML rejeitado pelo parser', { error: err?.message }, user?.name);
+      return NextResponse.json(
+        { error: err?.message || 'XML da NF-e inválido ou corrompido' },
+        { status: 400 }
+      );
+    }
+
+    const empresa_id = user.empresa_id;
+
+    // A03: validar duplicidade pela chave de acesso (UNIQUE lógico).
+    // Se já existe movimentação financeira com essa chave, rejeitamos.
+    const jaImportada = await prisma.movimentacaoFinanceira.findFirst({
+      where: {
+        empresa_id,
+        numero_documento: nfeData.chaveAcesso,
+        categoria: 'COMPRA_MERCADORIA',
+      },
+      select: { id: true, created_at: true },
+    });
+
+    if (jaImportada) {
+      return NextResponse.json(
+        {
+          error: `Esta NF-e (chave ${nfeData.chaveAcesso.slice(-8)}) já foi importada em ${jaImportada.created_at.toLocaleDateString('pt-BR')}.`,
+        },
+        { status: 409 }
+      );
     }
 
     const results: any = {
@@ -39,244 +95,213 @@ export async function POST(req: NextRequest) {
       stats: {
         criados: 0,
         atualizados: 0,
-        total: 0
-      }
+        total: 0,
+      },
     };
 
-    const empresa_id = session.empresa_id;
-
-    // 1. Fornecedor
-    let actualFornecedorId = fornecedorId || null;
-    if (importFornecedor && nfeData.fornecedor) {
-      try {
+    await prisma.$transaction(async (tx) => {
+      // ============================================================
+      // 1. Fornecedor
+      // ============================================================
+      let actualFornecedorId: string | null = null;
+      if (importFornecedor && nfeData.fornecedor) {
         const f = nfeData.fornecedor;
-        const cnpjStr = sanitize(f.cnpj) || '';
-        
+        const cnpjStr = f.cnpj.replace(/\D/g, '');
         if (cnpjStr) {
-          const fornecedor = f;
-          console.log('[CRIAR FORNECEDOR]', fornecedor);
-
-          const existing = await prisma.cliente.findFirst({ 
-            where: { 
-              cpf_cnpj: cnpjStr, 
-              empresa_id 
-            } 
+          const existing = await tx.cliente.findFirst({
+            where: { cpf_cnpj: cnpjStr, empresa_id },
           });
-          const newPerfil = existing ? (existing.perfil === 'CLIENTE' ? 'AMBOS' : existing.perfil) : 'FORNECEDOR';
+          const newPerfil = existing
+            ? existing.perfil === 'CLIENTE'
+              ? 'AMBOS'
+              : existing.perfil
+            : 'FORNECEDOR';
 
-          const supplierUpdatePayload = {
-            nome: f.razaoSocial,
-            razao_social: f.razaoSocial,
-            nome_fantasia: f.nomeFantasia,
-            inscricao_estadual: sanitize(f.ie),
-            endereco: f.endereco,
-            bairro: f.bairro,
-            cidade: f.cidade,
-            uf: f.uf,
-            estado: f.uf,
-            cep: sanitize(f.cep),
-            perfil: newPerfil,
-            updated_at: new Date()
-          };
- 
-          const supplierCreatePayload = {
-            id: globalThis.crypto.randomUUID(),
-            empresa_id,
-            cpf_cnpj: cnpjStr,
-            nome: f.razaoSocial,
-            razao_social: f.razaoSocial,
-            nome_fantasia: f.nomeFantasia,
-            inscricao_estadual: sanitize(f.ie),
-            endereco: f.endereco,
-            bairro: f.bairro,
-            cidade: f.cidade,
-            uf: f.uf,
-            estado: f.uf,
-            cep: sanitize(f.cep),
-            tipo: 'PJ' as const,
-            tipo_pessoa: 'JURIDICA',
-            telefone: 'N/A',
-            perfil: 'FORNECEDOR',
-            updated_at: new Date()
-          };
-
-          console.log('[FORNECEDOR CREATE]', JSON.stringify(supplierCreatePayload, null, 2));
-
-          const fornecedorDb = await prisma.cliente.upsert({
+          const fornecedorDb = await tx.cliente.upsert({
             where: {
-              cpf_cnpj_empresa_id: {
-                cpf_cnpj: cnpjStr,
-                empresa_id
-              }
+              cpf_cnpj_empresa_id: { cpf_cnpj: cnpjStr, empresa_id },
             },
-            update: supplierUpdatePayload,
-            create: supplierCreatePayload
+            update: {
+              nome: f.razaoSocial,
+              razao_social: f.razaoSocial,
+              nome_fantasia: f.nomeFantasia || null,
+              inscricao_estadual: f.ie || null,
+              endereco: f.endereco || null,
+              bairro: f.bairro || null,
+              cidade: f.cidade || null,
+              uf: f.uf || null,
+              estado: f.uf || null,
+              cep: f.cep || null,
+              perfil: newPerfil,
+              updated_at: new Date(),
+            },
+            create: {
+              id: globalThis.crypto.randomUUID(),
+              empresa_id,
+              cpf_cnpj: cnpjStr,
+              nome: f.razaoSocial,
+              razao_social: f.razaoSocial,
+              nome_fantasia: f.nomeFantasia || null,
+              inscricao_estadual: f.ie || null,
+              endereco: f.endereco || null,
+              bairro: f.bairro || null,
+              cidade: f.cidade || null,
+              uf: f.uf || null,
+              estado: f.uf || null,
+              cep: f.cep || null,
+              tipo: 'PJ' as const,
+              tipo_pessoa: 'JURIDICA',
+              telefone: 'N/A',
+              perfil: 'FORNECEDOR',
+              updated_at: new Date(),
+            },
           });
-          const fornecedorCriado = fornecedorDb;
-          console.log('[FORNECEDOR CRIADO]', fornecedorCriado);
 
           actualFornecedorId = fornecedorDb.id;
           results.fornecedor = fornecedorDb;
         }
-      } catch (fErr) {
-        console.error('[ERRO FORNECEDOR COMPLETO]', fErr);
-        console.error('Erro não fatal ao importar fornecedor:', fErr);
-        // Do not fail the whole NFe import, fall back to whatever is possible
       }
-    }
 
-    // 2. Peças e Movimentação no Estoque
-    if (itensParaImportar && itensParaImportar.length > 0) {
-      results.stats.total = itensParaImportar.length;
-      
-      for (const index of itensParaImportar) {
-        try {
-          const item = nfeData.itens[index];
-          if (!item) continue;
+      // ============================================================
+      // 2. Peças + Movimentação de Estoque
+      // ============================================================
+      const indices =
+        itensParaImportar.length > 0
+          ? itensParaImportar
+          : nfeData.itens.map((_, i) => i);
 
-          console.log('[PECA RECEBIDA]', item);
+      results.stats.total = indices.length;
 
-          // Safe inputs
-          const safeCodigo = sanitize(item.codigo) || `SEM_COD_NFE_${index + 1}_${Date.now()}`;
-          const safeDescricao = (sanitize(item.descricao) || 'PRODUTO SEM DESCRIÇÃO').toUpperCase();
-          const safeQtd = isNaN(Number(item.quantidade)) ? 1 : Math.round(Number(item.quantidade));
-          const safeCusto = isNaN(Number(item.valorUnitario)) ? 0 : Number(item.valorUnitario);
+      for (const index of indices) {
+        const item = nfeData.itens[index];
+        if (!item) continue;
 
-          const descricao = safeDescricao;
-          const quantidade = safeQtd;
-          const precoCusto = safeCusto;
-          console.log('[PECA ANTES CREATE]', {
-            descricao,
-            quantidade,
-            precoCusto
+        // A03: o parser já validou código, descrição, quantidade e valor unitário.
+        const codigo = item.codigo;
+        const descricao = item.descricao;
+        const quantidade = item.quantidade;
+        const unidade = item.unidade;
+        const precoCusto = roundDecimal(item.valorUnitario);
+
+        const existingPeca = await tx.peca.findUnique({
+          where: { codigo_empresa_id: { codigo, empresa_id } },
+        });
+
+        let pecaDb;
+
+        if (existingPeca) {
+          // Atualiza estoque, custo e preço de venda proporcional ao markup anterior
+          const precoCustoAntigo = Number(existingPeca.preco_custo);
+          const precoVendaAntigo = Number(existingPeca.preco_venda);
+          const markup = precoCustoAntigo > 0 ? precoVendaAntigo / precoCustoAntigo : 1.5;
+          const novoPrecoVenda = roundDecimal(precoCusto * markup);
+
+          pecaDb = await tx.peca.update({
+            where: { id: existingPeca.id },
+            data: {
+              quantidade: { increment: quantidade },
+              preco_custo: precoCusto,
+              preco_venda: novoPrecoVenda > 0 ? novoPrecoVenda : existingPeca.preco_venda,
+              updated_by: user?.name || 'Sistema (importação)',
+              updated_at: new Date(),
+            },
           });
-
-          // Find if piece already exists by (codigo, empresa_id)
-          const existingPeca = await prisma.peca.findUnique({
-            where: {
-              codigo_empresa_id: {
-                codigo: safeCodigo,
-                empresa_id: empresa_id
-              }
-            }
-          });
-
-          let pecaDb;
-
-          if (existingPeca) {
-            // Update existing piece
-            // "SE a peça já existir: atualizar estoque, atualizar custo, atualizar preço se configurado, vincular pela referência/código"
-            const precoCustoNum = Number(existingPeca.preco_custo);
-            const precoVendaNum = Number(existingPeca.preco_venda);
-            const currentMarkup = precoCustoNum > 0 ? (precoVendaNum / precoCustoNum) : 1.5;
-            const updatedPrecoVenda = safeCusto * currentMarkup;
-
-            pecaDb = await prisma.peca.update({
-              where: { id: existingPeca.id },
-              data: {
-                quantidade: { increment: safeQtd },
-                preco_custo: safeCusto,
-                preco_venda: updatedPrecoVenda > 0 ? updatedPrecoVenda : existingPeca.preco_venda,
-                updated_by: session.name || 'Sistema (importação)',
-                updated_at: new Date()
-              }
-            });
-            const pecaAtualizada = pecaDb;
-            console.log('[PECA ATUALIZADA]', pecaAtualizada);
-            results.stats.atualizados++;
-          } else {
-            // Create automatic piece
-            // "SE a peça não existir: criar automaticamente a peça: nome, código, NCM, valor, quantidade, fornecedor, adicionar ao estoque automaticamente"
-            const pecaCreatePayload = {
-              id: globalThis.crypto.randomUUID(),
-              empresa_id: empresa_id,
-              codigo: safeCodigo,
-              descricao: safeDescricao,
-              quantidade: safeQtd,
-              preco_custo: safeCusto,
-              preco_venda: safeCusto * 1.5, // Default markup 50%
-              categoria: (categoriaPecas as any) || 'OUTROS',
-              localizacao: 'NFE IMPORT_ALT',
-              created_by: session.name || 'Sistema (importação)',
-              updated_at: new Date()
-            };
-
-            console.log('[PECA CREATE]', JSON.stringify(pecaCreatePayload, null, 2));
-
-            pecaDb = await prisma.peca.create({
-              data: pecaCreatePayload
-            });
-            const novaPeca = pecaDb;
-            console.log('[PECA CRIADA]', novaPeca);
-            results.stats.criados++;
-          }
-
-          // Register automatic stock movement ENTRADA
-          await prisma.movimentacaoEstoque.create({
+          results.stats.atualizados++;
+        } else {
+          pecaDb = await tx.peca.create({
             data: {
               id: globalThis.crypto.randomUUID(),
-              empresa_id: empresa_id,
-              peca_id: pecaDb.id,
-              tipo: 'ENTRADA',
-              quantidade: safeQtd,
-              motivo: 'COMPRA',
-              observacao: `Importação automática via NF-e Nº ${nfeData.numero} - Fornecedor: ${nfeData.fornecedor.razaoSocial}`,
-              usuario_id: session.id
-            }
+              empresa_id,
+              codigo,
+              descricao,
+              quantidade,
+              preco_custo: precoCusto,
+              preco_venda: roundDecimal(precoCusto * 1.5),
+              categoria: categoriaPecas as any,
+              localizacao: 'NFE IMPORT',
+              created_by: user?.name || 'Sistema (importação)',
+              updated_at: new Date(),
+            },
           });
-
-          const pecaId = pecaDb.id;
-          console.log('[MOVIMENTACAO ESTOQUE]', {
-            pecaId,
-            quantidade
-          });
-
-          results.pecas.push(pecaDb);
-        } catch (itemErr: any) {
-          console.error('[ERRO PECA COMPLETO]', itemErr);
-          console.error(`Erro ao importar item no índice ${index}:`, itemErr);
-          // Don't fail the whole import if an item fails, just log it
+          results.stats.criados++;
         }
+
+        // Registro de movimentação de estoque — SEMPRE (nunca apaga)
+        await tx.movimentacaoEstoque.create({
+          data: {
+            id: globalThis.crypto.randomUUID(),
+            empresa_id,
+            peca_id: pecaDb.id,
+            tipo: 'ENTRADA',
+            quantidade,
+            motivo: 'COMPRA',
+            observacao: `NF-e ${nfeData.numero} série ${nfeData.serie} | chave ${nfeData.chaveAcesso} | unidade ${unidade} | fornecedor ${nfeData.fornecedor.razaoSocial}`,
+            usuario_id: user.id,
+          },
+        });
+
+        results.pecas.push(pecaDb);
       }
-    }
 
-    // 3. Financeiro
-    if (importarFinanceiro) {
-      try {
-        const valorTotal = nfeData.totais.valorNF;
-        const descricaoBase = `Compra NF-e ${nfeData.numero} - ${nfeData.fornecedor.razaoSocial}`;
-        const statusInicial = (formaPagamento === 'DINHEIRO' || formaPagamento === 'PIX') ? 'PAGO' : 'PENDENTE';
+      // ============================================================
+      // 3. Financeiro
+      // ============================================================
+      if (importarFinanceiro) {
+        const valorTotal = roundDecimal(nfeData.totais.valorNF);
+        const descricaoBase = `Compra NF-e ${nfeData.numero}/${nfeData.serie} — ${nfeData.fornecedor.razaoSocial}`;
+        const statusInicial =
+          formaPagamento === 'DINHEIRO' || formaPagamento === 'PIX' ? 'PAGO' : 'PENDENTE';
 
-        if (formaPagamento === 'BOLETO PARCELADO' && numParcelas > 1) {
-          const valorParcela = valorTotal / numParcelas;
-          const baseDate = dataPrimeiraParcela ? new Date(dataPrimeiraParcela) : new Date(nfeData.dataEmissao);
-          
+        const isParcelado =
+          (formaPagamento === 'BOLETO PARCELADO' || formaPagamento === 'PARCELADO') &&
+          numParcelas > 1;
+
+        if (isParcelado) {
+          // A03: parcelas com ajuste de centavos — a última absorve o resto
+          const valorParcelaBase = Math.floor((valorTotal * 100) / numParcelas) / 100;
+          const somaBase = roundDecimal(valorParcelaBase * (numParcelas - 1));
+          const ultimaParcela = roundDecimal(valorTotal - somaBase);
+
+          const baseDate = dataPrimeiraParcela
+            ? new Date(dataPrimeiraParcela)
+            : new Date(nfeData.dataEmissao);
+
           for (let i = 0; i < numParcelas; i++) {
-            const vencimento = new Date(baseDate);
-            vencimento.setDate(vencimento.getDate() + (i * (diasEntreParcelas || 28)));
+            const isUltima = i === numParcelas - 1;
+            const valorParcela = isUltima ? ultimaParcela : valorParcelaBase;
 
-            const mov = await prisma.movimentacaoFinanceira.create({
+            const vencimento = new Date(baseDate);
+            vencimento.setDate(vencimento.getDate() + i * diasEntreParcelas);
+            vencimento.setUTCHours(12, 0, 0, 0);
+
+            const mov = await tx.movimentacaoFinanceira.create({
               data: {
                 id: globalThis.crypto.randomUUID(),
                 empresa_id,
                 tipo: 'SAIDA',
-                descricao: `${descricaoBase} - Parcela ${i + 1}/${numParcelas}`,
+                descricao: `${descricaoBase} — Parcela ${i + 1}/${numParcelas}`,
                 valor: valorParcela,
                 data: new Date(nfeData.dataEmissao),
                 data_vencimento: vencimento,
                 status: statusInicial,
                 categoria: 'COMPRA_MERCADORIA',
-                numero_documento: nfeData.numero,
+                numero_documento: nfeData.chaveAcesso,
                 forma_pagamento: formaPagamento,
                 cliente_id: actualFornecedorId,
-                created_by: session.name || session.email || 'Sistema (NF-e)',
-                updated_at: new Date()
-              }
+                created_by: user?.name || user?.email || 'Sistema (NF-e)',
+                updated_at: new Date(),
+              },
             });
             results.financeiro.push(mov);
           }
         } else {
-          const mov = await prisma.movimentacaoFinanceira.create({
+          const vencimento =
+            formaPagamento === 'BOLETO À VISTA' && dataPrimeiraParcela
+              ? new Date(dataPrimeiraParcela)
+              : new Date(nfeData.dataEmissao);
+          vencimento.setUTCHours(12, 0, 0, 0);
+
+          const mov = await tx.movimentacaoFinanceira.create({
             data: {
               id: globalThis.crypto.randomUUID(),
               empresa_id,
@@ -284,28 +309,70 @@ export async function POST(req: NextRequest) {
               descricao: descricaoBase,
               valor: valorTotal,
               data: new Date(nfeData.dataEmissao),
-              data_vencimento: formaPagamento === 'BOLETO À VISTA' && dataPrimeiraParcela 
-                ? new Date(dataPrimeiraParcela) 
-                : new Date(nfeData.dataEmissao),
+              data_vencimento: vencimento,
               status: statusInicial,
               categoria: 'COMPRA_MERCADORIA',
-              numero_documento: nfeData.numero,
+              numero_documento: nfeData.chaveAcesso,
               forma_pagamento: formaPagamento || 'BOLETO À VISTA',
               cliente_id: actualFornecedorId,
-              created_by: session.name || session.email || 'Sistema (NF-e)',
-              updated_at: new Date()
-            }
+              created_by: user?.name || user?.email || 'Sistema (NF-e)',
+              updated_at: new Date(),
+            },
           });
           results.financeiro.push(mov);
         }
-      } catch (finErr) {
-        console.error('Erro não fatal ao criar movimentação financeira:', finErr);
       }
+    });
+
+    await createAuditLog({
+      modulo: 'NFE',
+      acao: 'IMPORTAR',
+      entidade: 'NFe',
+      entidade_id: nfeData.chaveAcesso,
+      usuario: user?.name || user?.email || 'Sistema',
+      empresa_id,
+      dados_depois: {
+        chave: nfeData.chaveAcesso,
+        numero: nfeData.numero,
+        serie: nfeData.serie,
+        fornecedor: nfeData.fornecedor.razaoSocial,
+        itensImportados: results.stats.total,
+        criados: results.stats.criados,
+        atualizados: results.stats.atualizados,
+        financeiroCriado: results.financeiro.length,
+      },
+    });
+
+    log(
+      'INFO',
+      'NFE',
+      'NF-e importada',
+      {
+        chave: nfeData.chaveAcesso,
+        numero: nfeData.numero,
+        criados: results.stats.criados,
+        atualizados: results.stats.atualizados,
+      },
+      user?.name
+    );
+
+    if (user?.empresa_id) {
+      const { invalidateDashboardCache } = await import('@/lib/dashboard-cache');
+      invalidateDashboardCache(user.empresa_id);
     }
 
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
-    console.error('Erro ao confirmar importação:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao processar importação' }, { status: 500 });
+    log(
+      'ERROR',
+      'NFE',
+      'Erro ao confirmar importação',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json(
+      { error: error.message || 'Erro ao processar importação' },
+      { status: 500 }
+    );
   }
 }
