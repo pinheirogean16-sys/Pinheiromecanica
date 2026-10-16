@@ -141,14 +141,11 @@ export async function POST(request: Request) {
       // A24 (parcial): se o e-mail já existe em OUTRA empresa, o banco rejeita
       // com P2002 porque o índice ainda é global. Mensagem clara para o usuário.
       if (err?.code === 'P2002') {
-        return NextResponse.json(
-          {
-            error:
-              'Este e-mail já está cadastrado no sistema. Se precisar usar o mesmo e-mail em outra empresa, contate o suporte.',
-          },
-          { status: 409 }
-        );
-      }
+  return NextResponse.json(
+    { error: 'Este e-mail já está cadastrado nesta empresa' },
+    { status: 409 }
+  );
+}
       throw err;
     }
 
