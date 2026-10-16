@@ -2,13 +2,14 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, ChevronLeft, Calendar, ShieldCheck, DollarSign, Award } from 'lucide-react';
+import { Printer, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import { BRANDING } from '@/lib/branding';
 
 function RelatorioPrintContent() {
   const searchParams = useSearchParams();
   const reportType = searchParams?.get('report') || 'resumo';
-  
+
   const [data, setData] = useState<any>(null);
   const [analise, setAnalise] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -18,25 +19,26 @@ function RelatorioPrintContent() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch company configurations
-        const companyRes = await fetch('/api/configuracoes/empresa');
+        // A31: usa a rota pública (acessível a todos os papéis).
+        const companyRes = await fetch('/api/configuracoes/empresa/publico');
         if (companyRes.ok) {
-          setCompany(await companyRes.json());
+          const d = await companyRes.json();
+          if (d && Object.keys(d).length > 0) {
+            setCompany(d);
+          }
         }
 
-        // Fetch primary summary
         const summaryRes = await fetch('/api/financeiro/resumo', { credentials: 'include' });
         if (summaryRes.ok) {
           setData(await summaryRes.json());
         }
 
-        // Fetch deep analytics
         const analiseRes = await fetch('/api/financeiro/analise', { credentials: 'include' });
         if (analiseRes.ok) {
           setAnalise(await analiseRes.json());
         }
-      } catch (err) {
-        console.error('Erro ao coletar dados para impressão:', err);
+      } catch {
+        // Silencioso
       } finally {
         setLoading(false);
       }
@@ -90,12 +92,11 @@ function RelatorioPrintContent() {
         }
       `}</style>
 
-      {/* Control panel (Non-Printable) */}
       <div className="max-w-4xl mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl">
         <Link href="/financeiro" className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-[10px] font-black uppercase tracking-widest">
           <ChevronLeft size={16} /> Voltar ao Painel
         </Link>
-        <button 
+        <button
           onClick={() => window.print()}
           className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition shadow-lg"
         >
@@ -103,20 +104,21 @@ function RelatorioPrintContent() {
         </button>
       </div>
 
-      {/* A4 Page layout */}
       <div className="max-w-4xl mx-auto bg-white p-10 print:p-0 print:shadow-none shadow-2xl border border-zinc-300 print:border-none space-y-8">
-        
-        {/* Cabecalho Principal */}
+
+        {/* CABEÇALHO */}
         <div className="flex justify-between items-start border-b-2 border-black pb-6">
           <div className="space-y-1">
             <h1 className="text-xl font-black uppercase italic tracking-tighter text-zinc-900">
-              {company?.nome_fantasia || 'PINHEIRO DIESEL'}
+              {company?.nome_fantasia || BRANDING.name}
             </h1>
-            <p className="text-[10px] font-bold text-zinc-650 uppercase">Plataforma ERP Enterprise Diesel</p>
+            <p className="text-[10px] font-bold text-zinc-600 uppercase">{BRANDING.slogan}</p>
             <p className="text-[9px] text-zinc-500 leading-tight">
-              CNPJ: {company?.cnpj || 'S/N'} | Insc. Est.: {company?.inscricao_estadual || 'ISENTO'}<br />
-              Endereço: {company?.endereco || 'Área Industrial Diesel'}, nº {company?.numero || 'S/N'}<br />
-              Email: {company?.email || 'admin@pinheirodiesel.com.br'} | Tel: {company?.telefone || '---'}
+              CNPJ: {company?.cnpj || '—'} | Insc. Est.: {company?.inscricao_estadual || 'ISENTO'}<br />
+              {company?.endereco
+                ? `${company.endereco}${company.numero ? `, ${company.numero}` : ''}${company.cidade ? ` - ${company.cidade}` : ''}${company.uf ? `/${company.uf}` : ''}`
+                : 'Endereço não configurado'}<br />
+              Email: {company?.email || '—'} | Tel: {company?.telefone || '—'}
             </p>
           </div>
           <div className="text-right space-y-2">
@@ -127,14 +129,13 @@ function RelatorioPrintContent() {
           </div>
         </div>
 
-        {/* METRICS / REPORT TITLE */}
         <div>
           <h2 className="text-sm font-black uppercase border-b border-black pb-1 mb-4 italic">
             Ativo Selecionador: {reportType.toUpperCase()}
           </h2>
         </div>
 
-        {/* CONDITION 1: FLOW RESUMO */}
+        {/* RESUMO */}
         {reportType === 'resumo' && (
           <div className="space-y-6">
             <p className="text-[10px] text-zinc-600 uppercase font-black">O demonstrativo de fluxo de caixa expressa a saúde líquida instantânea da corporação.</p>
@@ -157,12 +158,11 @@ function RelatorioPrintContent() {
               </div>
             </div>
 
-            {/* Quick Ledger table */}
             <div className="space-y-3">
               <p className="font-black text-[9px] uppercase tracking-wider">Histórico Recente de Lançamentos do Mês:</p>
               <table className="w-full text-left report-table border border-zinc-300">
                 <thead>
-                  <tr className="bg-zinc-100 text-[9px] uppercase border-b border-zinc-350">
+                  <tr className="bg-zinc-100 text-[9px] uppercase border-b border-zinc-300">
                     <th className="p-2 border-r border-zinc-300">Fato</th>
                     <th className="p-2 border-r border-zinc-300">Descrição / Parcela</th>
                     <th className="p-2 border-r border-zinc-300">Categoria</th>
@@ -188,11 +188,11 @@ function RelatorioPrintContent() {
           </div>
         )}
 
-        {/* CONDITION 2: DRE REPORT */}
+        {/* DRE */}
         {reportType === 'dre' && analise?.dre && (
           <div className="space-y-6">
-            <p className="text-[10px] text-zinc-650 uppercase">O demonstrativo de resultado consolidado expressa os ganhos operacionais acumulados e margens brutas.</p>
-            
+            <p className="text-[10px] text-zinc-600 uppercase">O demonstrativo de resultado consolidado expressa os ganhos operacionais acumulados e margens brutas.</p>
+
             <div className="border border-black p-6 space-y-4 bg-zinc-50">
               <div className="flex justify-between items-baseline border-b border-zinc-300 pb-2">
                 <span className="font-bold uppercase">(+) RECEITAS OPERACIONAIS BRUTAS (INFLOWS):</span>
@@ -212,12 +212,11 @@ function RelatorioPrintContent() {
               </div>
             </div>
 
-            {/* Categorias */}
             <div className="space-y-3">
               <p className="font-black text-[9px] uppercase tracking-wider">Aproveitamento por Categoria de Rateio Financeiro:</p>
               <table className="w-full text-left report-table border border-zinc-300">
                 <thead>
-                  <tr className="bg-zinc-100 text-[9px] uppercase border-b border-zinc-350">
+                  <tr className="bg-zinc-100 text-[9px] uppercase border-b border-zinc-300">
                     <th className="p-2 border-r border-zinc-300">Nome da Conta / Distribuição</th>
                     <th className="p-2 border-r border-zinc-300 text-right">Inflows</th>
                     <th className="p-2 border-r border-zinc-300 text-right">Outflows</th>
@@ -239,11 +238,11 @@ function RelatorioPrintContent() {
           </div>
         )}
 
-        {/* CONDITION 3: PREVIEW REPORT */}
+        {/* PREVISÃO */}
         {reportType === 'previsao' && analise?.previsao && (
           <div className="space-y-6">
-            <p className="text-[10px] text-zinc-650 uppercase">Previsões baseadas em aging buckets de contas a receber e ordens de serviços comprometidas.</p>
-            
+            <p className="text-[10px] text-zinc-600 uppercase">Previsões baseadas em aging buckets de contas a receber e ordens de serviços comprometidas.</p>
+
             <div className="grid grid-cols-4 gap-4">
               {analise.previsao.map((p: any, idx: number) => (
                 <div key={idx} className="border border-black p-4 text-center space-y-2">
@@ -255,12 +254,11 @@ function RelatorioPrintContent() {
               ))}
             </div>
 
-            {/* Negativados em atraso */}
             <div className="space-y-3 pt-4">
               <p className="font-black text-[9px] uppercase text-red-700">Análise de Sacados Atrasados (Inadimplência Real):</p>
               <table className="w-full text-left report-table border border-zinc-300">
                 <thead>
-                  <tr className="bg-zinc-100 text-[9px] uppercase border-b border-zinc-350">
+                  <tr className="bg-zinc-100 text-[9px] uppercase border-b border-zinc-300">
                     <th className="p-2 border-r border-zinc-300">Cedente / Sacado</th>
                     <th className="p-2 border-r border-zinc-300">Identificação</th>
                     <th className="p-2 border-r border-zinc-300">Contato Fone</th>
@@ -294,30 +292,25 @@ function RelatorioPrintContent() {
           </div>
         )}
 
-        {/* DEFAULT COMPILATION FOOTER */}
-        <div className="pt-8 border-t border-black grid grid-cols-3 gap-6 items-end text-center uppercase text-[9px]">
+        {/* RODAPÉ — M25: removido QR Code fake */}
+        <div className="pt-8 border-t border-black grid grid-cols-2 gap-12 items-end text-center uppercase text-[9px]">
           <div className="space-y-6">
             <span className="font-mono text-zinc-500 font-black">Auditado por</span>
             <div className="border-b border-black w-full" />
             <span>Departamento Financeiro</span>
           </div>
-          <div className="space-y-6 flex flex-col items-center">
-            {/* Simple simulated QR Code to avoid heavy QR Code libs */}
-            <div className="border border-black p-1 bg-white h-14 w-14 flex flex-wrap justify-between items-center opacity-75">
-              <div className="w-5 h-5 bg-black" />
-              <div className="w-3 h-3 bg-zinc-400" />
-              <div className="w-4 h-4 bg-black" />
-              <div className="w-2 h-2 bg-zinc-300" />
-              <div className="w-6 h-6 bg-black" />
-            </div>
-            <span className="text-[7px]">Selo de Autenticidade Digital</span>
-          </div>
           <div className="space-y-6">
             <span className="font-mono text-zinc-500 font-black">Homologado por</span>
             <div className="border-b border-black w-full" />
-            <span>Diretoria Pinheiro Diesel</span>
+            <span>{company?.nome_fantasia || BRANDING.name}</span>
           </div>
         </div>
+
+        {company?.rodape_personalizado && (
+          <div className="text-center text-[8px] text-zinc-500 italic pt-2">
+            {company.rodape_personalizado}
+          </div>
+        )}
 
       </div>
     </div>
