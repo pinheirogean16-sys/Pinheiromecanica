@@ -14,7 +14,6 @@ const updatePerfilSchema = z.object({
   senha_atual: z.string().optional(),
 });
 
-// GET — dados do usuário logado
 export async function GET() {
   try {
     const { error, user: authUser } = await requireAuth();
@@ -38,7 +37,6 @@ export async function GET() {
   }
 }
 
-// PUT — atualizar perfil do usuário logado
 export async function PUT(request: Request) {
   try {
     const { error, user: authUser } = await requireAuth();
@@ -80,16 +78,19 @@ export async function PUT(request: Request) {
     }
 
     if (body.email !== undefined && body.email !== atual.email) {
+      // A24: checagem de email agora é POR EMPRESA.
+      // O mesmo email pode existir em outra empresa sem problema.
       const outroComEmail = await prisma.user.findFirst({
         where: {
           email: body.email,
+          empresa_id: atual.empresa_id,
           NOT: { id: atual.id },
         },
         select: { id: true },
       });
       if (outroComEmail) {
         return NextResponse.json(
-          { error: 'Este e-mail já está em uso por outro usuário' },
+          { error: 'Este e-mail já está em uso por outro usuário nesta empresa' },
           { status: 409 }
         );
       }
@@ -125,7 +126,6 @@ export async function PUT(request: Request) {
       }
 
       updateData.password_hash = await bcrypt.hash(body.password, 10);
-      // C06: incrementa token_version — invalida todos os tokens antigos deste usuário
       updateData.token_version = (atual.token_version ?? 0) + 1;
       senhaAlterada = true;
     }
