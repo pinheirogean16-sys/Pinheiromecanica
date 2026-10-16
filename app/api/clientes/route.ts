@@ -109,6 +109,8 @@ export async function GET(request: NextRequest) {
     const q = (searchParams.get('q') || '').slice(0, 100);
     const status = searchParams.get('status') || '';
     const perfil = searchParams.get('perfil') || '';
+    // A38: filtro por tipo (PF/PJ) aplicado no servidor
+    const tipo = searchParams.get('tipo') || '';
 
     // M06: teto de paginação
     const rawPage = parseInt(searchParams.get('page') || '1', 10);
@@ -122,6 +124,11 @@ export async function GET(request: NextRequest) {
     };
 
     if (status) where.status = status;
+
+    // A38: filtro PF/PJ aplicado no servidor (antes era client-side, só na página atual)
+    if (tipo === 'PF' || tipo === 'PJ') {
+      where.tipo = tipo;
+    }
 
     if (perfil) {
       if (perfil === 'CLIENTE') {
