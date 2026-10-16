@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  ArrowLeft, Printer, Edit, Trash2, User, Truck, 
+  ArrowLeft, Printer, Edit, User, Truck, 
   Calendar, FileText, Wrench, Package, DollarSign,
   Terminal, ShieldCheck, ChevronRight, ClipboardCheck, Plus, Eye,
   MapPin, Navigation, Milestone, Receipt, Users, Clock, AlertTriangle, Loader2,
@@ -31,7 +31,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const [diasIntervalo, setDiasIntervalo] = useState(28);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
-  // A01: modal de cancelamento
   const [showCancelarModal, setShowCancelarModal] = useState(false);
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [isCanceling, setIsCanceling] = useState(false);
@@ -47,6 +46,31 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       // silencioso
     } finally {
       setLoading(false);
+    }
+  }, [resolvedParams.id]);
+
+  // A23-followup: /api/checklist/execucoes agora devolve { items, total, ... }.
+  // Aceita tanto array direto (compatibilidade) quanto objeto paginado.
+  const carregarChecklists = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        setChecklistsExecutados([]);
+        return;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data?.items || []);
+      const mapped = list.map((e: any) => ({
+        ...e,
+        checklist: e.Checklist || e.checklist,
+        os: e.OrdemServico || e.os,
+        veiculo: e.Veiculo || e.veiculo,
+      }));
+      setChecklistsExecutados(mapped);
+    } catch {
+      setChecklistsExecutados([]);
     }
   }, [resolvedParams.id]);
 
@@ -80,7 +104,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         toast.success('Documento formalizado via hash SHA-256!');
         fetchOrdem();
       } else {
-        toast.error('Erro ao registrar homologação digital');
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Erro ao registrar homologação digital');
       }
     } catch {
       toast.error('Erro de conexão');
@@ -94,19 +119,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   }, [fetchOrdem]);
 
   useEffect(() => {
-    fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
-        const mapped = (data || []).map((e: any) => ({
-          ...e,
-          checklist: e.Checklist || e.checklist,
-          os: e.OrdemServico || e.os,
-          veiculo: e.Veiculo || e.veiculo
-        }));
-        setChecklistsExecutados(mapped);
-      })
-      .catch(() => {});
-  }, [resolvedParams.id]);
+    carregarChecklists();
+  }, [carregarChecklists]);
 
   const handleDeleteChecklist = async (execId: string) => {
     if (!confirm('Deseja realmente excluir este checklist?')) return;
@@ -116,19 +130,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         method: 'DELETE',
         credentials: 'include'
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
         toast.success(data.message || 'Checklist removido!');
-        const resp = await fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, { credentials: 'include' });
-        const checklists = await resp.json();
-        const mapped = (checklists || []).map((e: any) => ({
-          ...e,
-          checklist: e.Checklist || e.checklist,
-          os: e.OrdemServico || e.os,
-          veiculo: e.Veiculo || e.veiculo
-        }));
-        setChecklistsExecutados(mapped);
+        carregarChecklists();
       } else {
         toast.error(data.error || 'Erro ao remover checklist');
       }
@@ -177,33 +183,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     return ids;
   };
 
+  /**
+   * A28: quando o próximo status é FINALIZADA, abre o modal de finalização
+   * (que permite escolher forma de pagamento e número de parcelas) em vez
+   * de fazer PATCH direto. Sem isso, o modal nunca era aberto.
+   */
   const handleStatusChange = async (novoStatus: string) => {
     if (novoStatus === 'FINALIZADA') {
-      try {
-        const preventivasVinculadas = extrairPreventivasVinculadas();
-
-        const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            status: 'FINALIZADA',
-            preventivas_ids: preventivasVinculadas,
-            km_veiculo: ordem?.veiculo?.quilometragem,
-            horimetro_veiculo: ordem?.veiculo?.horimetro_atual
-          })
-        });
-        if (res.ok) {
-          toast.success('OS finalizada!');
-          fetchOrdem();
-          setShowFinalizarModal(false);
-        } else {
-          const err = await res.json().catch(() => ({}));
-          toast.error(err.error || 'Erro ao finalizar');
-        }
-      } catch {
-        toast.error('Erro de conexão');
-      }
+      setShowFinalizarModal(true);
       return;
     }
 
@@ -218,14 +205,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         toast.success(`Status atualizado para ${novoStatus.replace(/_/g, ' ')}`);
         fetchOrdem();
       } else {
-        toast.error('Erro ao atualizar status');
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Erro ao atualizar status');
       }
     } catch {
       toast.error('Erro de conexão');
     }
   };
 
-  // A01: cancelamento em vez de exclusão
   const handleCancelar = async () => {
     if (!motivoCancelamento.trim()) {
       toast.error('Informe o motivo do cancelamento');
@@ -261,28 +248,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4">
-        <div className="w-10 h-10 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
-        <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-[0.3em]">Resgatando Protocolo...</p>
-      </div>
-    );
-  }
-
-  if (!ordem) {
-    return (
-      <div className="text-center py-32 space-y-4">
-        <Terminal className="w-12 h-12 text-zinc-800 mx-auto" />
-        <h2 className="text-xl font-bold text-white">Protocolo Inexistente</h2>
-        <p className="text-zinc-500">A ordem de serviço solicitada não consta em nossa base de dados ativa.</p>
-        <Link href="/os" className="inline-block text-orange-500 font-bold uppercase text-xs tracking-widest mt-4">
-          Voltar para listagem
-        </Link>
-      </div>
-    );
-  }
-
   const confirmFinalizar = async () => {
     setIsFinalizing(true);
     try {
@@ -307,7 +272,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         setShowFinalizarModal(false);
         fetchOrdem();
       } else {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({}));
         toast.error(errorData.error || 'Erro ao finalizar OS');
       }
     } catch {
@@ -316,6 +281,28 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       setIsFinalizing(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-4">
+        <div className="w-10 h-10 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+        <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-[0.3em]">Resgatando Protocolo...</p>
+      </div>
+    );
+  }
+
+  if (!ordem) {
+    return (
+      <div className="text-center py-32 space-y-4">
+        <Terminal className="w-12 h-12 text-zinc-800 mx-auto" />
+        <h2 className="text-xl font-bold text-white">Protocolo Inexistente</h2>
+        <p className="text-zinc-500">A ordem de serviço solicitada não consta em nossa base de dados ativa.</p>
+        <Link href="/os" className="inline-block text-orange-500 font-bold uppercase text-xs tracking-widest mt-4">
+          Voltar para listagem
+        </Link>
+      </div>
+    );
+  }
 
   const statusColors: Record<string, string> = {
     ABERTA: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -337,7 +324,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     FINALIZADA: 'ENTREGUE'
   };
 
-  // A01: esconde botão de cancelar se OS já cancelada ou entregue
   const podeCancelar = ordem.status !== 'CANCELADA' && ordem.status !== 'ENTREGUE';
 
   return (
@@ -393,7 +379,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               <Edit className="w-5 h-5" />
             </button>
           </Link>
-          {/* A01: botão "Cancelar OS" em vez de "Excluir" */}
           {podeCancelar && (
             <button
               type="button"
@@ -425,7 +410,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             onClick={() => handleStatusChange(proximoStatus[ordem.status])}
             className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all transform active:scale-95 shadow-xl shadow-orange-950/20 flex items-center justify-center gap-2"
           >
-            Avançar: {proximoStatus[ordem.status].replace(/_/g, ' ')}
+            {proximoStatus[ordem.status] === 'FINALIZADA' ? 'Finalizar OS' : `Avançar: ${proximoStatus[ordem.status].replace(/_/g, ' ')}`}
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -466,13 +451,13 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               {ordem.veiculo?.marca} {ordem.veiculo?.modelo}
             </p>
             <p className="text-[10px] text-zinc-500 font-mono mt-1 uppercase truncate font-bold">SÉRIE/ANO: {ordem.veiculo?.ano}</p>
-            {ordem.veiculo?.horimetro_atual !== null ? (
+            {ordem.veiculo?.horimetro_atual !== null && ordem.veiculo?.horimetro_atual !== undefined ? (
               <p className="text-[10px] text-orange-500 font-mono mt-1 uppercase font-black tracking-widest">
                 HORÍMETRO: {ordem.veiculo?.horimetro_atual}h
               </p>
             ) : (
               <p className="text-[10px] text-blue-400 font-mono mt-1 uppercase font-black tracking-widest">
-                KM ATUAL: {ordem.veiculo?.quilometragem?.toLocaleString() || 0} KM
+                KM ATUAL: {(ordem.veiculo?.quilometragem || 0).toLocaleString('pt-BR')} KM
               </p>
             )}
           </Link>
@@ -839,11 +824,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             )}
             <div className="space-y-1">
               <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Subtotal Serviços</p>
-              <p className="text-lg font-bold text-white">R$ {ordem.valor_servicos?.toFixed(2) || '0,00'}</p>
+              <p className="text-lg font-bold text-white">R$ {(ordem.valor_servicos || 0).toFixed(2)}</p>
             </div>
             <div className="space-y-1">
               <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Subtotal Peças</p>
-              <p className="text-lg font-bold text-white">R$ {ordem.valor_pecas?.toFixed(2) || '0,00'}</p>
+              <p className="text-lg font-bold text-white">R$ {(ordem.valor_pecas || 0).toFixed(2)}</p>
             </div>
             {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (() => {
               const totalExtras = (
@@ -879,7 +864,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               <p className="text-[10px] font-mono uppercase tracking-[0.2em] font-black">Consolidado Total</p>
             </div>
             <p className="text-4xl font-black text-white tracking-tight">
-              R$ {ordem.valor_total?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R$ {(ordem.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
           </div>
         </div>
@@ -950,7 +935,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   placeholder="DIGITE O NOME..."
                   value={sigCliente}
                   onChange={(e) => setSigCliente(e.target.value)}
-                  className="w-full bg-black border border-zinc-850 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
+                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
                 />
                 {sigCliente && (
                   <div className="p-3 bg-black/40 border border-dashed border-zinc-800 rounded-xl text-center select-none">
@@ -967,7 +952,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   placeholder="DIGITE O NOME..."
                   value={sigMecanico}
                   onChange={(e) => setSigMecanico(e.target.value)}
-                  className="w-full bg-black border border-zinc-850 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
+                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
                 />
                 {sigMecanico && (
                   <div className="p-3 bg-black/40 border border-dashed border-zinc-800 rounded-xl text-center select-none">
@@ -984,7 +969,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   placeholder="DIGITE O NOME..."
                   value={sigSupervisor}
                   onChange={(e) => setSigSupervisor(e.target.value)}
-                  className="w-full bg-black border border-zinc-850 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
+                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase tracking-tight focus:outline-none focus:border-zinc-700"
                 />
                 {sigSupervisor && (
                   <div className="p-3 bg-black/40 border border-dashed border-zinc-800 rounded-xl text-center select-none">
@@ -1013,7 +998,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
-      {/* MODAL: Finalizar */}
+      {/* MODAL: Finalizar (A28 — agora abre pelo botão de avançar quando próximo status é FINALIZADA) */}
       {showFinalizarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl">
@@ -1026,7 +1011,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 onClick={() => setShowFinalizarModal(false)}
                 className="w-10 h-10 bg-zinc-800 border border-zinc-700 rounded-xl flex items-center justify-center text-zinc-400 hover:text-white transition-all"
               >
-                <Eye className="w-5 h-5 rotate-45" />
+                <XCircle className="w-5 h-5" />
               </button>
             </div>
 
@@ -1084,7 +1069,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               <div className="bg-orange-600/5 p-6 rounded-2xl border border-orange-500/10 flex items-center justify-between group overflow-hidden relative">
                 <div className="relative z-10">
                   <p className="text-[10px] font-mono uppercase tracking-widest text-orange-500 font-extrabold mb-1">Total a Consolidar</p>
-                  <p className="text-3xl font-black text-white">R$ {ordem.valor_total?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  <p className="text-3xl font-black text-white">R$ {(ordem.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform">
                   <DollarSign className="w-32 h-32 text-orange-500" />
@@ -1118,7 +1103,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* A01: MODAL DE CANCELAMENTO */}
+      {/* MODAL: Cancelar */}
       {showCancelarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
