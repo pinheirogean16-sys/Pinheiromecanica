@@ -315,6 +315,8 @@ const updateOsSchema = z
     preventivas_ids: z.array(z.string()).optional().default([]),
     preventiva_id: z.string().optional().nullable(),
     motivo_cancelamento: z.string().max(500).optional().nullable(),
+    // A26: permite ao ADMIN forçar reescrita de assinatura (caso extremo)
+    forcar_reescrita_assinatura: z.boolean().optional().default(false),
   })
   .partial();
 
@@ -409,6 +411,7 @@ const putOsSchema = z.object({
   justificativa_ajuste_leitura: z.string().optional().nullable(),
   preventivas_ids: z.array(z.string()).optional().default([]),
   preventiva_id: z.string().optional().nullable(),
+  forcar_reescrita_assinatura: z.boolean().optional().default(false),
 });
 
 // ============================================================
@@ -512,12 +515,39 @@ export async function PATCH(
     }
 
     // ============================================================
+    // A26: bloqueia alteração de assinatura se já existe hash registrado.
+    // A assinatura é imutável após homologação.
+    // ============================================================
+    const querMexerEmAssinatura =
+      body.assinatura_cliente !== undefined ||
+      body.assinatura_mecanico !== undefined ||
+      body.assinatura_supervisor !== undefined ||
+      body.assinatura_hash !== undefined;
+
+    if (querMexerEmAssinatura && antes.assinatura_hash) {
+      if (user.role !== 'ADMIN' || !body.forcar_reescrita_assinatura) {
+        log(
+          'WARN',
+          'OS',
+          'Tentativa de reescrever assinatura já homologada (A26 - PATCH)',
+          { osId: id, userId: user.id },
+          user?.name
+        );
+        return NextResponse.json(
+          {
+            error:
+              'Esta OS já possui assinatura homologada e ela não pode ser alterada. Fale com um administrador se precisar refazer.',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ============================================================
     // A01: CANCELAMENTO (em vez de exclusão)
-    // Se o body pede status = CANCELADA, tratamos como cancelamento formal
     // ============================================================
     if (body.status === 'CANCELADA') {
       const result = await prisma.$transaction(async (tx) => {
-        // Bloqueia se já cancelada ou entregue
         if (antes.status === 'CANCELADA') {
           throw new Error('OS já está cancelada');
         }
@@ -525,7 +555,6 @@ export async function PATCH(
           throw new Error('OS entregue não pode ser cancelada');
         }
 
-        // Bloqueia se houver lançamento financeiro pago
         const pagos = await tx.movimentacaoFinanceira.count({
           where: { os_id: id, status: 'PAGO' },
         });
@@ -535,13 +564,11 @@ export async function PATCH(
           );
         }
 
-        // Cancela lançamentos financeiros pendentes
         await tx.movimentacaoFinanceira.updateMany({
           where: { os_id: id, status: { not: 'PAGO' } },
           data: { status: 'CANCELADO', updated_at: new Date(), updated_by: user?.name || 'Sistema' },
         });
 
-        // Devolve estoque com conversão correta de unidade (A01)
         const pecasAplicadas = await tx.pecaAplicada.findMany({
           where: { os_id: id },
           include: { Peca: true },
@@ -561,18 +588,15 @@ export async function PATCH(
                 item.Peca.unidadeMedida
               );
             } catch {
-              // Se falhar a conversão, devolve a quantidade original (defensivo)
               qtdDevolver = item.quantidade;
             }
           }
 
-          // Devolve ao estoque
           await tx.peca.update({
             where: { id: item.peca_id },
             data: { quantidade: { increment: qtdDevolver } },
           });
 
-          // A01: registra MovimentacaoEstoque de ENTRADA (não apaga histórico)
           await tx.movimentacaoEstoque.create({
             data: {
               id: globalThis.crypto.randomUUID(),
@@ -588,7 +612,6 @@ export async function PATCH(
           });
         }
 
-        // Atualiza a OS para CANCELADA
         const ordemAtualizada = await tx.ordemServico.update({
           where: { id },
           data: {
@@ -632,7 +655,7 @@ export async function PATCH(
     }
 
     // ============================================================
-    // PATCH normal (edição parcial) — fluxo original
+    // PATCH normal (edição parcial)
     // ============================================================
     const veiculoId = antes.veiculo_id;
     let leiturasRes: any = { kmFinalAtualizar: null, horimetroFinalAtualizar: null, sucesso: true };
@@ -795,6 +818,8 @@ export async function PATCH(
       }
       if (body.centro_custo !== undefined) updateData.centro_custo = body.centro_custo;
       if (body.custo_km !== undefined) updateData.custo_km = body.custo_km;
+
+      // A26: só atualiza assinatura se não estiver bloqueada
       if (body.assinatura_cliente !== undefined)
         updateData.assinatura_cliente = body.assinatura_cliente;
       if (body.assinatura_mecanico !== undefined)
@@ -1024,6 +1049,7 @@ export async function PATCH(
       entidade: 'OrdemServico',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
       dados_depois: result,
     });
@@ -1072,7 +1098,7 @@ export async function PATCH(
 }
 
 // ============================================================
-// PUT — Atualizar completamente (idêntico ao que já existia)
+// PUT — Atualizar completamente
 // ============================================================
 export async function PUT(
   request: Request,
@@ -1109,6 +1135,34 @@ export async function PUT(
         { error: 'Você só pode editar suas próprias OS' },
         { status: 403 }
       );
+    }
+
+    // ============================================================
+    // A26: mesma proteção no PUT.
+    // ============================================================
+    const querMexerEmAssinaturaPut =
+      body.assinatura_cliente !== undefined ||
+      body.assinatura_mecanico !== undefined ||
+      body.assinatura_supervisor !== undefined ||
+      body.assinatura_hash !== undefined;
+
+    if (querMexerEmAssinaturaPut && antes.assinatura_hash) {
+      if (user.role !== 'ADMIN' || !body.forcar_reescrita_assinatura) {
+        log(
+          'WARN',
+          'OS',
+          'Tentativa de reescrever assinatura já homologada (A26 - PUT)',
+          { osId: id, userId: user.id },
+          user?.name
+        );
+        return NextResponse.json(
+          {
+            error:
+              'Esta OS já possui assinatura homologada e ela não pode ser alterada. Fale com um administrador se precisar refazer.',
+          },
+          { status: 403 }
+        );
+      }
     }
 
     if (body.cliente_id) {
@@ -1531,6 +1585,7 @@ export async function PUT(
       entidade: 'OrdemServico',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes,
       dados_depois: result,
     });
@@ -1593,7 +1648,6 @@ export async function DELETE(
 
     if (!antes) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 
-    // A01: exclusão física desabilitada. Toda OS deve ser cancelada.
     log(
       'WARN',
       'OS',
