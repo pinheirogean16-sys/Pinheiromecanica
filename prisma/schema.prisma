@@ -122,6 +122,7 @@ model Cliente {
   Veiculo                Veiculo[]
 
   @@unique([cpf_cnpj, empresa_id])
+  @@index([empresa_id])
 }
 
 model ConfiguracaoEmpresa {
@@ -251,6 +252,7 @@ model MovimentacaoFinanceira {
 
   @@index([cliente_id], map: "MovimentacaoFinanceira_cliente_id_fkey")
   @@index([os_id], map: "MovimentacaoFinanceira_os_id_fkey")
+  @@index([empresa_id])
 }
 
 model Notificacao {
@@ -307,6 +309,7 @@ model Orcamento {
   @@unique([numero, empresa_id])
   @@index([cliente_id], map: "Orcamento_cliente_id_fkey")
   @@index([veiculo_id], map: "Orcamento_veiculo_id_fkey")
+  @@index([empresa_id])
 }
 
 model OrcamentoPeca {
@@ -416,6 +419,7 @@ model OrdemServico {
   @@index([cliente_id], map: "OrdemServico_cliente_id_fkey")
   @@index([mecanico_id], map: "OrdemServico_mecanico_id_fkey")
   @@index([veiculo_id], map: "OrdemServico_veiculo_id_fkey")
+  @@index([empresa_id])
 }
 
 model Peca {
@@ -442,6 +446,7 @@ model Peca {
   PecaAplicada        PecaAplicada[]
 
   @@unique([codigo, empresa_id])
+  @@index([empresa_id])
 }
 
 model PecaAplicada {
@@ -599,6 +604,7 @@ model Veiculo {
 
   @@unique([placa, empresa_id])
   @@index([cliente_id], map: "Veiculo_cliente_id_fkey")
+  @@index([empresa_id])
 }
 
 enum Cliente_tipo {
