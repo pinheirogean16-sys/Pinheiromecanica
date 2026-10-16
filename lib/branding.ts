@@ -23,7 +23,7 @@ export const BRANDING = {
   },
 
   // Favicon (opcional — se quiser trocar, salve /public/favicon.ico)
-  favicon: '/favicon.ico',
+    favicon: '/vehlox-favicon-512.png',
 
   // Paleta VEHLOX
   colors: {
