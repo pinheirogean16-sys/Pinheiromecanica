@@ -1,44 +1,31 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { signToken } from '@/lib/auth';
 import { log } from '@/lib/logger';
+import { isRateLimited, resetRateLimit } from '@/lib/rate-limit';
 
 // ============================================================
-// RATE LIMITING
-// ⚠️ TODO: Migrar para Redis ou tabela no banco (multi-instância)
+// A11: rate limit persistido no banco (LoginAttempt)
+// - Sobrevive a restart
+// - Compartilhado entre workers (se houver mais de um)
+// - Limite: 5 tentativas por email+IP em 5 minutos
 // ============================================================
-const loginAttempts = new Map<string, { count: number; lockUntil: number }>();
-
 const MAX_ATTEMPTS = 5;
-const LOCK_DURATION_MS = 5 * 60 * 1000; // 5 minutos
+const WINDOW_MS = 5 * 60 * 1000; // 5 minutos
 
-export async function POST(request: Request) {
-  const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    'unknown';
+function extrairIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return request.headers.get('x-real-ip') || 'unknown';
+}
+
+export async function POST(request: NextRequest) {
+  const ip = extrairIp(request);
 
   try {
     // ============================================================
-    // 1. Verificar rate limit
-    // ============================================================
-    const attempt = loginAttempts.get(ip);
-
-    if (attempt && attempt.lockUntil > Date.now()) {
-      const minutesLeft = Math.ceil((attempt.lockUntil - Date.now()) / 60000);
-      return NextResponse.json(
-        { error: `Muitas tentativas. Tente novamente em ${minutesLeft} min.` },
-        { status: 429 }
-      );
-    }
-
-    if (attempt && attempt.count >= MAX_ATTEMPTS && attempt.lockUntil <= Date.now()) {
-      loginAttempts.delete(ip);
-    }
-
-    // ============================================================
-    // 2. Validar entrada
+    // 1. Validar entrada primeiro (para ter o email antes do rate limit)
     // ============================================================
     const body = await request.json();
     const { email, password } = body;
@@ -50,15 +37,49 @@ export async function POST(request: Request) {
       );
     }
 
+    const emailNormalizado = String(email).toLowerCase().trim();
+
+    // ============================================================
+    // 2. Rate limit composto: email + IP
+    // A chave inclui email para não bloquear todos os usuários de um
+    // mesmo IP (escritório compartilhado), e inclui IP para não permitir
+    // que um atacante teste a mesma conta por vários IPs sem limite.
+    // ============================================================
+    const rateLimitKey = `login:${emailNormalizado}:${ip}`;
+
+    const rateCheck = await isRateLimited(rateLimitKey, MAX_ATTEMPTS, WINDOW_MS);
+
+    if (rateCheck.limited) {
+      const msLeft = Math.max(0, rateCheck.reset - Date.now());
+      const minutesLeft = Math.ceil(msLeft / 60000);
+
+      log('WARN', 'AUTH', 'Rate limit bloqueou tentativa de login', {
+        email: emailNormalizado,
+        ip,
+        count: rateCheck.count,
+        msLeft,
+      });
+
+      return NextResponse.json(
+        {
+          error: `Muitas tentativas. Tente novamente em ${minutesLeft} min.`,
+        },
+        { status: 429 }
+      );
+    }
+
     // ============================================================
     // 3. Buscar usuário
     // ============================================================
     const user = await prisma.user.findUnique({
-      where: { email: String(email).toLowerCase().trim() },
+      where: { email: emailNormalizado },
     });
 
     if (!user) {
-      registrarTentativa(ip);
+      log('WARN', 'AUTH', 'Tentativa de login com email inexistente', {
+        email: emailNormalizado,
+        ip,
+      });
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
@@ -68,8 +89,10 @@ export async function POST(request: Request) {
     const validPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!validPassword) {
-      registrarTentativa(ip);
-      log('WARN', 'AUTH', 'Tentativa de login falhou', { email, ip });
+      log('WARN', 'AUTH', 'Tentativa de login falhou', {
+        email: emailNormalizado,
+        ip,
+      });
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
@@ -90,7 +113,7 @@ export async function POST(request: Request) {
     if (user.ativo === false) {
       log('WARN', 'AUTH', 'Tentativa de login de usuário desativado', {
         userId: user.id,
-        email,
+        email: emailNormalizado,
         ip,
       });
       return NextResponse.json(
@@ -100,9 +123,9 @@ export async function POST(request: Request) {
     }
 
     // ============================================================
-    // 6. Sucesso: limpar rate limit e gerar token
+    // 6. Sucesso: limpa o rate limit desta chave
     // ============================================================
-    loginAttempts.delete(ip);
+    await resetRateLimit(rateLimitKey);
 
     // C06: inclui token_version no JWT. Se a senha for trocada depois,
     // o valor no banco é incrementado e este token deixa de valer.
@@ -142,18 +165,10 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error: any) {
-    log('ERROR', 'AUTH', 'Erro interno no login', { error: error.message, ip });
+    log('ERROR', 'AUTH', 'Erro interno no login', {
+      error: error?.message,
+      ip,
+    });
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
-}
-
-function registrarTentativa(ip: string) {
-  const current = loginAttempts.get(ip) || { count: 0, lockUntil: 0 };
-  const newCount = current.count + 1;
-  const shouldLock = newCount >= MAX_ATTEMPTS;
-
-  loginAttempts.set(ip, {
-    count: newCount,
-    lockUntil: shouldLock ? Date.now() + LOCK_DURATION_MS : 0,
-  });
 }
