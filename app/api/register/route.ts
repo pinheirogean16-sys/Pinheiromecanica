@@ -61,9 +61,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verifica se e-mail já existe
-    const existingUser = await prisma.user.findUnique({
+       // A24: e-mail agora é único por empresa. Como não sabemos a empresa
+    // ainda (ela está sendo criada), usamos findFirst como defesa contra
+    // race e para alinhar com o novo unique composto.
+    const existingUser = await prisma.user.findFirst({
       where: { email },
+      select: { id: true },
     });
 
     if (existingUser) {
