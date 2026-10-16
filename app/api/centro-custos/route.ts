@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
+import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { roundDecimal } from '@/lib/utils';
 
@@ -17,6 +18,11 @@ export async function GET(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
+    // A25: dashboard/centro de custos é dado financeiro — exige permissão
+    if (!checkPermission(user, 'financeiro', 'visualizar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
     const empresaId = user.empresa_id;
     const cacheKey = `centro_custos_${empresaId}`;
 
@@ -26,12 +32,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ ...cacheRAM[cacheKey].data, cached: true });
     }
 
-    // Centros de custo predefinidos
     const categoriasValidas = [
       'OFICINA', 'CAMPO', 'RESGATE', 'MOTOR', 'CAIXA', 'DIFERENCIAL', 'ELETRICA', 'INJECAO', 'BORRACHARIA'
     ];
 
-    // Buscar todas as OS válidas (exceto as canceladas)
     const ordens = await prisma.ordemServico.findMany({
       where: {
         empresa_id: empresaId,
@@ -49,7 +53,6 @@ export async function GET(request: Request) {
       }
     });
 
-    // Inicializar mapa de categorias
     const statsPorSetor: Record<string, any> = {};
     for (const cat of categoriasValidas) {
       statsPorSetor[cat] = {
@@ -79,19 +82,16 @@ export async function GET(request: Request) {
       const lucroRaw = Number(os.lucro_bruto || 0);
       const liquidoRaw = Number(os.total_liquido || 0);
 
-      // Acumuladores gerais
       faturamentoGeral += faturamentoRaw;
       custoGeral += custoRaw;
       lucroGeral += lucroRaw;
 
-      // Acumulador por setor
       statsPorSetor[centro].totalOS += 1;
       statsPorSetor[centro].faturamentoBruto += faturamentoRaw;
       statsPorSetor[centro].custoTotal += custoRaw;
       statsPorSetor[centro].lucroTotal += lucroRaw;
       statsPorSetor[centro].faturamentoLiquido += liquidoRaw;
 
-      // Agrupamento mensal
       const dt = os.data_entrada ? new Date(os.data_entrada) : new Date();
       const mesChave = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
       if (!evolucaoMensal[mesChave]) {
@@ -103,7 +103,6 @@ export async function GET(request: Request) {
       evolucaoMensal[mesChave].totalOS += 1;
     }
 
-    // Formatar e calcular valores derivados
     const setoresArray = Object.values(statsPorSetor).map((s: any) => {
       s.faturamentoBruto = roundDecimal(s.faturamentoBruto);
       s.custoTotal = roundDecimal(s.custoTotal);
@@ -113,17 +112,13 @@ export async function GET(request: Request) {
       return s;
     });
 
-    // Calcular share de mercado interno / share de lucro
     setoresArray.forEach((s: any) => {
       s.porcentagemRentabilidade = lucroGeral > 0 ? roundDecimal((s.lucroTotal / lucroGeral) * 100) : 0;
     });
 
-    // Ordenar ranking de lucro por setor desc
     const rankingRentabilidade = [...setoresArray].sort((a, b) => b.lucroTotal - a.lucroTotal);
 
-    // Formatar evolução mensal em array ordenado
     const evolucaoArray = Object.entries(evolucaoMensal).map(([mesOff, val]) => {
-      // Converte YYYY-MM para MM/YYYY
       const parts = mesOff.split('-');
       const label = `${parts[1]}/${parts[0]}`;
       return {
@@ -137,7 +132,7 @@ export async function GET(request: Request) {
     }).sort((a, b) => a.mes.localeCompare(b.mes));
 
     const totalLiquidoGeral = ordens.reduce((acc, current) => acc + Number(current.total_liquido || 0), 0);
-    const totalImpostosGeral = faturamentoGeral * 0.06; // 6% simulado
+    const totalImpostosGeral = faturamentoGeral * 0.06;
 
     const responseData = {
       geral: {
@@ -152,7 +147,6 @@ export async function GET(request: Request) {
       evolucaoMensal: evolucaoArray
     };
 
-    // Atualiza cache RAM
     cacheRAM[cacheKey] = {
       data: responseData,
       timestamp: Date.now()
@@ -160,7 +154,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(responseData);
   } catch (error: any) {
-    log('ERROR', 'FINANCEIRO_CC', 'Erro ao processar agregados do centro de custos', { error }, 'sistema');
+    log('ERROR', 'FINANCEIRO_CC', 'Erro ao processar agregados do centro de custos', { error: error?.message }, 'sistema');
     return NextResponse.json({ error: 'Erro ao processar agregados' }, { status: 500 });
   }
 }
