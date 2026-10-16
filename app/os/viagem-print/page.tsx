@@ -2,8 +2,9 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, ChevronLeft, MapPin, Milestone, Receipt, Users, Clock, ShieldCheck } from 'lucide-react';
+import { Printer, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import { BRANDING } from '@/lib/branding';
 
 function ViagemPrintContent() {
   const searchParams = useSearchParams();
@@ -13,15 +14,18 @@ function ViagemPrintContent() {
   const [company, setCompany] = useState<any>(null);
 
   useEffect(() => {
+    // A31: usa a rota pública (acessível a todos os papéis).
     const fetchCompany = async () => {
       try {
-        const res = await fetch('/api/configuracoes/empresa');
+        const res = await fetch('/api/configuracoes/empresa/publico');
         if (res.ok) {
           const data = await res.json();
-          setCompany(data);
+          if (data && Object.keys(data).length > 0) {
+            setCompany(data);
+          }
         }
-      } catch (err) {
-        console.error('Erro ao buscar dados da empresa:', err);
+      } catch {
+        // Silencioso — usa fallback BRANDING
       }
     };
     fetchCompany();
@@ -34,8 +38,8 @@ function ViagemPrintContent() {
           const data = await res.json();
           setOs(data);
         }
-      } catch (err) {
-        console.error('Erro ao buscar OS:', err);
+      } catch {
+        // Silencioso
       } finally {
         setLoading(false);
       }
@@ -70,19 +74,19 @@ function ViagemPrintContent() {
     );
   }
 
-  const logo = company?.logo_url;
+  const logo = company?.logo_url || BRANDING.logo.url;
 
   let timeline: any[] = [];
   try {
     timeline = typeof os.timeline_viagem === 'string' ? JSON.parse(os.timeline_viagem || '[]') : (os.timeline_viagem || []);
-  } catch (e) {
+  } catch {
     timeline = [];
   }
 
   let equipe: any[] = [];
   try {
     equipe = typeof os.mao_obra_equipe === 'string' ? JSON.parse(os.mao_obra_equipe || '[]') : (os.mao_obra_equipe || []);
-  } catch (e) {
+  } catch {
     equipe = [];
   }
 
@@ -99,7 +103,7 @@ function ViagemPrintContent() {
   let comprovantes: any = {};
   try {
     comprovantes = typeof os.despesas_comprovantes === 'string' ? JSON.parse(os.despesas_comprovantes || '{}') : (os.despesas_comprovantes || {});
-  } catch (e) {
+  } catch {
     comprovantes = {};
   }
 
@@ -113,7 +117,6 @@ function ViagemPrintContent() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-mono print:text-black">
-      {/* Estilos de Impressão nativos */}
       <style>{`
         @media print {
           @page {
@@ -151,12 +154,11 @@ function ViagemPrintContent() {
         }
       `}</style>
 
-      {/* Controle Superior (Escondido na Impressão) */}
       <div className="max-w-4xl mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl border border-zinc-800">
         <Link href={`/os/${os.id}`} className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-[10px] font-black uppercase tracking-widest">
           <ChevronLeft size={16} /> Voltar para OS
         </Link>
-        <button 
+        <button
           onClick={() => window.print()}
           className="px-8 py-3 bg-amber-600 hover:bg-amber-500 text-black font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-2 transition shadow-lg shadow-amber-900/40"
         >
@@ -164,40 +166,43 @@ function ViagemPrintContent() {
         </button>
       </div>
 
-      {/* DOCUMENTO PRINCIPAL */}
       <div className="max-w-4xl mx-auto bg-zinc-900 text-zinc-100 shadow-2xl p-8 print:shadow-none print:p-0 border border-amber-500/40 rounded-3xl print:rounded-none print:border-black print:bg-white print:text-black print-bg-white">
         
         {/* CABEÇALHO */}
         <div className="flex border-b border-zinc-800 pb-4 mb-4 print:border-black">
           <div className="w-1/3 flex items-center justify-center border-r border-zinc-800 pr-4 print:border-black">
             {logo ? (
-              <img src={logo} alt="Logo" className="max-h-24 object-contain brightness-100 print:brightness-100" />
+              <img src={logo} alt={BRANDING.name} className="max-h-24 object-contain brightness-100 print:brightness-100" />
             ) : (
               <div className="text-xl font-black italic uppercase leading-none text-center text-amber-500 print:text-black">
-                {company?.nome_fantasia || 'PINHEIRO DIESEL'}
+                {BRANDING.name}
               </div>
             )}
           </div>
           <div className="w-2/3 pl-4 space-y-1">
-            <h1 className="text-lg font-black uppercase text-amber-500 print:text-black">{company?.razao_social || company?.nome_fantasia || 'PINHEIRO MECÂNICA DIESEL'}</h1>
+            <h1 className="text-lg font-black uppercase text-amber-500 print:text-black">
+              {company?.razao_social || company?.nome_fantasia || 'RAZÃO SOCIAL NÃO CONFIGURADA'}
+            </h1>
             <p className="text-[10px] leading-tight text-zinc-400 print:text-black">
-              CNPJ: {company?.cnpj || '00.000.000/0001-00'} | IE: {company?.inscricao_estadual || 'ISENTO'}
+              CNPJ: {company?.cnpj || '—'} | IE: {company?.inscricao_estadual || 'ISENTO'}
             </p>
             <p className="text-[10px] leading-tight text-zinc-400 print:text-black">
-              {company?.endereco || 'RUA ERNESTO GIANINI, 102 - PARQUE INDUSTRIAL - MARÍLIA/SP'}
+              {company?.endereco
+                ? `${company.endereco}${company.numero ? `, ${company.numero}` : ''}${company.cidade ? ` - ${company.cidade}` : ''}${company.uf ? `/${company.uf}` : ''}`
+                : 'Endereço não configurado'}
             </p>
             <p className="text-[10px] leading-tight text-zinc-400 print:text-black">
-              TEL: {company?.telefone || '(14) 3456-7890'} | EMAIL: {company?.email || 'contato@pinheirodiesel.com.br'}
+              TEL: {company?.telefone || '—'} | EMAIL: {company?.email || '—'}
             </p>
           </div>
         </div>
 
-        {/* TÍTULO DO RELATÓRIO DE VIAGEM */}
+        {/* TÍTULO */}
         <div className="bg-amber-600 text-black py-2 px-4 text-center font-black uppercase tracking-widest text-sm mb-4 rounded-xl print:rounded-none print:bg-black print:text-white">
           RELATÓRIO DE ATENDIMENTO EXTERNO E CONTROLE DE KM - PROTOCOLO #{os.numero || os.id.slice(0,6).toUpperCase()}
         </div>
 
-        {/* METADADOS DA OS DO CLIENTE */}
+        {/* DADOS CLIENTE/VEÍCULO */}
         <div className="grid grid-cols-2 border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="p-4 border-r border-zinc-800 space-y-1 print:border-black">
             <h2 className="text-[11px] font-black uppercase border-b border-zinc-800 pb-1 mb-2 text-amber-500 print:text-black print:border-black">DADOS DO CLIENTE</h2>
@@ -218,7 +223,7 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* CONTROLE DE KM E DESLOCAMENTO */}
+        {/* KM */}
         <div className="border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="bg-zinc-800/60 px-4 py-2 border-b border-zinc-800 font-black uppercase text-xs tracking-wider text-amber-500 print:bg-zinc-100 print:text-black print:border-black print-bg-zinc-100">
             1. CONTROLE DE QUILOMETRAGEM (QUILÔMETRO DE DESLOCAMENTO)
@@ -247,9 +252,9 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* LOCALIZAÇÃO E MAPA SIMPLIFICADO */}
+        {/* LOCAL DE ATENDIMENTO */}
         <div className="grid grid-cols-3 border border-zinc-800 mb-4 gap-0 divide-x divide-zinc-800 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white print:divide-black">
-          <div className="col-span-2 p-4 space-y-2">
+          <div className="col-span-3 p-4 space-y-2">
             <h3 className="text-[11px] font-black uppercase text-amber-500 print:text-black">2. LOCAL DE ATENDIMENTO</h3>
             <div className="space-y-1">
               <p className="text-[12px] font-black text-zinc-100 uppercase print:text-black">
@@ -260,31 +265,14 @@ function ViagemPrintContent() {
               </p>
               {os.local_gps && (
                 <p className="text-xs text-zinc-500 font-mono print:text-black">
-                  LOCALIZAÇÃO DE SATÉLITE GPS (CAPTURA): {os.local_gps}
+                  LOCALIZAÇÃO GPS (CAPTURA): {os.local_gps}
                 </p>
               )}
             </div>
           </div>
-          <div className="p-4 flex flex-col justify-center items-center bg-zinc-900/30 text-center select-none print:bg-zinc-50">
-            <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-tight mb-2">Mapa Esquemático de Rota</p>
-            <div className="w-full flex items-center justify-center py-2">
-              {/* Rota visual em SVG */}
-              <svg className="w-4/5 h-12" viewBox="0 0 100 30" fill="none">
-                <circle cx="10" cy="15" r="4" fill="#f59e0b" className="print:fill-black" />
-                <text x="10" y="27" fontSize="5" textAnchor="middle" fill="#71717a" className="print:fill-black" fontWeight="bold">OFICINA</text>
-                
-                <path d="M 14 15 Q 30 5, 50 15 T 86 15" stroke="#f59e0b" className="print:stroke-black" strokeWidth="2" strokeDasharray="3 2" />
-                <path d="M 86 15 L 82 11 M 86 15 L 82 19" stroke="#f59e0b" className="print:stroke-black" strokeWidth="1.5" />
-                
-                <circle cx="90" cy="15" r="4" fill="#f59e0b" className="print:fill-black" />
-                <text x="90" y="27" fontSize="5" textAnchor="middle" fill="#f59e0b" className="print:fill-black" fontWeight="bold">DESTINO</text>
-              </svg>
-            </div>
-            <p className="text-[9px] text-zinc-500 mt-1 uppercase font-bold print:text-black">Oficina → Obra de Campo</p>
-          </div>
         </div>
 
-        {/* DETALHAMENTO DE DESPESAS DE CAMPO */}
+        {/* DESPESAS */}
         <div className="border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="bg-zinc-800/60 px-4 py-2 border-b border-zinc-800 font-black uppercase text-xs tracking-wider text-amber-500 print:bg-zinc-100 print:text-black print:border-black print-bg-zinc-100">
             3. DESPESAS E CUSTOS OPERACIONAIS DE CAMPO
@@ -292,7 +280,7 @@ function ViagemPrintContent() {
           <div className="w-full overflow-x-auto print:overflow-visible">
             <table className="min-w-full text-xs text-left">
             <thead>
-              <tr className="bg-zinc-900 border-b border-zinc-805 font-black text-zinc-300 print:bg-zinc-50 print:text-black print:border-black">
+              <tr className="bg-zinc-900 border-b border-zinc-800 font-black text-zinc-300 print:bg-zinc-50 print:text-black print:border-black">
                 <th className="p-2 border-r border-zinc-800 print:border-black">Item de Despesa</th>
                 <th className="p-2 border-r border-zinc-800 text-right print:border-black font-semibold">Valor Registrado</th>
                 <th className="p-2 text-center">Status / Comprovante</th>
@@ -303,49 +291,49 @@ function ViagemPrintContent() {
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Pedágio Rodoviário</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_pedagio)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_pedagio ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_pedagio ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {os.despesa_combustivel > 0 && (
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Combustível / Abastecimento</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_combustivel)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_combustivel ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_combustivel ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {os.despesa_hospedagem > 0 && (
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Hospedagem / Estadia</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_hospedagem)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_hospedagem ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_hospedagem ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {os.despesa_alimentacao > 0 && (
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Alimentação / Refeição</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_alimentacao)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_alimentacao ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_alimentacao ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {os.despesa_diaria_tecnica > 0 && (
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Diária Técnica de Campo</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_diaria_tecnica)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_diaria_tecnica ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_diaria_tecnica ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {os.despesa_guincho > 0 && (
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Serviço de Guincho Extramuros</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_guincho)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_guincho ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_guincho ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {os.despesa_outros > 0 && (
                 <tr className="border-b border-zinc-800 print:border-black">
                   <td className="p-2 border-r border-zinc-800 font-semibold text-zinc-300 print:text-black print:border-black">Outras Despesas Incidentes</td>
                   <td className="p-2 border-r border-zinc-800 text-right font-mono text-zinc-100 print:text-black print:border-black">{formatCurrency(os.despesa_outros)}</td>
-                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_outros ? '✔ Anexado' : 'Não Anexado'}</td>
+                  <td className="p-2 text-center text-[10px] uppercase font-bold text-zinc-400 print:text-black">{comprovantes.despesa_outros ? 'Anexado' : 'Não Anexado'}</td>
                 </tr>
               )}
               {totalDespesas === 0 && (
@@ -365,10 +353,10 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* MÃO DE OBRA ADICIONAL DE CAMPO (EXTRA) */}
+        {/* MÃO DE OBRA EXTERNA */}
         <div className="border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="bg-zinc-800/60 px-4 py-2 border-b border-zinc-800 font-black uppercase text-xs tracking-wider text-amber-500 print:bg-zinc-100 print:text-black print:border-black print-bg-zinc-100">
-            4. HORAS ADICIONAIS E EQUIPE TÉCNICA EXTERNA (EQUIPE ADICIONAL)
+            4. HORAS ADICIONAIS E EQUIPE TÉCNICA EXTERNA
           </div>
           <div className="p-4 grid grid-cols-3 gap-6">
             <div className="col-span-1 space-y-1">
@@ -395,7 +383,7 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* 5. PEÇAS E MATERIAIS UTILIZADOS */}
+        {/* PEÇAS */}
         <div className="border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="bg-zinc-800/60 px-4 py-2 border-b border-zinc-800 font-black uppercase text-xs tracking-wider text-amber-500 print:bg-zinc-100 print:text-black print:border-black print-bg-zinc-100">
             5. PEÇAS E MATERIAIS UTILIZADOS NA ORDEM DE SERVIÇO
@@ -438,7 +426,7 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* 6. MÃO DE OBRA / SERVIÇOS EXECUTADOS */}
+        {/* SERVIÇOS */}
         <div className="border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="bg-zinc-800/60 px-4 py-2 border-b border-zinc-800 font-black uppercase text-xs tracking-wider text-amber-500 print:bg-zinc-100 print:text-black print:border-black print-bg-zinc-100">
             6. MÃO DE OBRA / SERVIÇOS EXECUTADOS
@@ -479,7 +467,7 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* LINHA DO TEMPO DA VIAGEM */}
+        {/* TIMELINE */}
         {timeline.length > 0 && (
           <div className="border border-zinc-800 mb-4 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
             <div className="bg-zinc-800/60 px-4 py-2 border-b border-zinc-800 font-black uppercase text-xs tracking-wider text-amber-500 print:bg-zinc-100 print:text-black print:border-black print-bg-zinc-100">
@@ -509,7 +497,7 @@ function ViagemPrintContent() {
           </div>
         )}
 
-        {/* CONSOLIDAÇÃO DOS VALORES DA VIAGEM */}
+        {/* CONSOLIDAÇÃO */}
         <div className="border border-zinc-800 mb-8 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white">
           <div className="bg-zinc-950 px-4 py-2 font-black uppercase text-xs tracking-wider flex justify-between text-amber-500 print:bg-black print:text-white print:border-black">
             <span>RESUMO TÉCNICO E CONSOLIDADO MONETÁRIO DE ATENDIMENTO DE CAMPO</span>
@@ -541,47 +529,32 @@ function ViagemPrintContent() {
           </div>
         </div>
 
-        {/* PARTE DE ASSINATURAS E QR CODE */}
-        <div className="grid grid-cols-4 gap-8 pt-8">
-          <div className="col-span-1 flex flex-col items-center justify-center p-2 border border-zinc-800 rounded bg-zinc-950/40 text-center print:bg-white print:border-black">
-            {/* QR CODE Verificador */}
-            <p className="text-[8px] font-mono text-zinc-500 uppercase font-bold mb-1">Validação Digital</p>
-            <svg className="w-20 h-20 filter invert brightness-200 print:filter-none" viewBox="0 0 100 100" fill="black">
-              {/* Desenhando um QR-Code esquemático com caminhos pretos */}
-              <rect x="5" y="5" width="25" height="25" fill="none" stroke="black" strokeWidth="4" />
-              <rect x="12" y="12" width="11" height="11" fill="black" />
-              <rect x="70" y="5" width="25" height="25" fill="none" stroke="black" strokeWidth="4" />
-              <rect x="77" y="12" width="11" height="11" fill="black" />
-              <rect x="5" y="70" width="25" height="25" fill="none" stroke="black" strokeWidth="4" />
-              <rect x="12" y="77" width="11" height="11" fill="black" />
-              <path d="M 40 10 H 45 V 40 H 40 Z M 50 15 H 55 V 30 H 50 Z M 45 45 H 65 V 50 H 45 Z" />
-              <path d="M 75 40 H 90 V 45 H 75 Z M 80 50 H 95 V 55 H 80 Z M 70 60 H 85 V 65 H 70 Z" />
-              <path d="M 35 75 H 55 V 80 H 35 Z M 40 85 H 60 V 90 H 40 Z M 50 70 H 65 V 75 H 50 Z" />
-              <path d="M 40 50 H 45 V 60 H 40 Z M 55 55 H 60 V 65 H 55 Z" />
-            </svg>
-            <p className="text-[8px] text-zinc-500 font-mono mt-2 uppercase tracking-tighter print:text-black">PinheiroSeg ID: #{os.id.slice(0, 8)}</p>
+        {/* ASSINATURAS */}
+        <div className="grid grid-cols-2 gap-8 pt-8 text-center text-zinc-300 print:text-black">
+          <div className="flex flex-col justify-end h-32 items-center">
+            <div className="w-11/12 border-b border-zinc-800 print:border-black"></div>
+            <p className="text-[10px] uppercase font-black tracking-wider mt-2 text-zinc-200 print:text-black">DADOS / ASSINATURA DO TÉCNICO ENCARREGADO</p>
+            <p className="text-[9px] text-zinc-500 uppercase font-bold text-amber-500 print:text-black">{os.mecanico?.name || 'Mecânico Técnico'}</p>
           </div>
 
-          <div className="col-span-3 grid grid-cols-2 gap-8 text-center text-zinc-300 print:text-black">
-            <div className="flex flex-col justify-end h-32 items-center">
-              <div className="w-11/12 border-b border-zinc-800 print:border-black"></div>
-              <p className="text-[10px] uppercase font-black tracking-wider mt-2 text-zinc-200 print:text-black">DADOS / ASSINATURA DO TÉCNICO ENCARREGADO</p>
-              <p className="text-[9px] text-zinc-500 uppercase font-bold text-amber-500 print:text-black">{os.mecanico?.name || 'Mecânico Técnico'}</p>
-            </div>
-
-            <div className="flex flex-col justify-end h-32 items-center">
-              <div className="w-11/12 border-b border-zinc-800 print:border-black"></div>
-              <p className="text-[10px] uppercase font-black tracking-wider mt-2 text-zinc-200 print:text-black">ASSINATURA DO CLIENTE / RESPONSÁVEL</p>
-              <p className="text-[9px] text-zinc-500 uppercase font-bold text-amber-500 print:text-black">{os.cliente?.nome || 'Cliente'}</p>
-            </div>
+          <div className="flex flex-col justify-end h-32 items-center">
+            <div className="w-11/12 border-b border-zinc-800 print:border-black"></div>
+            <p className="text-[10px] uppercase font-black tracking-wider mt-2 text-zinc-200 print:text-black">ASSINATURA DO CLIENTE / RESPONSÁVEL</p>
+            <p className="text-[9px] text-zinc-500 uppercase font-bold text-amber-500 print:text-black">{os.cliente?.nome || 'Cliente'}</p>
           </div>
         </div>
 
-        {/* REGRAS E NOTAS DE RODAPÉ */}
-        <div className="mt-12 pt-4 border-t border-zinc-850 text-center text-[8px] text-zinc-500 leading-tight print:border-black">
+        {/* RODAPÉ — M25: removida a menção falsa ao QR Code */}
+        <div className="mt-12 pt-4 border-t border-zinc-800 text-center text-[8px] text-zinc-500 leading-tight print:border-black">
           A responsabilidade técnico-metrológica de quilometragem e tempo de parada declarados competem sob os critérios contratuais de atendimento extramuros.
+          {company?.rodape_personalizado && (
+            <>
+              <br />
+              {company.rodape_personalizado}
+            </>
+          )}
           <br />
-          Registo de Viagem auditado electronicamente sob QR Code e Certificação Pinheiro Mecânica Diesel.
+          {BRANDING.name} — {BRANDING.slogan}
         </div>
 
       </div>
