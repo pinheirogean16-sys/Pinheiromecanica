@@ -554,7 +554,7 @@ model ServicoOS {
 model User {
   id                                          String         @id
   name                                        String
-  email                                       String         @unique
+  email                                       String
   password_hash                               String
   role                                        User_role      @default(MECANICO)
   especialidade                               String?
@@ -571,6 +571,7 @@ model User {
   RefreshToken                                RefreshToken[]
   Empresa                                     Empresa        @relation(fields: [empresa_id], references: [id])
 
+  @@unique([email, empresa_id])
   @@index([empresa_id], map: "User_empresa_id_fkey")
 }
 
