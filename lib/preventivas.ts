@@ -163,21 +163,24 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
         const dedupTag = `[PREV:${p.id}:${avaliacao.status}:${cicloKm}:${cicloData}]`;
         const dedupKey = `PREV_${p.id}_${avaliacao.status}_${cicloKm}_${cicloData}_${hojeYMD}`;
 
+        // M12: usa createMany com skipDuplicates para evitar que o Prisma
+        // logue P2002 no stderr mesmo quando o catch trataria o erro.
+        // createMany retorna { count: 0 } quando a chave já existe, sem
+        // disparar erro no console do Prisma.
         let lockAdquirido = false;
         try {
-          await (prisma as any).notificacaoDeduplicacao.create({
-            data: {
+          const result = await (prisma as any).notificacaoDeduplicacao.createMany({
+            data: [{
               id: randomUUID(),
               empresa_id,
               dedup_key: dedupKey
-            }
+            }],
+            skipDuplicates: true
           });
-          lockAdquirido = true;
+          // count === 1 → criou agora (lock adquirido)
+          // count === 0 → já existia (skip), não é nosso lock
+          lockAdquirido = result?.count === 1;
         } catch (err: any) {
-          if (err.code === 'P2002' || (err.message && (err.message.includes('unique') || err.message.includes('dedup_unique')))) {
-            continue;
-          }
-
           if (err.code === 'P2021' || (err.message && err.message.includes("doesn't exist"))) {
             log('WARN', 'PREVENTIVAS_NOTIF', 'Alertas preventivos suspensos: tabela NotificacaoDeduplicacao pendente de migration no banco de dados.');
             continue;
@@ -192,6 +195,7 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
         }
 
         if (!lockAdquirido) {
+          // Já existe dedup para este ciclo — pula sem notificar
           continue;
         }
 
@@ -235,6 +239,7 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
           });
         }
 
+        // Se falhou ao despachar, remove o lock para permitir nova tentativa
         if (!envioSucesso && lockAdquirido) {
           try {
             await (prisma as any).notificacaoDeduplicacao.deleteMany({
@@ -310,7 +315,6 @@ export async function sincronizarPreventivasAposOS(
         }
       });
 
-      // 🎯 PRIORIDADE: kmConclusao > veiculo.quilometragem > plano.ultimo_km
       const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
       const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
 
@@ -350,7 +354,6 @@ export async function sincronizarPreventivasAposOS(
           continue;
         }
 
-        // 🎯 CÁLCULO CORRIGIDO: prioriza km do veículo sobre ultimo_km antigo
         const kmBase = kmConclusao
           ? Number(kmConclusao)
           : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
@@ -461,7 +464,6 @@ export async function sincronizarPreventivasAposOS(
     }
   });
 
-  // 🎯 PRIORIDADE: kmConclusao > veiculo.quilometragem > plano.ultimo_km
   const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
   const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
 
@@ -506,7 +508,6 @@ export async function sincronizarPreventivasAposOS(
           return;
         }
 
-        // 🎯 CÁLCULO CORRIGIDO: prioriza km do veículo sobre ultimo_km antigo
         const kmBase = kmConclusao
           ? Number(kmConclusao)
           : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
