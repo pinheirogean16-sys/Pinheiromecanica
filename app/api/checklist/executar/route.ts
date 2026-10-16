@@ -11,13 +11,20 @@ const execucaoSchema = z.object({
   checklist_id: z.string().min(1, 'ID do checklist é obrigatório'),
   os_id: z.string().optional().nullable(),
   respostas: z.record(z.string(), z.any()),
-  observacoes: z.string().optional().nullable(),
-  executado_por: z.string().trim().min(1, 'Executor do checklist é obrigatório').default('Mecânico'),
-  fotos: z.array(z.object({
-    url: z.string().url(),
-    item_id: z.string().optional().nullable(),
-    legenda: z.string().optional().nullable()
-  })).optional()
+  observacoes: z.string().max(2000).optional().nullable(),
+  // A23: `executado_por` não é mais aceito do cliente — usamos user.name.
+  // Campo mantido como opcional para compatibilidade de payload; será ignorado.
+  executado_por: z.string().trim().optional(),
+  fotos: z
+    .array(
+      z.object({
+        url: z.string().url(),
+        item_id: z.string().optional().nullable(),
+        legenda: z.string().max(500).optional().nullable(),
+      })
+    )
+    .max(50, 'Máximo de 50 fotos por execução')
+    .optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,28 +40,38 @@ export async function POST(request: Request) {
 
     // Validar se checklist pertence à empresa
     const chk = await prisma.checklist.findFirst({
-      where: { id: body.checklist_id, empresa_id: user.empresa_id }
+      where: { id: body.checklist_id, empresa_id: user.empresa_id },
+      select: { id: true, nome: true },
     });
     if (!chk) {
-      return NextResponse.json({ error: 'Checklist não encontrado nesta empresa' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Checklist não encontrado nesta empresa' },
+        { status: 400 }
+      );
     }
 
-    // Se houver OS_ID, buscamos o veiculo_id vinculado à OS pertencente à empresa
-    let veiculo_id = null;
+    // Se houver OS_ID, valida que a OS é da empresa e pega veiculo_id
+    let veiculo_id: string | null = null;
     if (body.os_id) {
       const os = await prisma.ordemServico.findFirst({
         where: { id: body.os_id, empresa_id: user.empresa_id },
-        select: { veiculo_id: true }
+        select: { veiculo_id: true },
       });
       if (!os) {
-        return NextResponse.json({ error: 'OS não encontrada nesta empresa' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'OS não encontrada nesta empresa' },
+          { status: 400 }
+        );
       }
       veiculo_id = os.veiculo_id;
     }
 
+    // A23: executor é sempre o usuário autenticado. Ignora body.executado_por.
+    const executorNome =
+      user.name || user.email || body.executado_por || 'Mecânico';
+
     const execucaoId = globalThis.crypto.randomUUID();
 
-    // Criar a execução
     const execucao = await prisma.$transaction(async (tx) => {
       const created = await tx.checklistExecucao.create({
         data: {
@@ -62,12 +79,12 @@ export async function POST(request: Request) {
           checklist_id: body.checklist_id,
           os_id: body.os_id || null,
           veiculo_id,
-          executado_por: body.executado_por,
-          respostas: JSON.stringify(body.respostas), // Database schema expects String
-          observacoes: body.observacoes,
+          executado_por: executorNome,
+          respostas: JSON.stringify(body.respostas),
+          observacoes: body.observacoes || null,
           data: new Date(),
-          empresa_id: user.empresa_id
-        }
+          empresa_id: user.empresa_id,
+        },
       });
 
       if (body.fotos && body.fotos.length > 0) {
@@ -77,16 +94,16 @@ export async function POST(request: Request) {
             execucao_id: execucaoId,
             item_id: foto.item_id || null,
             url: foto.url,
-            legenda: foto.legenda || null
-          }))
+            legenda: foto.legenda || null,
+          })),
         });
       }
 
       const fullExec = await tx.checklistExecucao.findUnique({
         where: { id: execucaoId },
         include: {
-          ChecklistFoto: true
-        }
+          ChecklistFoto: true,
+        },
       });
 
       return fullExec;
@@ -96,38 +113,69 @@ export async function POST(request: Request) {
       throw new Error('Falha ao obter execução do banco com fotos.');
     }
 
-    // --- NOTIFICAÇÃO AUTOMÁTICA ---
+    // Notificação (não quebra a transação)
     try {
       await notificarChecklistExecutado(execucao);
-    } catch (err) {
-      log('ERROR', 'CHECKLIST', 'Erro ao notificar execução de checklist', { err }, 'sistema');
+    } catch (err: any) {
+      log(
+        'ERROR',
+        'CHECKLIST',
+        'Erro ao notificar execução de checklist',
+        { error: err?.message },
+        'sistema'
+      );
     }
 
+    // A23: auditoria com empresa_id
     await createAuditLog({
       modulo: 'CHECKLIST',
       acao: 'CRIAR',
       entidade: 'ChecklistExecucao',
       entidade_id: execucao.id,
       usuario: user?.name || user?.email || 'Sistema',
-      dados_depois: execucao
+      empresa_id: user.empresa_id,
+      dados_depois: {
+        checklist_id: body.checklist_id,
+        os_id: body.os_id || null,
+        veiculo_id,
+        fotos: body.fotos?.length || 0,
+        executado_por: executorNome,
+      },
     });
 
-    log('INFO', 'CHECKLIST', 'Checklist executado', { id: execucao.id, por: body.executado_por }, user?.name);
+    log(
+      'INFO',
+      'CHECKLIST',
+      'Checklist executado',
+      { id: execucao.id, por: executorNome },
+      user?.name
+    );
 
     const mappedResponse = {
       ...execucao,
       respostas: execucao.respostas ? JSON.parse(execucao.respostas) : {},
       fotos: execucao.ChecklistFoto,
-      ChecklistFoto: undefined
+      ChecklistFoto: undefined,
     };
 
     return NextResponse.json(mappedResponse, { status: 201 });
   } catch (error: any) {
-    console.error('[CHECKLIST EXECUTE POST ERROR]', JSON.stringify(error, null, 2));
-    log('ERROR', 'CHECKLIST', 'Execute checklist error', { error }, 'sistema');
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: 'Erro ao registrar execução do checklist' }, { status: 500 });
+    log(
+      'ERROR',
+      'CHECKLIST',
+      'Erro ao registrar execução do checklist',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json(
+      { error: 'Erro ao registrar execução do checklist' },
+      { status: 500 }
+    );
   }
 }
