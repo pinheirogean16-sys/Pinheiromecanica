@@ -24,6 +24,12 @@ const preprocessInteger = (val: any) => {
   return isNaN(parsed) ? null : parsed;
 };
 
+const preprocessQuantidade = (val: any) => {
+  if (val === null || val === undefined || val === '') return 1;
+  const n = Number(val);
+  return isNaN(n) ? 1 : n;
+};
+
 const osSchema = z.object({
   tipoOS: z.string().optional().nullable().default('OFICINA'),
   cliente_id: z.string({ required_error: 'Cliente é obrigatório' }).min(1, 'Cliente é obrigatório'),
@@ -32,27 +38,26 @@ const osSchema = z.object({
   diagnostico: z.string().optional().nullable().default(''),
   data_previsao: z.string().optional().nullable().default(''),
   status: z.string().optional().default('ABERTA'),
-  
-  // Atendimento Externo e Deslocamento
-  tipo_atendimento: z.string().optional().nullable().default('OFICINA'),
-  km_saida: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  km_retorno: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  km_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  valor_km: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  total_deslocamento: z.preprocess(preprocessNumber, z.number().optional().default(0)),
 
-  despesa_pedagio: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_combustivel: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_hospedagem: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_alimentacao: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_diaria_tecnica: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_guincho: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  despesa_outros: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+  tipo_atendimento: z.string().optional().nullable().default('OFICINA'),
+  km_saida: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  km_retorno: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  km_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  valor_km: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  total_deslocamento: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+
+  despesa_pedagio: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_combustivel: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_hospedagem: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_alimentacao: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_diaria_tecnica: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_guincho: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  despesa_outros: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
   despesas_comprovantes: z.string().optional().nullable().default('{}'),
 
-  mao_obra_externa_horas: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  mao_obra_externa_valor: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  mao_obra_externa_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+  mao_obra_externa_horas: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  mao_obra_externa_valor: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  mao_obra_externa_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
   mao_obra_equipe: z.string().optional().nullable().default('[]'),
 
   local_atendimento: z.string().optional().nullable().default(''),
@@ -66,38 +71,38 @@ const osSchema = z.object({
   servicos: z.array(z.object({
     id: z.string().optional().nullable(),
     descricao: z.string().optional().default('Serviço').transform(v => v ? v.trim() : 'Serviço'),
-    horas: z.preprocess(preprocessNumber, z.number().optional().default(1)),
-    valor_hora: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0))
+    horas: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(1)),
+    valor_hora: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0))
   })).optional().default([]),
   pecas: z.array(z.object({
     pecaId: z.string().optional().nullable(),
     peca_id: z.string().optional().nullable(),
-    quantidade: z.preprocess(preprocessNumber, z.number().optional().default(1).transform(v => Math.max(1, v))),
+    // A06: aceita fracionados — respeita permiteFracionado no banco
+    quantidade: z.preprocess(preprocessQuantidade, z.number().positive()),
     unidade: z.string().optional().nullable().default('un'),
-    valor_unit: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-    valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+    valor_unit: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+    valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
     origem: z.string().optional().nullable().default('OFICINA')
   })).optional().default([]).transform((pecas) => pecas.map(p => ({
     ...p,
     pecaId: p.peca_id || p.pecaId
   }))),
-  desconto: z.preprocess(preprocessNumber, z.number().optional().default(0)),
-  valor_total: z.preprocess(preprocessNumber, z.number().optional().default(0)),
+  desconto: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
+  valor_total: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(0)),
   forma_pagamento: z.string().optional().nullable().default('DINHEIRO'),
   numero_parcelas: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
   dias_entre_parcelas: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
   data_vencimento_primeira: z.string().optional().nullable(),
-  
+
   centro_custo: z.string().optional().nullable().default('OFICINA'),
-  custo_km: z.preprocess(preprocessNumber, z.number().optional().default(1.5)),
+  custo_km: z.preprocess(preprocessNumber, z.number().nonnegative().optional().default(1.5)),
   assinatura_cliente: z.string().optional().nullable(),
   assinatura_mecanico: z.string().optional().nullable(),
   assinatura_supervisor: z.string().optional().nullable(),
   assinatura_hash: z.string().optional().nullable(),
   assinatura_timestamp: z.string().optional().nullable(),
 
-  // Campos de Leitura de Odômetro e Horímetro com Proteção e Auditoria
   km_veiculo: z.preprocess(preprocessInteger, z.number().int().optional().nullable()),
   horimetro_veiculo: z.preprocess(preprocessNumber, z.number().optional().nullable()),
   confirmar_salto_km: z.boolean().optional().default(false),
@@ -106,7 +111,6 @@ const osSchema = z.object({
   autorizar_reducao_horimetro: z.boolean().optional().default(false),
   justificativa_ajuste_leitura: z.string().optional().nullable(),
 
-  // Identificação Explícita de Manutenções Preventivas
   preventivas_ids: z.array(z.string()).optional().default([]),
   preventiva_id: z.string().optional().nullable()
 });
@@ -124,8 +128,10 @@ export async function GET(request: Request) {
     const q = searchParams.get('q') || '';
     const status = searchParams.get('status');
     const tipoOS = searchParams.get('tipoOS');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const rawPage = parseInt(searchParams.get('page') || '1', 10);
+    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
+    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
 
     const where: any = {
       empresa_id: user.empresa_id
@@ -179,8 +185,8 @@ export async function GET(request: Request) {
       totalPages: Math.ceil(total / limit)
     });
   } catch (error: any) {
-    console.error('Erro de Prisma ao buscar OS:', error);
-    return NextResponse.json({ items: [], total: 0, page: 1, totalPages: 0 });
+    log('ERROR', 'OS', 'Erro ao listar OS', { error: error?.message }, 'sistema');
+    return NextResponse.json({ error: 'Erro ao listar ordens de serviço' }, { status: 500 });
   }
 }
 
@@ -202,24 +208,16 @@ export async function POST(request: Request) {
       mecanico_id: rawBody.mecanico_id || rawBody.mecanicoId,
     };
     const body = osSchema.parse(normalizedBody);
-    
-    // Função para buscar o menor número de OS disponível (reutilizando lacunas de excluídos)
+
+    // A08: numeração monotônica (nunca reaproveita números de OS deletadas/canceladas).
+    // Usa o maior número existente + 1, dentro da empresa.
     async function obterProximoNumeroOS(tx: any, targetEmpresaId: string): Promise<number> {
-      const ordens = await tx.ordemServico.findMany({
+      const ultima = await tx.ordemServico.findFirst({
         where: { empresa_id: targetEmpresaId },
         select: { numero: true },
-        orderBy: { numero: 'asc' }
+        orderBy: { numero: 'desc' },
       });
-
-      let nextNumber = 1;
-      for (const o of ordens) {
-        if (o.numero === nextNumber) {
-          nextNumber++;
-        } else if (o.numero > nextNumber) {
-          break;
-        }
-      }
-      return nextNumber;
+      return (ultima?.numero || 0) + 1;
     }
 
     const empresaId = user.empresa_id;
@@ -244,7 +242,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
     }
 
-    // Validação rigorosa e protegida das leituras de odômetro e horímetro do veículo
     const leiturasRes = await validarEProcessarLeiturasVeiculo({
       veiculoId: body.veiculo_id,
       empresaId,
@@ -271,6 +268,11 @@ export async function POST(request: Request) {
       preventivasIds.push(body.preventiva_id);
     }
 
+    // A10: identificador do criador é o EMAIL (único), não o nome.
+    // Aceita user.email (novo padrão) e mantém fallback para dados legados
+    // que gravaram nome. A migração é transparente.
+    const createdBy = user.email || user.name || 'Sistema';
+
     let attempts = 0;
     const maxAttempts = 3;
     let result: any;
@@ -280,10 +282,6 @@ export async function POST(request: Request) {
         attempts++;
         result = await prisma.$transaction(async (tx) => {
           const proximoNumero = await obterProximoNumeroOS(tx, empresaId);
-
-          console.error('CRIANDO OS');
-          console.error('PAYLOAD COMPLETO', JSON.stringify(body, null, 2));
-          console.error('UPDATED_AT RECEBIDO', (body as any).updated_at);
 
           const ordem = await tx.ordemServico.create({
             data: {
@@ -302,10 +300,9 @@ export async function POST(request: Request) {
               numero_parcelas: body.numero_parcelas,
               dias_entre_parcelas: body.dias_entre_parcelas,
               data_vencimento_primeira: body.data_vencimento_primeira ? new Date(body.data_vencimento_primeira) : null,
-              created_by: user?.name || user?.email || 'Sistema',
+              created_by: createdBy,
               updated_at: new Date(),
 
-              // Atendimento Externo e Deslocamento
               tipo_atendimento: body.tipo_atendimento || 'OFICINA',
               km_saida: body.km_saida || 0,
               km_retorno: body.km_retorno || 0,
@@ -335,7 +332,6 @@ export async function POST(request: Request) {
               timeline_viagem: body.timeline_viagem || '[]',
               ferramentas_levadas: body.ferramentas_levadas || '[]',
 
-              // Motor Financeiro e Assinaturas
               centro_custo: body.centro_custo || 'OFICINA',
               custo_km: body.custo_km || 1.5,
               assinatura_cliente: body.assinatura_cliente || null,
@@ -345,14 +341,14 @@ export async function POST(request: Request) {
               assinatura_timestamp: body.assinatura_timestamp ? new Date(body.assinatura_timestamp) : null
             }
           });
-          
+
           if (body.servicos && body.servicos.length > 0) {
             await tx.servicoOS.createMany({
               data: (body.servicos as any[]).map((s: any) => {
                 const horas = parseFloat(s.horas) || 1;
                 const valorHora = roundDecimal(parseFloat(s.valor_hora) || 0);
                 const valorTotal = roundDecimal(parseFloat(s.valor_total) || (horas * valorHora));
-                
+
                 return {
                   id: globalThis.crypto.randomUUID(),
                   os_id: ordem.id,
@@ -364,10 +360,14 @@ export async function POST(request: Request) {
               })
             });
           }
-          
+
           if (body.pecas && body.pecas.length > 0) {
-            // Validar de forma agregada a soma total solicitada para cada peca_id
             const pecaTotaisSolicitados: Record<string, number> = {};
+            const pecaValoresEnviados: Record<string, number> = {};
+
+            // ============================================================
+            // A04: validação prévia — preço da peça não pode ser menor que custo
+            // ============================================================
             for (const p of (body.pecas as any[])) {
               const pecaId = p.pecaId;
               if (!pecaId) throw new Error('ID da peça é obrigatório');
@@ -381,15 +381,33 @@ export async function POST(request: Request) {
               if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
                 try {
                   convertedQty = converterUnidade(qty, reqUnidade, peca.unidadeMedida);
-                } catch (err: any) {
+                } catch {
                   throw new Error(`Conversão incompatível para ${peca.descricao}: de '${reqUnidade}' para '${peca.unidadeMedida}'.`);
                 }
               }
 
               pecaTotaisSolicitados[pecaId] = (pecaTotaisSolicitados[pecaId] || 0) + convertedQty;
+
+              // A04: guarda o valor_unit enviado (por peça) para validar depois
+              if (p.valor_unit && Number(p.valor_unit) > 0) {
+                pecaValoresEnviados[pecaId] = Number(p.valor_unit);
+              }
             }
 
-            // Validar se o total somado ultrapassa o estoque disponível
+            // A04: bloquear preço abaixo do custo
+            for (const pecaId in pecaValoresEnviados) {
+              const valorEnviado = pecaValoresEnviados[pecaId];
+              const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: empresaId } });
+              if (!peca) continue;
+              const precoCusto = Number(peca.preco_custo);
+              if (valorEnviado < precoCusto) {
+                throw new Error(
+                  `Preço unitário para ${peca.descricao} (R$ ${valorEnviado.toFixed(2)}) está abaixo do custo (R$ ${precoCusto.toFixed(2)}). Ajuste o valor ou peça autorização.`
+                );
+              }
+            }
+
+            // Validar estoque agregado
             for (const pecaId in pecaTotaisSolicitados) {
               const totalReq = pecaTotaisSolicitados[pecaId];
               const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: empresaId } });
@@ -409,22 +427,20 @@ export async function POST(request: Request) {
               const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: empresaId } });
               if (!peca) throw new Error(`Peça ${pecaId} não encontrada`);
 
-              // Autoconverte para unidade de estoque
               let convertedQty = qty;
               if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
                 try {
                   convertedQty = converterUnidade(qty, reqUnidade, peca.unidadeMedida);
-                } catch (err: any) {
+                } catch {
                   throw new Error(`Conversão incompatível para ${peca.descricao}: de '${reqUnidade}' para '${peca.unidadeMedida}'.`);
                 }
               }
 
-              // Impede fracionamento se não permitido
               if (!peca.permiteFracionado && !Number.isInteger(convertedQty)) {
                 throw new Error(`A peça ${peca.descricao} não permite fracionamento. Conversão de ${qty} ${reqUnidade} resultou em ${convertedQty} ${peca.unidadeMedida}.`);
               }
 
-              // Calcula preço proporcional
+              // A04: se o front não enviou valor, usa preço de venda proporcional à unidade
               let valorUnit = p.valor_unit;
               if (!valorUnit) {
                 if (peca.unidadeMedida && reqUnidade.toLowerCase() !== peca.unidadeMedida.toLowerCase()) {
@@ -436,7 +452,6 @@ export async function POST(request: Request) {
               }
               const valorTotal = roundDecimal(qty * valorUnit);
 
-              console.error('[PECAAPLICADA AUDIT] CREATE', '/app/api/ordens/route.ts');
               await tx.pecaAplicada.create({
                 data: {
                   id: globalThis.crypto.randomUUID(),
@@ -449,7 +464,7 @@ export async function POST(request: Request) {
                   origem: p.origem || 'OFICINA'
                 }
               });
-              
+
               await tx.peca.update({
                 where: { id: pecaId },
                 data: { quantidade: { decrement: convertedQty } }
@@ -469,21 +484,20 @@ export async function POST(request: Request) {
               });
             }
           }
-          
+
           const servicosSummary = await tx.servicoOS.aggregate({
             where: { os_id: ordem.id },
             _sum: { valor_total: true }
           });
-          
-          console.error('[PECAAPLICADA AUDIT] AGGREGATE', '/app/api/ordens/route.ts');
+
           const pecasSummary = await tx.pecaAplicada.aggregate({
             where: { os_id: ordem.id },
             _sum: { valor_total: true }
           });
-          
+
           const valor_servicos = roundDecimal(servicosSummary._sum.valor_total ? Number(servicosSummary._sum.valor_total) : 0);
           const valor_pecas = roundDecimal(pecasSummary._sum.valor_total ? Number(pecasSummary._sum.valor_total) : 0);
-          
+
           const totalDeslocamento = roundDecimal(body.total_deslocamento || 0);
           const totalDespesas = roundDecimal(
             (body.despesa_pedagio || 0) +
@@ -497,16 +511,13 @@ export async function POST(request: Request) {
           const totalMaoObraExterna = roundDecimal(body.mao_obra_externa_total || 0);
 
           const valor_total = roundDecimal((valor_servicos + valor_pecas + totalDeslocamento + totalDespesas + totalMaoObraExterna) - (body.desconto || 0));
-          
-          // Obter custo real das peças aplicadas
-          console.error('[PECAAPLICADA AUDIT] FINDMANY', '/app/api/ordens/route.ts');
+
           const appliedPecas = await tx.pecaAplicada.findMany({
             where: { os_id: ordem.id },
             include: { Peca: true }
           });
           const custo_pecas = roundDecimal(appliedPecas.reduce((acc: number, p: any) => acc + (p.quantidade * (p.Peca?.preco_custo ? Number(p.Peca.preco_custo) : 0)), 0));
 
-          // Calcular custo de comissão de mão de obra
           let mecanicoComissao = 0;
           if (body.mecanico_id) {
             const mecanico = await tx.user.findUnique({ where: { id: body.mecanico_id } });
@@ -516,24 +527,21 @@ export async function POST(request: Request) {
           }
           const custo_mao_obra = roundDecimal(valor_servicos * (mecanicoComissao / 100));
 
-          // Custos adicionais de deslocamento
           const custo_deslocamento = roundDecimal((body.km_total || 0) * (body.custo_km || 1.5));
           const despesas_extras = totalDespesas;
 
-          // Custo real absoluto
           const custo_real = roundDecimal(custo_pecas + custo_mao_obra + custo_deslocamento + despesas_extras + totalMaoObraExterna);
 
-          // Lucros
           const lucro_bruto = roundDecimal(valor_total - custo_real);
           const margem_lucro = valor_total > 0 ? roundDecimal((lucro_bruto / valor_total) * 100) : 0;
-          const impostosSimulados = roundDecimal(valor_total * 0.06); // Simples Nacional 6%
+          const impostosSimulados = roundDecimal(valor_total * 0.06);
           const total_liquido = roundDecimal(lucro_bruto - impostosSimulados);
 
           const updatedOrdem = await tx.ordemServico.update({
             where: { id: ordem.id },
-            data: { 
-              valor_servicos, 
-              valor_pecas, 
+            data: {
+              valor_servicos,
+              valor_pecas,
               valor_total,
               custo_pecas,
               custo_mao_obra,
@@ -548,8 +556,6 @@ export async function POST(request: Request) {
             include: { Veiculo: true, Cliente: true }
           });
 
-          // Se a OS for criada já como FINALIZADA e houver preventivas vinculadas,
-          // a sincronização é atômica com a própria criação da OS
           if (body.status === 'FINALIZADA' && preventivasIds && preventivasIds.length > 0) {
             const syncPrev = await sincronizarPreventivasAposOS(updatedOrdem, {
               tx,
@@ -569,18 +575,18 @@ export async function POST(request: Request) {
             entidade: 'OrdemServico',
             entidade_id: updatedOrdem.id,
             usuario: user?.name || user?.email || 'Sistema',
+            empresa_id: empresaId,
             dados_depois: updatedOrdem
           });
 
           return updatedOrdem;
         });
 
-        // Se a transação completou sem erros na concorrência, saímos do loop de tentativa
         break;
       } catch (err: any) {
         const isUniqueConstraint = err.code === 'P2002' || (err.message && err.message.includes('Unique constraint'));
         if (isUniqueConstraint && attempts < maxAttempts) {
-          console.warn(`[CONCORRENCIA] Colisão detectada ao gerar número de OS. Tentativa ${attempts} falhou. Retentando...`);
+          log('WARN', 'OS', 'Colisão de numeração ao criar OS, retentando', { tentativa: attempts }, user?.name);
           await new Promise(resolve => setTimeout(resolve, Math.random() * 200 + 50));
           continue;
         }
@@ -609,20 +615,19 @@ export async function POST(request: Request) {
     } catch (err) {
       log('ERROR', 'OS', 'Erro ao processar notificações de OS', { error: err }, 'sistema');
     }
-    
-    // Invalida o cache do dashboard do estabelecimento correspondente
+
     if (user?.empresa_id) {
       const { invalidateDashboardCache } = await import('@/lib/dashboard-cache');
       invalidateDashboardCache(user.empresa_id);
     }
-    
+
     return NextResponse.json(result);
   } catch (error: any) {
-    log('ERROR', 'OS', 'Erro ao criar OS', { error }, 'sistema');
+    log('ERROR', 'OS', 'Erro ao criar OS', { error: error?.message }, 'sistema');
     if (error instanceof z.ZodError || error.name === 'ZodError') {
       return NextResponse.json({ error: error.issues ? error.issues[0]?.message : 'Dados inválidos' }, { status: 400 });
     }
-    if (error.message && (error.message.includes('não encontrada') || error.message.includes('obrigatório') || error.message.includes('inválid') || error.message.includes('insuficiente'))) {
+    if (error.message && (error.message.includes('não encontrada') || error.message.includes('obrigatório') || error.message.includes('inválid') || error.message.includes('insuficiente') || error.message.includes('abaixo do custo'))) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json({ error: error.message || 'Erro ao criar ordem de serviço' }, { status: 500 });
