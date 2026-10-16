@@ -8,98 +8,105 @@ import {
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
+import { Pagination } from '@/components/Pagination';
 
 function ResultadoContent() {
   const searchParams = useSearchParams();
   const checklistIdFilter = searchParams.get('checklistId');
+
   const [execucoes, setExecucoes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  // LOG DE EXECUÇÃO EXIGIDO: MOUNT
-  useEffect(() => {
-    console.log('COMPONENT MOUNT');
-  }, []);
+  const fetchExecucoes = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      // A23: backend agora devolve { items, total, page, totalPages }.
+      // Repassa os filtros via query string para o servidor paginar.
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', '20');
+      if (checklistIdFilter) params.set('checklistId', checklistIdFilter);
 
-  // LOGS EXIGIDOS: ESTADOS DO COMPONENTE
-  console.log('RENDER INICIADO');
-  console.log('LOADING', loading);
-  console.log('ERROR', error);
-  console.log('EXECUCOES STATE', execucoes);
+      const res = await fetch(`/api/checklist/execucoes?${params.toString()}`, {
+        credentials: 'include',
+      });
 
-  useEffect(() => {
-    let active = true;
-    const fetchExecucoes = async () => {
-      try {
-        console.log('BUSCANDO HISTORICO DE EXECUCOES');
-        const res = await fetch('/api/checklist/execucoes', {
-          headers: { 'Cache-Control': 'no-cache' },
-          credentials: 'include'
+      if (res.ok) {
+        const data = await res.json();
+
+        // Compatibilidade: aceita tanto array direto (backend antigo)
+        // quanto objeto paginado (backend novo).
+        let list: any[] = [];
+        if (Array.isArray(data)) {
+          list = data;
+          setTotal(data.length);
+          setTotalPages(1);
+        } else if (data && Array.isArray(data.items)) {
+          list = data.items;
+          setTotal(data.total ?? list.length);
+          setTotalPages(data.totalPages ?? 1);
+        }
+
+        const mapped = list.map((e: any) => {
+          const checklistObj = e.Checklist || e.checklist;
+          const osObj = e.OrdemServico || e.os;
+          return {
+            ...e,
+            checklist: checklistObj
+              ? { ...checklistObj, nome: checklistObj.nome || 'Checklist sem nome' }
+              : null,
+            os: osObj ? { ...osObj, numero: osObj.numero || '—' } : null,
+            veiculo:
+              e.Veiculo ||
+              e.veiculo ||
+              (osObj ? osObj.Veiculo || osObj.veiculo : null),
+          };
         });
-        console.log('STATUS HISTORICO DE EXECUCOES', res.status);
-        if (res.ok && active) {
-          const data = await res.json();
-          console.log('DADOS HISTORICO RAW', data);
-          let list = Array.isArray(data) ? data : [];
-          
-          // MAP RESILIENTE CONTRA CASE DA MODEL OU PRISMA
-          const mapped = list.map((e: any) => {
-            const checklistObj = e.Checklist || e.checklist;
-            const osObj = e.OrdemServico || e.os;
-            return {
-              ...e,
-              checklist: checklistObj ? {
-                ...checklistObj,
-                nome: checklistObj.nome || 'Checklist sem nome'
-              } : null,
-              os: osObj ? {
-                ...osObj,
-                numero: osObj.numero || '—'
-              } : null,
-              veiculo: e.Veiculo || e.veiculo || (osObj ? (osObj.Veiculo || osObj.veiculo) : null)
-            };
-          });
-          
-          let filtered = mapped;
-          if (checklistIdFilter) {
-            filtered = mapped.filter((e: any) => e.checklist_id === checklistIdFilter);
-          }
-          console.log('EXECUCOES TRATADAS E FILTRADAS', filtered);
-          setExecucoes(filtered);
-        } else if (active) {
-          console.log('FALHA STATUS HISTORICO DE EXECUCOES', res.status);
-          setError(true);
-        }
-      } catch (err) {
-        if (active) {
-          console.error('Erro nos bastidores do fetch de listagem:', err);
-          setError(true);
-          toast.error('Erro ao buscar histórico de execuções.');
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+
+        setExecucoes(mapped);
+      } else {
+        setError(true);
+        setExecucoes([]);
       }
-    };
+    } catch {
+      setError(true);
+      setExecucoes([]);
+      toast.error('Erro ao buscar histórico de execuções.');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, checklistIdFilter]);
 
+  useEffect(() => {
     fetchExecucoes();
-    return () => { active = false; };
-  }, [checklistIdFilter]);
+  }, [fetchExecucoes]);
 
+  // Filtro de busca local (texto livre na página atual)
   const filteredExecucoes = useMemo(() => {
-    return execucoes.filter(e => 
-      e.checklist?.nome?.toLowerCase().includes(search.toLowerCase()) ||
-      e.os?.numero?.toString().includes(search) ||
-      e.veiculo?.placa?.toLowerCase().includes(search.toLowerCase()) ||
-      e.veiculo?.modelo?.toLowerCase().includes(search.toLowerCase())
+    const termo = search.trim().toLowerCase();
+    if (!termo) return execucoes;
+    return execucoes.filter(
+      (e) =>
+        e.checklist?.nome?.toLowerCase().includes(termo) ||
+        e.os?.numero?.toString().includes(termo) ||
+        e.veiculo?.placa?.toLowerCase().includes(termo) ||
+        e.veiculo?.modelo?.toLowerCase().includes(termo)
     );
   }, [execucoes, search]);
 
   const formatDate = (date: string) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('pt-BR');
+    try {
+      return new Date(date).toLocaleDateString('pt-BR');
+    } catch {
+      return 'N/A';
+    }
   };
 
   return (
@@ -116,22 +123,24 @@ function ResultadoContent() {
              <div className="w-1.5 h-8 bg-blue-600 rounded-full" />
              <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">HISTÓRICO DE INSPEÇÕES</h1>
           </div>
-          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.4em] leading-none ml-14">RESULTADOS E LAUDOS TÉCNICOS ARQUIVADOS</p>
+          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.4em] leading-none ml-14">
+            RESULTADOS E LAUDOS TÉCNICOS ARQUIVADOS
+          </p>
         </div>
       </div>
 
       {/* FILTROS */}
       <div className="flex flex-col md:flex-row gap-4 items-center bg-zinc-900 border border-zinc-800 p-4 rounded-[2.5rem] shadow-2xl">
-         <div className="relative flex-1 group w-full">
-           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors" size={18} />
-           <input 
-             type="text" 
-             placeholder="BUSCAR POR CHECKLIST, OS OU PLACA..."
-             value={search}
-             onChange={(e) => setSearch(e.target.value)}
-             className="w-full bg-zinc-950 border border-zinc-900 rounded-2xl py-4 pl-16 pr-6 text-xs text-white outline-none focus:border-blue-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800"
-           />
-         </div>
+        <div className="relative flex-1 group w-full">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors" size={18} />
+          <input 
+            type="text" 
+            placeholder="BUSCAR POR CHECKLIST, OS OU PLACA..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-900 rounded-2xl py-4 pl-16 pr-6 text-xs text-white outline-none focus:border-blue-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800"
+          />
+        </div>
       </div>
 
       {/* TABELA */}
@@ -168,47 +177,68 @@ function ResultadoContent() {
                     <p className="font-black uppercase tracking-widest text-xs italic">Nenhuma execução encontrada</p>
                   </td>
                 </tr>
-              ) : filteredExecucoes.map((exec) => (
-                <tr key={exec.id} className="group hover:bg-zinc-800/30 transition-all border-l-4 border-l-transparent hover:border-l-blue-600">
-                  <td className="p-6">
-                    <div className="flex items-center gap-3">
-                      <Calendar size={14} className="text-zinc-500" />
-                      <div>
-                        <p className="text-xs font-black text-white">{formatDate(exec.created_at)}</p>
-                        <p className="text-[9px] text-zinc-600 font-mono uppercase">{new Date(exec.created_at).toLocaleTimeString()}</p>
+              ) : (
+                filteredExecucoes.map((exec) => (
+                  <tr key={exec.id} className="group hover:bg-zinc-800/30 transition-all border-l-4 border-l-transparent hover:border-l-blue-600">
+                    <td className="p-6">
+                      <div className="flex items-center gap-3">
+                        <Calendar size={14} className="text-zinc-500" />
+                        <div>
+                          <p className="text-xs font-black text-white">{formatDate(exec.created_at)}</p>
+                          <p className="text-[9px] text-zinc-600 font-mono uppercase">
+                            {exec.created_at ? new Date(exec.created_at).toLocaleTimeString() : '—'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="p-6">
-                    <p className="text-sm font-black text-white uppercase italic tracking-tight">{exec.checklist?.nome}</p>
-                    <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest mt-1">ID: {exec.id.slice(-6).toUpperCase()}</p>
-                  </td>
-                  <td className="p-6">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Truck size={12} className="text-orange-500" />
-                        <span className="text-[10px] font-bold text-white uppercase">{exec.veiculo?.placa || '—'} {exec.veiculo?.modelo}</span>
+                    </td>
+                    <td className="p-6">
+                      <p className="text-sm font-black text-white uppercase italic tracking-tight">{exec.checklist?.nome}</p>
+                      <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest mt-1">
+                        ID: {exec.id.slice(-6).toUpperCase()}
+                      </p>
+                    </td>
+                    <td className="p-6">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Truck size={12} className="text-orange-500" />
+                          <span className="text-[10px] font-bold text-white uppercase">
+                            {exec.veiculo?.placa || '—'} {exec.veiculo?.modelo || ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <FileText size={12} className="text-blue-500" />
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">
+                            OS #{exec.os?.numero || '—'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <FileText size={12} className="text-blue-500" />
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase">OS #{exec.os?.numero || '—'}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-6 text-right">
-                    <Link 
-                      href={`/checklist/resultado/${exec.id}`}
-                      className="inline-flex items-center gap-2 text-blue-500 hover:text-blue-400 font-black text-[10px] uppercase tracking-widest italic bg-blue-500/10 px-4 py-2 rounded-xl transition-all"
-                    >
-                      Ver Laudo
-                      <ChevronRight size={14} />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="p-6 text-right">
+                      <Link 
+                        href={`/checklist/resultado/${exec.id}`}
+                        className="inline-flex items-center gap-2 text-blue-500 hover:text-blue-400 font-black text-[10px] uppercase tracking-widest italic bg-blue-500/10 px-4 py-2 rounded-xl transition-all"
+                      >
+                        Ver Laudo
+                        <ChevronRight size={14} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Paginação */}
+        {!loading && !error && totalPages > 1 && (
+          <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
+            <Pagination 
+              page={page} 
+              totalPages={totalPages} 
+              onPageChange={setPage} 
+            />
+          </div>
+        )}
       </div>
     </div>
   );
