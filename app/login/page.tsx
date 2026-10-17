@@ -122,11 +122,15 @@ export default function AuthPage() {
         
         {/* Cabeçalho com Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-900/20 transform -rotate-6">
-            <Lock className="w-8 h-8 text-white" />
+          <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+            <img 
+              src={BRANDING.logo.url} 
+              alt={BRANDING.logo.alt} 
+              className="w-full h-full object-contain drop-shadow-2xl" 
+            />
           </div>
-          <h1 className="text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">
-            {isLogin ? `Acessar ${BRANDING.name}` : 'Registro de Oficina'}
+          <h1 className="text-3xl font-black text-white mb-1 uppercase tracking-tighter italic">
+            {isLogin ? BRANDING.name : 'Registro de Oficina'}
           </h1>
           <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest">
             {isLogin ? 'Entre com suas credenciais' : 'Crie sua conta para começar'}
