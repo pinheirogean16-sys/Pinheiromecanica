@@ -929,7 +929,7 @@ export default function WorkOrderField({ onBack, initialData }: WorkOrderFieldPr
         <div className="lg:col-span-7 xl:col-span-7 space-y-6">
 
           {/* CARD 1: LOGÍSTICA */}
-          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
+          <section id="section-logistica-campo" className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 space-y-6 shadow-xl">
             <div className="flex items-center gap-2.5 border-b border-zinc-800 pb-4">
               <Milestone className="w-5 h-5 text-amber-500" />
               <div>
@@ -1322,7 +1322,7 @@ export default function WorkOrderField({ onBack, initialData }: WorkOrderFieldPr
           </section>
 
           {/* CARD 4: SERVIÇOS */}
-          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl shadow-xl flex flex-col overflow-hidden">
+          <section id="section-servicos-campo" className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl shadow-xl flex flex-col overflow-hidden">
             <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-950/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-amber-500 shadow-inner">
@@ -1618,7 +1618,7 @@ export default function WorkOrderField({ onBack, initialData }: WorkOrderFieldPr
         <div className="lg:col-span-5 xl:col-span-5 space-y-6">
 
           {/* CARD 1: PEÇAS */}
-          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
+          <section id="section-pecas-campo" className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800 pb-3 mb-4 gap-2">
               <div className="flex items-center gap-2.5">
                 <Package size={18} className="text-amber-500 flex-shrink-0" />
