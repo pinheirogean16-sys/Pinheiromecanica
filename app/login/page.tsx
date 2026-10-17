@@ -120,19 +120,21 @@ export default function AuthPage() {
 
       <div className="w-full max-w-lg p-6 lg:p-10 bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-[2rem] shadow-2xl relative z-10 my-8">
         
-        {/* Cabeçalho com Logo */}
+        {/* Cabeçalho com Logo Maior e Slogan */}
         <div className="text-center mb-8">
-          <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center">
+          <div className="w-36 h-36 mx-auto mb-4 flex items-center justify-center">
             <img 
               src={BRANDING.logo.url} 
               alt={BRANDING.logo.alt} 
               className="w-full h-full object-contain drop-shadow-2xl" 
             />
           </div>
-          <h1 className="text-3xl font-black text-white mb-1 uppercase tracking-tighter italic">
-            {isLogin ? BRANDING.name : 'Registro de Oficina'}
+          
+          <h1 className="text-sm font-black text-orange-500 mb-2 uppercase tracking-widest">
+            {BRANDING.slogan || 'Sistema de Gestão para Oficinas'}
           </h1>
-          <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest">
+          
+          <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">
             {isLogin ? 'Entre com suas credenciais' : 'Crie sua conta para começar'}
           </p>
         </div>
