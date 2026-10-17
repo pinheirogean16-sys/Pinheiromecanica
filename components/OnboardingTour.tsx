@@ -20,7 +20,7 @@ export default function OnboardingTour() {
     script.async = true;
     
     script.onload = () => {
-      // @ts-ignore (ignora o erro do TypeScript porque estamos usando via CDN)
+      // @ts-ignore
       const driver = window.driver.js.driver;
 
       const tour = driver({
@@ -31,58 +31,56 @@ export default function OnboardingTour() {
         progressText: 'Passo {{current}} de {{total}}',
         steps: [
           {
-            element: 'a[href="/clientes"]',
+            element: '#action-new-client', // Aponta para o botão gigante no Dashboard
             popover: {
-              title: '1. Seus Clientes',
-              description: 'Cadastre os proprietários dos veículos aqui. Você pode adicionar quantos quiser.',
-              side: 'right',
-              align: 'start'
+              title: '1. Cadastre seus Clientes',
+              description: 'Sempre comece por aqui. Cadastre o proprietário do veículo.',
+              side: 'bottom',
+              align: 'center'
             }
           },
           {
-            element: 'a[href="/veiculos"]',
+            element: '#action-new-vehicle',
             popover: {
-              title: '2. Seus Veículos',
-              description: 'Aqui ficam os caminhões, carretas e máquinas vinculados aos clientes.',
-              side: 'right',
-              align: 'start'
+              title: '2. Adicione os Veículos',
+              description: 'Vincule a placa e o modelo do caminhão ou máquina ao cliente.',
+              side: 'bottom',
+              align: 'center'
             }
           },
           {
-            element: 'a[href="/estoque"]',
+            element: '#action-new-nfe',
             popover: {
-              title: '3. Almoxarifado',
-              description: 'Controle suas peças, entradas e saídas de estoque neste módulo.',
-              side: 'right',
-              align: 'start'
+              title: '3. Importação NF-e',
+              description: 'Se você comprou peças e tem o XML, pode dar entrada no estoque direto por aqui.',
+              side: 'bottom',
+              align: 'center'
             }
           },
           {
-            element: 'a[href="/os"]',
+            element: '#action-new-os',
             popover: {
-              title: '4. Ordens de Serviço',
-              description: 'O coração do sistema. Crie a OS, adicione serviços e peças, e acompanhe o status.',
-              side: 'right',
-              align: 'start'
+              title: '4. Abra sua primeira OS',
+              description: 'O coração do sistema. Clique aqui para criar uma Ordem de Serviço, adicionar peças e serviços.',
+              side: 'bottom',
+              align: 'center'
             }
           },
           {
-            element: 'a[href="/financeiro"]',
+            element: '#action-new-quote',
             popover: {
-              title: '5. Financeiro',
-              description: 'Acompanhe o faturamento da oficina e as contas a pagar/receber.',
-              side: 'right',
-              align: 'start'
+              title: '5. Gere um Orçamento',
+              description: 'Antes de iniciar um serviço, envie uma proposta para o cliente aprovar.',
+              side: 'bottom',
+              align: 'center'
             }
           }
         ],
         onDestroyed: () => {
-          // Salva no navegador que ele já viu o tour
           localStorage.setItem('@vehlox:tour_done', 'true');
         }
       });
 
-      // Inicia o tour após 1 segundo (para dar tempo do menu carregar na tela)
       setTimeout(() => {
         tour.drive();
       }, 1000);
@@ -90,12 +88,11 @@ export default function OnboardingTour() {
 
     document.body.appendChild(script);
 
-    // Limpeza (se o componente for desmontado)
     return () => {
       if (document.head.contains(link)) document.head.removeChild(link);
       if (document.body.contains(script)) document.body.removeChild(script);
     };
   }, []);
 
-  return null; // O componente não aparece na tela, ele só executa a ação
+  return null;
 }
