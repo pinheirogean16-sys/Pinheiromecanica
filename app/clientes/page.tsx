@@ -130,35 +130,23 @@ export default function ClientesPage() {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ATIVO' | 'INATIVO'>('ALL');
   const [page, setPage] = useState(1);
 
-  // 👇 INÍCIO DA LÓGICA DO TOUR (Ouve o comando para abrir o modal)
+  // 👇 LÓGICA DO TOUR (Ouve o comando para abrir/fechar o modal)
   useEffect(() => {
     const handleOpenTourModal = () => {
-      setEditingCliente(null);
-      setFormData({ 
-        tipo: 'PF', 
-        tipo_pessoa: 'FISICA',
-        nome: '', 
-        razao_social: '',
-        nome_fantasia: '',
-        cpf_cnpj: '', 
-        inscricao_estadual: '',
-        telefone: '', 
-        contato: '',
-        email: '', 
-        status: 'ATIVO',
-        perfil: 'CLIENTE' as 'CLIENTE' | 'FORNECEDOR' | 'AMBOS',
-        endereco: '',
-        cidade: '',
-        uf: '',
-        observacoes: ''
-      });
-      setShowModal(true);
+      openNewModal();
+    };
+    const handleCloseTourModal = () => {
+      setShowModal(false);
     };
     
     window.addEventListener('vehlox:open-client-modal', handleOpenTourModal);
-    return () => window.removeEventListener('vehlox:open-client-modal', handleOpenTourModal);
+    window.addEventListener('vehlox:close-client-modal', handleCloseTourModal);
+    
+    return () => {
+      window.removeEventListener('vehlox:open-client-modal', handleOpenTourModal);
+      window.removeEventListener('vehlox:close-client-modal', handleCloseTourModal);
+    };
   }, []);
-  // 👆 FIM DA LÓGICA DO TOUR
 
   useEffect(() => {
     const hand = setTimeout(() => {
@@ -342,7 +330,7 @@ export default function ClientesPage() {
         </div>
 
         <button 
-          id="btn-novo-cliente" /* 👈 ID ADICIONADO PARA O TOUR ACHAR */
+          id="btn-novo-cliente" /* 👈 ID ADICIONADO */
           onClick={openNewModal}
           className="bg-orange-600 hover:bg-orange-500 text-white rounded-2xl px-6 py-3 font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-orange-950/20 flex items-center gap-2"
         >
@@ -717,6 +705,7 @@ export default function ClientesPage() {
                     </label>
                     <input 
                        type="text" 
+                       id="field-cliente-nome" /* 👈 ID ADICIONADO */
                        required
                        value={formData.nome || ''}
                        onChange={(e) => setFormData({...formData, nome: e.target.value})}
@@ -756,6 +745,7 @@ export default function ClientesPage() {
                     </label>
                     <input 
                       type="text" 
+                      id="field-cliente-cpf" /* 👈 ID ADICIONADO */
                       required
                       value={formData.cpf_cnpj || ''}
                       onChange={(e) => setFormData({...formData, cpf_cnpj: e.target.value})}
@@ -780,6 +770,7 @@ export default function ClientesPage() {
                     </label>
                     <input 
                       type="text" 
+                      id="field-cliente-telefone" /* 👈 ID ADICIONADO */
                       required
                       value={formData.telefone || ''}
                       onChange={(e) => setFormData({...formData, telefone: e.target.value})}
@@ -866,6 +857,7 @@ export default function ClientesPage() {
                 </button>
                 <button 
                   type="submit" 
+                  id="btn-salvar-cliente" /* 👈 ID ADICIONADO */
                   disabled={modalLoading}
                   className="bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-xl font-black uppercase tracking-wider text-xs transition-all active:scale-[0.98] shadow-xl shadow-orange-950/20 flex items-center justify-center gap-2 cursor-pointer"
                 >
