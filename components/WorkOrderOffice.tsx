@@ -1105,7 +1105,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
           </section>
 
           {/* CARD 3: MÃO DE OBRA */}
-          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl shadow-xl flex flex-col overflow-hidden">
+          <section id="section-mao-de-obra" className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl shadow-xl flex flex-col overflow-hidden">
             <div className="p-6 sm:p-7 border-b border-zinc-800 bg-zinc-950/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-blue-500 shadow-inner">
@@ -1284,7 +1284,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         <div className="lg:col-span-5 xl:col-span-5 space-y-6">
           
           {/* CARD 1: INSUMOS */}
-          <section className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
+          <section id="section-insumos" className="bg-zinc-900 border border-zinc-800 rounded-2xl md:rounded-3xl p-6 sm:p-7 shadow-xl relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800 pb-3 mb-4 gap-2">
               <div className="flex items-center gap-2.5">
                 <Package size={18} className="text-blue-500 flex-shrink-0" />
@@ -1548,6 +1548,7 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
               <button 
                 type="button"
                 onClick={handleSubmit} 
+                id="btn-protocolar-os"
                 disabled={loading} 
                 className="w-full py-4 bg-orange-600 hover:bg-orange-500 active:scale-[0.99] text-white rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-orange-950/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
