@@ -34,12 +34,13 @@ export default function RegisterPage() {
       if (data.success) {
         setSuccess(true);
         setTimeout(() => {
-          window.location.href = '/login';
+          // Redireciona para a página de boas-vindas (Tutorial) em vez do login
+          window.location.href = '/bem-vindo';
         }, 3000);
       } else {
         setError(data.error || 'Erro ao realizar cadastro');
       }
-    } catch (error) {
+    } catch {
       setError('Erro ao conectar ao servidor');
     } finally {
       setLoading(false);
@@ -58,9 +59,9 @@ export default function RegisterPage() {
             <ChevronRight className="w-8 h-8 text-green-500" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Conta Criada!</h1>
-          <p className="text-zinc-400 mb-6">Sua oficina foi registrada com sucesso. Você será redirecionado para o login em instantes...</p>
-          <Link href="/login" className="text-orange-500 hover:underline font-mono text-xs uppercase tracking-widest">
-            Ir para Login agora
+          <p className="text-zinc-400 mb-6">Sua oficina foi registrada com sucesso. Você será redirecionado para o tutorial de primeiros passos em instantes...</p>
+          <Link href="/bem-vindo" className="text-orange-500 hover:underline font-mono text-xs uppercase tracking-widest">
+            Ir para o Tutorial agora
           </Link>
         </div>
       </div>
