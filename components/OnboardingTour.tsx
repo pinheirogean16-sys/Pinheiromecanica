@@ -21,7 +21,7 @@ export default function OnboardingTour() {
 
   const startTour = () => {
     setShowIntro(false);
-    localStorage.setItem('@vehlox:tour_step', '2'); // Começa no passo 2 (pós-introdução)
+    localStorage.setItem('@vehlox:tour_step', '2'); // Começa no passo 2
   };
 
   const skipTour = () => {
@@ -31,11 +31,11 @@ export default function OnboardingTour() {
 
   // 2. Motor do Tour (Driver.js)
   useEffect(() => {
-    if (showIntro) return; // Se a intro tá aberta, não roda o driver
+    if (showIntro) return; 
     if (localStorage.getItem('@vehlox:tour_done')) return;
 
     const currentStep = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
-    if (currentStep < 2) return; // Só roda a partir do passo 2
+    if (currentStep < 2) return; 
 
     // Carrega Driver.js dinamicamente
     const link = document.createElement('link');
@@ -50,128 +50,121 @@ export default function OnboardingTour() {
     script.onload = () => {
       // @ts-ignore
       const driver = window.driver.js.driver;
-      let steps: any[] = [];
 
-      const nextStep = (step: number, path?: string) => {
-        localStorage.setItem('@vehlox:tour_step', step.toString());
-        if (path) router.push(path);
+      const buildStep = (stepIndex: number) => {
+        switch (stepIndex) {
+          case 2:
+            return {
+              element: '#action-new-client',
+              popover: {
+                title: 'Iniciando o Cadastro',
+                description: 'Vamos aprender a usar o sistema na prática. Clique em Próximo para irmos para a tela de Clientes.',
+                side: 'bottom',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_step', '3');
+                  router.push('/clientes');
+                }
+              }
+            };
+          case 3:
+            return {
+              element: '#btn-novo-cliente',
+              popover: {
+                title: 'Abrindo o Cadastro',
+                description: 'Aqui você adiciona novos clientes. Clique em Próximo e o sistema abrirá a janela de cadastro para você.',
+                side: 'bottom',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_step', '4');
+                  window.dispatchEvent(new Event('vehlox:open-client-modal'));
+                  // Como o modal abre na mesma tela, forçamos um refresh no estado do driver
+                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                }
+              }
+            };
+          case 4:
+            return {
+              element: '#field-cliente-nome',
+              popover: {
+                title: 'Nome do Cliente',
+                description: 'Aqui você digita o nome completo ou a razão social. É o primeiro dado essencial.',
+                side: 'bottom',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_step', '5');
+                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                }
+              }
+            };
+          case 5:
+            return {
+              element: '#field-cliente-cpf',
+              popover: {
+                title: 'CPF ou CNPJ',
+                description: 'O sistema valida automaticamente se o documento é verdadeiro. Muito importante para emitir notas.',
+                side: 'bottom',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_step', '6');
+                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                }
+              }
+            };
+          case 6:
+            return {
+              element: '#field-cliente-telefone',
+              popover: {
+                title: 'Contato',
+                description: 'Para enviar o orçamento ou avisar quando o veículo estiver pronto.',
+                side: 'bottom',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_step', '7');
+                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                }
+              }
+            };
+          case 7:
+            return {
+              element: '#btn-salvar-cliente',
+              popover: {
+                title: 'Salvar o Cliente',
+                description: 'Depois de preencher, é só clicar aqui. Vamos avançar para o cadastro do Veículo!',
+                side: 'top',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_step', '8');
+                  window.dispatchEvent(new Event('vehlox:close-client-modal'));
+                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                }
+              }
+            };
+          case 8:
+            return {
+              element: '#form-veiculo', 
+              popover: {
+                title: 'Cadastrando o Veículo',
+                description: 'Aqui você vincula a placa, modelo e ano ao cliente que acabou de criar. Parabéns, você já sabe o básico!',
+                side: 'top',
+                onNextClick: () => {
+                  localStorage.setItem('@vehlox:tour_done', 'true');
+                  localStorage.setItem('@vehlox:tour_step', '0');
+                  router.push('/dashboard');
+                }
+              }
+            };
+          default:
+            return null;
+        }
       };
 
-      // --- PASSO 2: Dashboard aponta pro Atalho ---
-      if (pathname === '/dashboard' && currentStep === 2) {
-        steps = [{
-          element: '#action-new-client',
-          popover: {
-            title: 'Iniciando o Cadastro',
-            description: 'Vamos aprender a usar o sistema na prática. Clique em Próximo para irmos para a tela de Clientes.',
-            side: 'bottom',
-            onNextClick: () => nextStep(3, '/clientes')
-          }
-        }];
-      }
+      const initDriver = () => {
+        const stepNum = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
+        const step = buildStep(stepNum);
+        if (!step) return;
 
-      // --- PASSO 3: Tela de Clientes aponta pro botão ---
-      else if (pathname === '/clientes' && currentStep === 3) {
-        steps = [{
-          element: '#btn-novo-cliente',
-          popover: {
-            title: 'Abrindo o Cadastro',
-            description: 'Aqui você adiciona novos clientes. Clique em Próximo e o sistema abrirá a janela de cadastro para você.',
-            side: 'bottom',
-            onNextClick: () => {
-              nextStep(4);
-              window.dispatchEvent(new Event('vehlox:open-client-modal'));
-              // Dá um tempo pro modal abrir antes de o driver piscar
-              setTimeout(() => { document.querySelector('.driver-active-element')?.classList.remove('driver-active-element'); }, 100);
-            }
-          }
-        }];
-      }
-
-      // --- PASSO 4: Modal aberto (Campo Nome) ---
-      else if (pathname === '/clientes' && currentStep === 4) {
-        // Espera o modal abrir na tela
-        setTimeout(() => {
-          steps = [{
-            element: '#field-cliente-nome',
-            popover: {
-              title: 'Nome do Cliente',
-              description: 'Aqui você digita o nome completo ou a razão social. É o primeiro dado essencial.',
-              side: 'bottom',
-              onNextClick: () => nextStep(5)
-            }
-          }];
-          if (steps.length > 0) startDriver(steps, false);
-        }, 500);
-        return; 
-      }
-
-      // --- PASSO 5: Modal aberto (Campo CPF) ---
-      else if (pathname === '/clientes' && currentStep === 5) {
-        steps = [{
-          element: '#field-cliente-cpf',
-          popover: {
-            title: 'CPF ou CNPJ',
-            description: 'O sistema valida automaticamente se o documento é verdadeiro. Muito importante para emitir notas.',
-            side: 'bottom',
-            onNextClick: () => nextStep(6)
-          }
-        }];
-      }
-
-      // --- PASSO 6: Modal aberto (Campo Telefone) ---
-      else if (pathname === '/clientes' && currentStep === 6) {
-        steps = [{
-          element: '#field-cliente-telefone',
-          popover: {
-            title: 'Contato',
-            description: 'Para enviar o orçamento ou avisar quando o veículo estiver pronto.',
-            side: 'bottom',
-            onNextClick: () => nextStep(7)
-          }
-        }];
-      }
-
-      // --- PASSO 7: Botão Salvar ---
-      else if (pathname === '/clientes' && currentStep === 7) {
-        steps = [{
-          element: '#btn-salvar-cliente',
-          popover: {
-            title: 'Salvar o Cliente',
-            description: 'Depois de preencher, é só clicar aqui. Vamos avançar para o cadastro do Veículo!',
-            side: 'top',
-            onNextClick: () => {
-              nextStep(8, '/veiculos/novo');
-              window.dispatchEvent(new Event('vehlox:close-client-modal'));
-            }
-          }
-        }];
-      }
-
-      // --- PASSO 8: Tela de Veículo ---
-      else if (pathname === '/veiculos/novo' && currentStep === 8) {
-        steps = [{
-          element: '#form-veiculo', // ID que você vai colocar no form de veículo
-          popover: {
-            title: 'Cadastrando o Veículo',
-            description: 'Aqui você vincula a placa, modelo e ano ao cliente que acabou de criar. Parabéns, você já sabe o básico!',
-            side: 'top',
-            onNextClick: () => {
-              localStorage.setItem('@vehlox:tour_done', 'true');
-              nextStep(0, '/dashboard');
-            }
-          }
-        }];
-      }
-
-      const startDriver = (tourSteps: any[], clearActive = true) => {
         const tour = driver({
           showProgress: true,
           allowClose: false,
           overlayClickNext: false,
           nextBtnText: 'Avançar',
           doneBtnText: 'Concluir',
-          steps: tourSteps,
+          steps: [step],
           onPopoverRender: (popover: any, opts: any) => {
             const skipBtn = document.createElement('button');
             skipBtn.innerText = 'Pular Tutorial';
@@ -184,17 +177,32 @@ export default function OnboardingTour() {
             skipBtn.onclick = () => {
               localStorage.setItem('@vehlox:tour_done', 'true');
               opts.driver.destroy();
+              window.dispatchEvent(new Event('vehlox:close-client-modal'));
               router.push('/dashboard');
             };
             popover.footerButtons.prepend(skipBtn);
           }
         });
-        tour.drive();
+
+        // Espera o elemento aparecer na tela (importante para quando o modal abre)
+        setTimeout(() => {
+          tour.drive();
+        }, 500);
       };
 
-      if (steps.length > 0) {
-        setTimeout(() => startDriver(steps), clearActive ? 500 : 0);
-      }
+      // Ouve o evento para trocar de passo sem recarregar a página
+      const handleAdvance = () => {
+        initDriver();
+      };
+      window.addEventListener('vehlox:advance-tour', handleAdvance);
+
+      // Inicia a primeira vez
+      setTimeout(initDriver, 300);
+
+      // Cleanup
+      return () => {
+        window.removeEventListener('vehlox:advance-tour', handleAdvance);
+      };
     };
 
     document.body.appendChild(script);
