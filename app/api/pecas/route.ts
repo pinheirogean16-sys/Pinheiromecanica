@@ -23,7 +23,7 @@ const pecaSchema = z.object({
   unidadeMedida: z.string().default('un'),
   unidadeCompra: z.string().default('un'),
   fatorConversao: z.number().min(0.0001).default(1),
-  permiteFracionado: z.boolean().default(false)
+  permiteFracionado: z.boolean().default(false),
 });
 
 export async function GET(request: Request) {
@@ -36,31 +36,31 @@ export async function GET(request: Request) {
     const categoria = searchParams.get('categoria');
     const onlySearch = searchParams.get('onlySearch') === 'true';
 
-    // Se for modo de busca estrito (ex: Ordem de Serviço) e não tiver busca válida (mínimo 2 caracteres), retorna vazio imediatamente
     if (onlySearch && (!q || q.trim().length < 2)) {
       return NextResponse.json({
         items: [],
         total: 0,
         page: 1,
-        totalPages: 1
+        totalPages: 1,
       });
     }
 
     const where: any = {
-      empresa_id: user.empresa_id
+      empresa_id: user.empresa_id,
     };
 
     if (q) {
-      // Normaliza o termo de busca geral eliminando acentos e limpando espaços extras
-      const normalizedQuery = normalizeText(q);
-      
-      // Divide em blocos/palavras para suportar palavras em qualquer ordem ou buscas parciais
-      const rawTerms = q.trim().toLowerCase().replace(/\s+/g, ' ').split(' ').filter(Boolean);
-      
+      const rawTerms = q
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .split(' ')
+        .filter(Boolean);
+
       if (rawTerms.length > 0) {
         where.AND = rawTerms.map((term) => {
           const normTerm = normalizeText(term);
-          
+
           const orConditions: any[] = [
             { id: { contains: term } },
             { codigo: { contains: term } },
@@ -68,14 +68,12 @@ export async function GET(request: Request) {
             { fabricante: { contains: term } },
           ];
 
-          // Se o termo normalizado for diferente do original (ex: contendo acento), buscamos por ambos
-          // para flexibilizar a busca em qualquer colagem MySQL (accent-sensitive ou general-ci)
           if (normTerm !== term && normTerm) {
             orConditions.push(
               { id: { contains: normTerm } },
               { codigo: { contains: normTerm } },
               { descricao: { contains: normTerm } },
-              { fabricante: { contains: normTerm } },
+              { fabricante: { contains: normTerm } }
             );
           }
 
@@ -99,35 +97,23 @@ export async function GET(request: Request) {
         skip,
         take: limit,
       }),
-      prisma.peca.count({ where })
+      prisma.peca.count({ where }),
     ]);
 
-    // Logs temporários de depuração solicitados para monitorar performance e acertos no banco
-    console.log('[PECAS_SEARCH]', {
-      search: q,
-      whereClause: JSON.stringify(where),
-      totalEncontrado: total
-    });
-
-    // Diagnóstico em desenvolvimento caso nenhuma peça seja encontrada (Etapa 6)
-    if (process.env.NODE_ENV === 'development' && pecas.length === 0) {
-      console.log('--- DIAGNÓSTICO DE ESTOQUE (STATUS: VAZIO) ---');
-      console.log('Query original:', q);
-      console.log('Categoria selecionada:', categoria);
-      console.log('Condição WHERE gerada no Prisma:', JSON.stringify(where, null, 2));
-      console.log('Quantidade total de registros no banco:', await prisma.peca.count());
-      console.log('----------------------------------------------');
-    }
-
-    // Fallback seguro de estrutura (nunca undefined/null)
     return NextResponse.json({
       items: pecas || [],
       total: total || 0,
       page,
-      totalPages: Math.ceil((total || 0) / limit) || 1
+      totalPages: Math.ceil((total || 0) / limit) || 1,
     });
-  } catch (error) {
-    log('ERROR', 'PECA', 'Erro ao listar peças', { error }, 'sistema');
+  } catch (error: any) {
+    log(
+      'ERROR',
+      'PECA',
+      'Erro ao listar peças',
+      { error: error?.message },
+      'sistema'
+    );
     return NextResponse.json({ items: [], total: 0, page: 1, totalPages: 1 });
   }
 }
@@ -137,26 +123,31 @@ export async function POST(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    const canCreatePeca = checkPermission(user, 'pecas', 'criar') || checkPermission(user, 'os', 'criar') || checkPermission(user, 'os', 'editar');
+    const canCreatePeca =
+      checkPermission(user, 'pecas', 'criar') ||
+      checkPermission(user, 'os', 'criar') ||
+      checkPermission(user, 'os', 'editar');
     if (!canCreatePeca) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const data = pecaSchema.parse(await request.json());
-    
     const empresa_id = user.empresa_id;
 
     const existing = await prisma.peca.findUnique({
-      where: { 
+      where: {
         codigo_empresa_id: {
           codigo: data.codigo,
-          empresa_id: empresa_id
-        }
-      }
+          empresa_id: empresa_id,
+        },
+      },
     });
 
     if (existing) {
-      return NextResponse.json({ error: 'Código de peça já cadastrado para esta empresa' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Código de peça já cadastrado para esta empresa' },
+        { status: 400 }
+      );
     }
 
     const peca = await prisma.$transaction(async (tx) => {
@@ -168,8 +159,8 @@ export async function POST(request: Request) {
           preco_custo: roundDecimal(data.preco_custo),
           preco_venda: roundDecimal(data.preco_venda),
           created_by: user?.name || user?.email || 'Sistema',
-          updated_at: new Date()
-        }
+          updated_at: new Date(),
+        },
       });
 
       if (data.quantidade > 0) {
@@ -183,8 +174,8 @@ export async function POST(request: Request) {
             observacao: 'Saldo inicial cadastrado no almoxarifado',
             os_id: null,
             usuario_id: user.id,
-            empresa_id: empresa_id
-          }
+            empresa_id: empresa_id,
+          },
         });
       }
 
@@ -197,7 +188,8 @@ export async function POST(request: Request) {
       entidade: 'Peca',
       entidade_id: peca.id,
       usuario: user?.name || user?.email || 'Sistema',
-      dados_depois: peca
+      empresa_id: user.empresa_id,
+      dados_depois: peca,
     });
 
     log('INFO', 'PECA', 'Peça criada', { id: peca.id, codigo: peca.codigo }, user?.name);
@@ -205,8 +197,14 @@ export async function POST(request: Request) {
     if (peca.quantidade <= peca.estoque_minimo) {
       try {
         await notificarEstoqueBaixo(peca);
-      } catch (err) {
-        console.error('Erro ao notificar estoque baixo:', err);
+      } catch (err: any) {
+        log(
+          'WARN',
+          'PECA',
+          'Erro ao notificar estoque baixo',
+          { error: err?.message, pecaId: peca.id },
+          'sistema'
+        );
       }
     }
 
@@ -216,11 +214,20 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(peca, { status: 201 });
-  } catch (error) {
-    log('ERROR', 'PECA', 'Erro ao criar peça', { error }, 'sistema');
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
+    log(
+      'ERROR',
+      'PECA',
+      'Erro ao criar peça',
+      { error: error?.message },
+      'sistema'
+    );
     return NextResponse.json({ error: 'Erro ao criar peça' }, { status: 500 });
   }
 }
