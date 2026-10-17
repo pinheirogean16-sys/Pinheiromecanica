@@ -37,6 +37,22 @@ export default function OnboardingTour() {
 
     let driverInstance: any = null;
 
+    // 👇 FUNÇÃO DE LIMPEZA FORÇADA DO DRIVER.JS
+    const forceCleanupDriver = (instance: any) => {
+      if (instance) {
+        try { instance.destroy(); } catch {}
+      }
+      // Remove qualquer resquício visual do Driver.js
+      document.body.style.overflow = '';
+      document.body.classList.remove('driver-active');
+      document.documentElement.classList.remove('driver-active');
+      const overlays = document.querySelectorAll('.driver-overlay, .driver-active-element');
+      overlays.forEach(el => {
+        el.classList.remove('driver-active-element');
+        if (el.classList.contains('driver-overlay')) el.remove();
+      });
+    };
+
     // CSS Premium do Modal
     const styleId = 'vehlox-driver-custom-css';
     if (!document.getElementById(styleId)) {
@@ -78,7 +94,6 @@ export default function OnboardingTour() {
       // @ts-ignore
       const driver = window.driver.js.driver;
 
-      // Função de espera ativa: Fica checando se o elemento apareceu na tela
       const waitForElement = (selector: string, callback: () => void) => {
         let attempts = 0;
         const interval = setInterval(() => {
@@ -87,9 +102,8 @@ export default function OnboardingTour() {
             callback();
           } else {
             attempts++;
-            if (attempts > 50) { // 5 segundos de tolerância máxima
+            if (attempts > 50) { 
               clearInterval(interval);
-              console.warn(`Tour: Elemento ${selector} não encontrado após 5s. Pulando.`);
               callback(); 
             }
           }
@@ -138,7 +152,6 @@ export default function OnboardingTour() {
             config = { element: '#field-veiculo-ano', popover: { title: 'Ano de Fabricação', description: 'Informe o ano do veículo. Essencial para buscar peças corretas.', side: 'bottom' } };
             break;
           case 12:
-            // MUDANÇA AQUI: Aponta para o formulário inteiro, não para um botão escondido.
             config = { element: '#form-veiculo', popover: { title: 'Salvar Veículo', description: 'Clique no botão de salvar (laranja). Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' } };
             route = '/os/nova';
             break;
@@ -163,7 +176,7 @@ export default function OnboardingTour() {
       };
 
       const runStep = (stepNum: number) => {
-        if (driverInstance) driverInstance.destroy();
+        forceCleanupDriver(driverInstance);
 
         const { config, isLast, route, action } = getStepConfig(stepNum);
         if (!config) return;
@@ -188,9 +201,13 @@ export default function OnboardingTour() {
             skipBtn.onclick = () => {
               localStorage.setItem('@vehlox:tour_done', 'true');
               localStorage.setItem('@vehlox:tour_step', '0');
-              opts.driver.destroy();
+              forceCleanupDriver(opts.driver);
               window.dispatchEvent(new Event('vehlox:close-client-modal'));
-              router.push('/dashboard');
+              
+              // Delay para limpar a tela antes de navegar
+              setTimeout(() => {
+                router.push('/dashboard');
+              }, 300);
             };
             popover.footerButtons.prepend(skipBtn);
 
@@ -202,30 +219,31 @@ export default function OnboardingTour() {
             }, 50);
           },
           onNextClick: () => {
-            if (driverInstance) driverInstance.destroy();
+            forceCleanupDriver(driverInstance);
             
-            // Executa a ação
-            if (action === 'vehlox:open-client-modal') {
-              window.dispatchEvent(new Event(action));
-            } else if (action === 'vehlox:close-client-modal') {
-              window.dispatchEvent(new Event(action));
-            } else if (action === 'click-oficina') {
-              // Simula um clique completo do mouse para o React reconhecer
-              const btn = document.getElementById('btn-tipo-oficina');
-              if (btn) {
-                const mousedownEvent = new MouseEvent('mousedown', { bubbles: true });
-                const mouseupEvent = new MouseEvent('mouseup', { bubbles: true });
-                const clickEvent = new MouseEvent('click', { bubbles: true });
-                btn.dispatchEvent(mousedownEvent);
-                btn.dispatchEvent(mouseupEvent);
-                btn.dispatchEvent(clickEvent);
+            if (action) {
+              if (action === 'vehlox:open-client-modal') {
+                window.dispatchEvent(new Event(action));
+              } else if (action === 'vehlox:close-client-modal') {
+                window.dispatchEvent(new Event(action));
+              } else if (action === 'click-oficina') {
+                const btn = document.getElementById('btn-tipo-oficina');
+                if (btn) {
+                  btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                  btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
               }
             }
 
             if (isLast) {
               localStorage.setItem('@vehlox:tour_done', 'true');
               localStorage.setItem('@vehlox:tour_step', '0');
-              if (route) router.push(route);
+              
+              // Delay para o Driver.js limpar a tela antes de redirecionar
+              setTimeout(() => {
+                if (route) router.push(route);
+              }, 300);
             } else {
               const nextStep = stepNum + 1;
               localStorage.setItem('@vehlox:tour_step', nextStep.toString());
@@ -233,7 +251,6 @@ export default function OnboardingTour() {
               if (route) {
                 router.push(route);
               } else {
-                // Se for o passo 13 (Simular clique na Oficina), espera 1000ms pelo formulário renderizar
                 if (action === 'click-oficina') {
                   setTimeout(() => {
                     const nextConfig = getStepConfig(nextStep).config;
@@ -242,9 +259,8 @@ export default function OnboardingTour() {
                     } else {
                       runStep(nextStep);
                     }
-                  }, 1000); // 1 segundo de folga para o React montar a tela gigante de OS
+                  }, 1000);
                 } else {
-                  // Nas outras telas, espera o elemento de forma ativa
                   const nextConfig = getStepConfig(nextStep).config;
                   if (nextConfig && nextConfig.element) {
                     waitForElement(nextConfig.element, () => runStep(nextStep));
@@ -275,7 +291,7 @@ export default function OnboardingTour() {
     loadDriver();
 
     return () => {
-      if (driverInstance) driverInstance.destroy();
+      forceCleanupDriver(driverInstance);
     };
   }, [pathname, showIntro, router]);
 
