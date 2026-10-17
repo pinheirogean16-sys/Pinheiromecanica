@@ -148,7 +148,7 @@ function NovoVeiculoForm() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+      <form id="form-veiculo" onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         
         {/* Proprietário */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-3xl md:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl space-y-6 relative overflow-hidden group">
@@ -192,6 +192,7 @@ function NovoVeiculoForm() {
             <div className="space-y-3">
               <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">Placa de Identificação</label>
               <input 
+                id="field-veiculo-placa"
                 {...register('placa')} 
                 onChange={(e) => setValue('placa', maskPlaca(e.target.value))} 
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xl text-center text-white focus:border-orange-500 outline-none transition font-mono font-black tracking-[0.2em] uppercase shadow-lg border-b-4 border-b-zinc-800 active:border-b-0 min-h-[44px]" 
@@ -205,6 +206,7 @@ function NovoVeiculoForm() {
             <div className="space-y-3">
               <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1">Fabricante / Marca</label>
               <input 
+                id="field-veiculo-marca"
                 {...register('marca')} 
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black min-h-[44px]" 
                 placeholder="EX: SCANIA, VOLVO..." 
@@ -216,6 +218,7 @@ function NovoVeiculoForm() {
             <div className="space-y-3">
               <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1">Modelo Comercial</label>
               <input 
+                id="field-veiculo-modelo"
                 {...register('modelo')} 
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black min-h-[44px]" 
                 placeholder="EX: R440, FH460..." 
@@ -227,6 +230,7 @@ function NovoVeiculoForm() {
             <div className="space-y-3">
               <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2"><Calendar size={12} /> Ano Fabricação</label>
               <input 
+                id="field-veiculo-ano"
                 type="number" 
                 {...register('ano')} 
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]" 
@@ -335,7 +339,15 @@ function NovoVeiculoForm() {
         {/* Desktop form action bar */}
         <div className="hidden lg:flex items-center justify-end gap-6 pt-4">
           <Link href="/veiculos" className="px-10 py-5 bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest transition-all hover:bg-zinc-900">DESCARTAR</Link>
-          <button type="submit" disabled={loading} className="px-14 py-6 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-[0.5em] rounded-full transition-all shadow-2xl flex items-center gap-4 active:scale-95 transform group">{loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} className="group-hover:-rotate-6 transition-transform" />}PROTOCOLAR ATIVO NO SISTEMA</button>
+          <button 
+            type="submit" 
+            id="btn-salvar-veiculo"
+            disabled={loading} 
+            className="px-14 py-6 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-[0.5em] rounded-full transition-all shadow-2xl flex items-center gap-4 active:scale-95 transform group"
+          >
+            {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} className="group-hover:-rotate-6 transition-transform" />}
+            PROTOCOLAR ATIVO NO SISTEMA
+          </button>
         </div>
       </form>
 
@@ -355,6 +367,7 @@ function NovoVeiculoForm() {
         </button>
         <button 
           onClick={handleSubmit(onSubmit)}
+          id="btn-salvar-veiculo-mobile"
           disabled={loading}
           className="flex-1 min-h-[48px] bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer shadow-lg font-bold"
         >
