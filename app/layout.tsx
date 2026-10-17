@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import { Toaster } from 'sonner';
 import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
 import { BRANDING } from '@/lib/branding';
+import OnboardingTour from '@/components/OnboardingTour'; // <--- IMPORT ADICIONADO
 
 // ============================================================
 // METADATA VEHLOX
@@ -38,6 +39,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden">
+        {/* O Tour Interativo fica aqui para funcionar em todas as telas */}
+        <OnboardingTour /> 
+        
         <DiagnosticsOverlay />
         <div className="flex w-full h-screen overflow-hidden">
           <Sidebar />
