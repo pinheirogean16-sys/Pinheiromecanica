@@ -37,86 +37,22 @@ export default function OnboardingTour() {
 
     let driverInstance: any = null;
 
-    // 👇 CSS ELABORADO PARA O MODAL
+    // CSS Premium do Modal
     const styleId = 'vehlox-driver-custom-css';
     if (!document.getElementById(styleId)) {
       const style = document.createElement('style');
       style.id = styleId;
       style.innerHTML = `
-        .driver-popover {
-          background: linear-gradient(145deg, #18181b, #09090b) !important;
-          border: 1px solid #3f3f46 !important;
-          border-radius: 24px !important;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important;
-          color: #e4e4e7 !important;
-          padding: 28px !important;
-          max-width: 360px !important;
-          font-family: inherit !important;
-        }
-        .driver-popover-title {
-          color: #f97316 !important;
-          font-size: 20px !important;
-          font-weight: 900 !important;
-          text-transform: uppercase !important;
-          font-style: italic !important;
-          margin-bottom: 12px !important;
-          letter-spacing: -0.05em !important;
-          display: flex !important;
-          align-items: center !important;
-          gap: 8px !important;
-        }
-        .driver-popover-title::before {
-          content: '✨' !important;
-          font-size: 16px !important;
-          font-style: normal !important;
-        }
-        .driver-popover-description {
-          color: #a1a1aa !important;
-          font-size: 14px !important;
-          line-height: 1.6 !important;
-          font-weight: 500 !important;
-        }
-        .driver-popover-footer {
-          margin-top: 24px !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: space-between !important;
-          border-top: 1px solid #27272a !important;
-          padding-top: 20px !important;
-        }
-        .driver-popover-footer button {
-          background: #f97316 !important;
-          color: #fff !important;
-          border: none !important;
-          border-radius: 12px !important;
-          padding: 12px 24px !important;
-          font-weight: 800 !important;
-          text-transform: uppercase !important;
-          font-size: 11px !important;
-          letter-spacing: 0.1em !important;
-          transition: all 0.2s !important;
-          text-shadow: none !important;
-          cursor: pointer !important;
-          box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.39) !important;
-        }
-        .driver-popover-footer button:hover {
-          background: #ea580c !important;
-          transform: translateY(-2px) !important;
-        }
-        .driver-popover-progress-text {
-          color: #71717a !important;
-          font-size: 11px !important;
-          font-weight: 800 !important;
-          text-transform: uppercase !important;
-          letter-spacing: 0.1em !important;
-        }
-        .driver-popover-arrow {
-          border-color: #18181b !important;
-        }
-        .driver-active-element {
-          border-radius: 16px !important;
-          box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3) !important;
-        }
+        .driver-popover { background: linear-gradient(145deg, #18181b, #09090b) !important; border: 1px solid #3f3f46 !important; border-radius: 24px !important; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important; color: #e4e4e7 !important; padding: 28px !important; max-width: 360px !important; font-family: inherit !important; }
+        .driver-popover-title { color: #f97316 !important; font-size: 20px !important; font-weight: 900 !important; text-transform: uppercase !important; font-style: italic !important; margin-bottom: 12px !important; letter-spacing: -0.05em !important; display: flex !important; align-items: center !important; gap: 8px !important; }
+        .driver-popover-title::before { content: '✨' !important; font-size: 16px !important; font-style: normal !important; }
+        .driver-popover-description { color: #a1a1aa !important; font-size: 14px !important; line-height: 1.6 !important; font-weight: 500 !important; }
+        .driver-popover-footer { margin-top: 24px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; border-top: 1px solid #27272a !important; padding-top: 20px !important; }
+        .driver-popover-footer button { background: #f97316 !important; color: #fff !important; border: none !important; border-radius: 12px !important; padding: 12px 24px !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 11px !important; letter-spacing: 0.1em !important; transition: all 0.2s !important; text-shadow: none !important; cursor: pointer !important; box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.39) !important; }
+        .driver-popover-footer button:hover { background: #ea580c !important; transform: translateY(-2px) !important; }
+        .driver-popover-progress-text { color: #71717a !important; font-size: 11px !important; font-weight: 800 !important; text-transform: uppercase !important; letter-spacing: 0.1em !important; }
+        .driver-popover-arrow { border-color: #18181b !important; }
+        .driver-active-element { border-radius: 16px !important; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3) !important; }
       `;
       document.head.appendChild(style);
     }
@@ -142,193 +78,178 @@ export default function OnboardingTour() {
       // @ts-ignore
       const driver = window.driver.js.driver;
 
-      const runStep = (stepStr: string) => {
-        if (driverInstance) driverInstance.destroy();
+      // Função de espera ativa: Fica checando se o elemento apareceu na tela
+      const waitForElement = (selector: string, callback: () => void) => {
+        let attempts = 0;
+        const interval = setInterval(() => {
+          if (document.querySelector(selector)) {
+            clearInterval(interval);
+            callback();
+          } else {
+            attempts++;
+            if (attempts > 50) { // 5 segundos de tolerância máxima
+              clearInterval(interval);
+              console.warn(`Tour: Elemento ${selector} não encontrado após 5s. Pulando.`);
+              callback(); // Força a execução para não travar o tutorial
+            }
+          }
+        }, 100);
+      };
 
-        const stepNum = parseInt(stepStr, 10);
-        let stepConfig: any = null;
-        let isLastStep = false;
-        let nextRoute: string | null = null;
-        let dispatchEvent: string | null = null;
-        let delayTime = 600; // Tempo padrão de espera entre transições
+      const getStepConfig = (stepNum: number) => {
+        let config: any = null;
+        let isLast = false;
+        let route: string | null = null;
+        let action: string | null = null;
 
         switch (stepNum) {
           case 2:
-            stepConfig = {
-              element: '#action-new-client',
-              popover: { title: 'Fase 1: O Cliente', description: 'Tudo começa pelo cliente. Clique em Avançar para irmos à tela de cadastro.', side: 'bottom' }
-            };
-            nextRoute = '/clientes';
+            config = { element: '#action-new-client', popover: { title: 'Fase 1: O Cliente', description: 'Tudo começa pelo cliente. Clique em Avançar para irmos à tela de cadastro.', side: 'bottom' } };
+            route = '/clientes';
             break;
           case 3:
-            stepConfig = {
-              element: '#btn-novo-cliente',
-              popover: { title: 'Iniciando o Cadastro', description: 'Clique em Avançar e o sistema abrirá a janela de cadastro para você.', side: 'bottom' }
-            };
-            dispatchEvent = 'vehlox:open-client-modal';
+            config = { element: '#btn-novo-cliente', popover: { title: 'Iniciando o Cadastro', description: 'Clique em Avançar e o sistema abrirá a janela de cadastro para você.', side: 'bottom' } };
+            action = 'vehlox:open-client-modal';
             break;
           case 4:
-            stepConfig = {
-              element: '#field-cliente-nome',
-              popover: { title: 'Nome do Cliente', description: 'Digite o nome completo ou a razão social. É o primeiro dado essencial.', side: 'bottom' }
-            };
+            config = { element: '#field-cliente-nome', popover: { title: 'Nome do Cliente', description: 'Digite o nome completo ou a razão social. É o primeiro dado essencial.', side: 'bottom' } };
             break;
           case 5:
-            stepConfig = {
-              element: '#field-cliente-cpf',
-              popover: { title: 'CPF ou CNPJ', description: 'O sistema valida automaticamente se o documento é verdadeiro.', side: 'bottom' }
-            };
+            config = { element: '#field-cliente-cpf', popover: { title: 'CPF ou CNPJ', description: 'O sistema valida automaticamente se o documento é verdadeiro.', side: 'bottom' } };
             break;
           case 6:
-            stepConfig = {
-              element: '#field-cliente-telefone',
-              popover: { title: 'Contato', description: 'Para enviar o orçamento ou avisar quando o veículo estiver pronto.', side: 'bottom' }
-            };
+            config = { element: '#field-cliente-telefone', popover: { title: 'Contato', description: 'Para enviar o orçamento ou avisar quando o veículo estiver pronto.', side: 'bottom' } };
             break;
           case 7:
-            stepConfig = {
-              element: '#btn-salvar-cliente',
-              popover: { title: 'Salvar o Cliente', description: 'Depois de preencher, clique aqui. Vamos avançar para o cadastro do Veículo!', side: 'top' }
-            };
-            dispatchEvent = 'vehlox:close-client-modal';
-            nextRoute = '/veiculos/novo';
+            config = { element: '#btn-salvar-cliente', popover: { title: 'Salvar o Cliente', description: 'Depois de preencher, clique aqui. Vamos avançar para o cadastro do Veículo!', side: 'top' } };
+            action = 'vehlox:close-client-modal';
+            route = '/veiculos/novo';
             break;
           case 8:
-            stepConfig = {
-              element: 'form',
-              popover: { title: 'Fase 2: O Veículo', description: 'Agora vamos cadastrar o veículo deste cliente. Preencha a placa e o modelo.', side: 'top' }
-            };
+            config = { element: 'form', popover: { title: 'Fase 2: O Veículo', description: 'Agora vamos cadastrar o veículo deste cliente. Preencha a placa e o modelo.', side: 'top' } };
             break;
           case 9:
-            stepConfig = {
-              element: '#field-veiculo-placa',
-              popover: { title: 'Placa do Veículo', description: 'Digite a placa (ex: ABC-1234). O sistema valida o formato.', side: 'bottom' }
-            };
+            config = { element: '#field-veiculo-placa', popover: { title: 'Placa do Veículo', description: 'Digite a placa (ex: ABC-1234). O sistema valida o formato.', side: 'bottom' } };
             break;
           case 10:
-            stepConfig = {
-              element: '#field-veiculo-marca',
-              popover: { title: 'Marca e Modelo', description: 'Preencha a marca (ex: Volvo) e o modelo (ex: FH 460).', side: 'bottom' }
-            };
+            config = { element: '#field-veiculo-marca', popover: { title: 'Marca e Modelo', description: 'Preencha a marca (ex: Volvo) e o modelo (ex: FH 460).', side: 'bottom' } };
             break;
           case 11:
-            stepConfig = {
-              element: '#field-veiculo-ano',
-              popover: { title: 'Ano de Fabricação', description: 'Informe o ano do veículo. Essencial para buscar peças corretas.', side: 'bottom' }
-            };
+            config = { element: '#field-veiculo-ano', popover: { title: 'Ano de Fabricação', description: 'Informe o ano do veículo. Essencial para buscar peças corretas.', side: 'bottom' } };
             break;
           case 12:
-            stepConfig = {
-              element: '#btn-salvar-veiculo',
-              popover: { title: 'Salvar Veículo', description: 'Clique aqui para salvar. Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' }
-            };
-            nextRoute = '/os/nova';
-            delayTime = 1000; // Mais tempo para carregar a tela de OS
+            config = { element: '#btn-salvar-veiculo', popover: { title: 'Salvar Veículo', description: 'Clique aqui para salvar. Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' } };
+            route = '/os/nova';
             break;
           case 13:
-            // Esta é a tela onde o usuário escolhe OFICINA ou CAMPO
-            stepConfig = {
-              element: '#btn-tipo-oficina',
-              popover: { title: 'Fase 3: Escolha o Tipo', description: 'Vamos abrir uma OS de Oficina. Clique em Avançar.', side: 'bottom' }
-            };
-            dispatchEvent = 'click:#btn-tipo-oficina';
-            delayTime = 1500; // Tempo para o formulário de OS carregar
+            config = { element: '#btn-tipo-oficina', popover: { title: 'Fase 3: Escolha o Tipo', description: 'Vamos abrir uma OS de Oficina. Clique em Avançar.', side: 'bottom' } };
+            action = 'click:#btn-tipo-oficina'; // Simula o clique
             break;
           case 14:
-            stepConfig = {
-              element: '#section-mao-de-obra',
-              popover: { title: 'Mão de Obra', description: 'Aqui você adiciona os serviços (ex: troca de óleo, revisão).', side: 'right' }
-            };
+            config = { element: '#section-mao-de-obra', popover: { title: 'Mão de Obra', description: 'Aqui você adiciona os serviços (ex: troca de óleo, revisão).', side: 'right' } };
             break;
           case 15:
-            stepConfig = {
-              element: '#section-insumos',
-              popover: { title: 'Insumos e Peças', description: 'Aqui você adiciona as peças do estoque que serão usadas no veículo.', side: 'left' }
-            };
+            config = { element: '#section-insumos', popover: { title: 'Insumos e Peças', description: 'Aqui você adiciona as peças do estoque que serão usadas no veículo.', side: 'left' } };
             break;
           case 16:
-            stepConfig = {
-              element: '#btn-protocolar-os',
-              popover: { title: 'Finalizando a OS', description: 'Tudo pronto! Aqui você protocola a OS. Parabéns, você concluiu o tour!', side: 'top' }
-            };
-            isLastStep = true;
-            nextRoute = '/dashboard';
+            config = { element: '#btn-protocolar-os', popover: { title: 'Finalizando a OS', description: 'Tudo pronto! Aqui você protocola a OS. Parabéns, você concluiu o tour!', side: 'top' } };
+            isLast = true;
+            route = '/dashboard';
             break;
-          default:
-            return;
         }
 
-        if (stepConfig) {
-          driverInstance = driver({
-            showProgress: true,
-            allowClose: false,
-            overlayClickNext: false,
-            showButtons: ['next'],
-            nextBtnText: isLastStep ? 'Finalizar Tutorial' : 'Avançar',
-            steps: [stepConfig],
-            onPopoverRender: (popover: any, opts: any) => {
-              const skipBtn = document.createElement('button');
-              skipBtn.innerText = 'Pular';
-              skipBtn.style.background = 'transparent';
-              skipBtn.style.border = 'none';
-              skipBtn.style.color = '#ef4444';
-              skipBtn.style.cursor = 'pointer';
-              skipBtn.style.fontSize = '11px';
-              skipBtn.style.fontWeight = 'bold';
-              skipBtn.style.textTransform = 'uppercase';
-              skipBtn.style.letterSpacing = '0.05em';
-              skipBtn.onclick = () => {
-                localStorage.setItem('@vehlox:tour_done', 'true');
-                localStorage.setItem('@vehlox:tour_step', '0');
-                opts.driver.destroy();
-                window.dispatchEvent(new Event('vehlox:close-client-modal'));
-                router.push('/dashboard');
-              };
-              popover.footerButtons.prepend(skipBtn);
+        return { config, isLast, route, action };
+      };
 
-              setTimeout(() => {
-                const btns = document.querySelectorAll('.driver-popover-next-btn');
-                btns.forEach((btn: any) => {
-                  btn.innerText = isLastStep ? 'Finalizar Tutorial' : 'Avançar';
-                });
-              }, 50);
-            },
-            onNextClick: () => {
-              if (driverInstance) driverInstance.destroy();
-              
-              if (dispatchEvent) {
-                if (dispatchEvent.startsWith('click:')) {
-                  const elementId = dispatchEvent.split(':')[1];
-                  document.getElementById(elementId)?.click();
-                } else {
-                  window.dispatchEvent(new Event(dispatchEvent));
-                }
-              }
+      const runStep = (stepNum: number) => {
+        if (driverInstance) driverInstance.destroy();
 
-              if (isLastStep) {
-                localStorage.setItem('@vehlox:tour_done', 'true');
-                localStorage.setItem('@vehlox:tour_step', '0');
-                if (nextRoute) router.push(nextRoute);
+        const { config, isLast, route, action } = getStepConfig(stepNum);
+        if (!config) return;
+
+        driverInstance = driver({
+          showProgress: true,
+          allowClose: false,
+          overlayClickNext: false,
+          showButtons: ['next'],
+          nextBtnText: isLast ? 'Finalizar Tutorial' : 'Avançar',
+          steps: [config],
+          onPopoverRender: (popover: any, opts: any) => {
+            const skipBtn = document.createElement('button');
+            skipBtn.innerText = 'Pular';
+            skipBtn.style.background = 'transparent';
+            skipBtn.style.border = 'none';
+            skipBtn.style.color = '#ef4444';
+            skipBtn.style.cursor = 'pointer';
+            skipBtn.style.fontSize = '11px';
+            skipBtn.style.fontWeight = 'bold';
+            skipBtn.style.textTransform = 'uppercase';
+            skipBtn.onclick = () => {
+              localStorage.setItem('@vehlox:tour_done', 'true');
+              localStorage.setItem('@vehlox:tour_step', '0');
+              opts.driver.destroy();
+              window.dispatchEvent(new Event('vehlox:close-client-modal'));
+              router.push('/dashboard');
+            };
+            popover.footerButtons.prepend(skipBtn);
+
+            setTimeout(() => {
+              const btns = document.querySelectorAll('.driver-popover-next-btn');
+              btns.forEach((btn: any) => {
+                btn.innerText = isLast ? 'Finalizar Tutorial' : 'Avançar';
+              });
+            }, 50);
+          },
+          onNextClick: () => {
+            if (driverInstance) driverInstance.destroy();
+            
+            // Executa a ação se houver (como abrir o modal ou simular um clique)
+            if (action) {
+              if (action.startsWith('click:')) {
+                const elementId = action.split(':')[1];
+                document.getElementById(elementId)?.click();
               } else {
-                localStorage.setItem('@vehlox:tour_step', (stepNum + 1).toString());
-                if (nextRoute) {
-                  router.push(nextRoute);
-                  // Se mudou de rota, o useEffect vai capturar o novo pathname e rodar o próximo passo.
+                window.dispatchEvent(new Event(action));
+              }
+            }
+
+            if (isLast) {
+              localStorage.setItem('@vehlox:tour_done', 'true');
+              localStorage.setItem('@vehlox:tour_step', '0');
+              if (route) router.push(route);
+            } else {
+              const nextStep = stepNum + 1;
+              localStorage.setItem('@vehlox:tour_step', nextStep.toString());
+              
+              if (route) {
+                router.push(route);
+              } else {
+                // Na mesma tela: espera o próximo elemento aparecer (Essencial para a mudança de Oficina/Campo para o Form de OS)
+                const nextConfig = getStepConfig(nextStep).config;
+                if (nextConfig && nextConfig.element) {
+                  waitForElement(nextConfig.element, () => runStep(nextStep));
                 } else {
-                  setTimeout(() => runStep((stepNum + 1).toString()), delayTime);
+                  setTimeout(() => runStep(nextStep), 500);
                 }
               }
             }
-          });
-          
-          setTimeout(() => {
-            driverInstance.drive();
-          }, 300);
-        }
+          }
+        });
+        
+        setTimeout(() => {
+          driverInstance.drive();
+        }, 300);
       };
 
-      const stepAtual = localStorage.getItem('@vehlox:tour_step') || '2';
-      runStep(stepAtual);
+      const stepAtual = parseInt(localStorage.getItem('@vehlox:tour_step') || '2', 10);
+      
+      // Se a página já carregou no meio do tour, espera o elemento da página aparecer
+      const currentConfig = getStepConfig(stepAtual).config;
+      if (currentConfig && currentConfig.element) {
+        waitForElement(currentConfig.element, () => runStep(stepAtual));
+      } else {
+        runStep(stepAtual);
+      }
     };
 
     loadDriver();
