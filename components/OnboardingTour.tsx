@@ -90,7 +90,7 @@ export default function OnboardingTour() {
             if (attempts > 50) { // 5 segundos de tolerância máxima
               clearInterval(interval);
               console.warn(`Tour: Elemento ${selector} não encontrado após 5s. Pulando.`);
-              callback(); // Força a execução para não travar o tutorial
+              callback(); 
             }
           }
         }, 100);
@@ -138,12 +138,13 @@ export default function OnboardingTour() {
             config = { element: '#field-veiculo-ano', popover: { title: 'Ano de Fabricação', description: 'Informe o ano do veículo. Essencial para buscar peças corretas.', side: 'bottom' } };
             break;
           case 12:
-            config = { element: '#btn-salvar-veiculo', popover: { title: 'Salvar Veículo', description: 'Clique aqui para salvar. Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' } };
+            // MUDANÇA AQUI: Aponta para o formulário inteiro, não para um botão escondido.
+            config = { element: '#form-veiculo', popover: { title: 'Salvar Veículo', description: 'Clique no botão de salvar (laranja). Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' } };
             route = '/os/nova';
             break;
           case 13:
             config = { element: '#btn-tipo-oficina', popover: { title: 'Fase 3: Escolha o Tipo', description: 'Vamos abrir uma OS de Oficina. Clique em Avançar.', side: 'bottom' } };
-            action = 'click:#btn-tipo-oficina'; // Simula o clique
+            action = 'click-oficina';
             break;
           case 14:
             config = { element: '#section-mao-de-obra', popover: { title: 'Mão de Obra', description: 'Aqui você adiciona os serviços (ex: troca de óleo, revisão).', side: 'right' } };
@@ -203,13 +204,21 @@ export default function OnboardingTour() {
           onNextClick: () => {
             if (driverInstance) driverInstance.destroy();
             
-            // Executa a ação se houver (como abrir o modal ou simular um clique)
-            if (action) {
-              if (action.startsWith('click:')) {
-                const elementId = action.split(':')[1];
-                document.getElementById(elementId)?.click();
-              } else {
-                window.dispatchEvent(new Event(action));
+            // Executa a ação
+            if (action === 'vehlox:open-client-modal') {
+              window.dispatchEvent(new Event(action));
+            } else if (action === 'vehlox:close-client-modal') {
+              window.dispatchEvent(new Event(action));
+            } else if (action === 'click-oficina') {
+              // Simula um clique completo do mouse para o React reconhecer
+              const btn = document.getElementById('btn-tipo-oficina');
+              if (btn) {
+                const mousedownEvent = new MouseEvent('mousedown', { bubbles: true });
+                const mouseupEvent = new MouseEvent('mouseup', { bubbles: true });
+                const clickEvent = new MouseEvent('click', { bubbles: true });
+                btn.dispatchEvent(mousedownEvent);
+                btn.dispatchEvent(mouseupEvent);
+                btn.dispatchEvent(clickEvent);
               }
             }
 
@@ -224,12 +233,24 @@ export default function OnboardingTour() {
               if (route) {
                 router.push(route);
               } else {
-                // Na mesma tela: espera o próximo elemento aparecer (Essencial para a mudança de Oficina/Campo para o Form de OS)
-                const nextConfig = getStepConfig(nextStep).config;
-                if (nextConfig && nextConfig.element) {
-                  waitForElement(nextConfig.element, () => runStep(nextStep));
+                // Se for o passo 13 (Simular clique na Oficina), espera 1000ms pelo formulário renderizar
+                if (action === 'click-oficina') {
+                  setTimeout(() => {
+                    const nextConfig = getStepConfig(nextStep).config;
+                    if (nextConfig && nextConfig.element) {
+                      waitForElement(nextConfig.element, () => runStep(nextStep));
+                    } else {
+                      runStep(nextStep);
+                    }
+                  }, 1000); // 1 segundo de folga para o React montar a tela gigante de OS
                 } else {
-                  setTimeout(() => runStep(nextStep), 500);
+                  // Nas outras telas, espera o elemento de forma ativa
+                  const nextConfig = getStepConfig(nextStep).config;
+                  if (nextConfig && nextConfig.element) {
+                    waitForElement(nextConfig.element, () => runStep(nextStep));
+                  } else {
+                    setTimeout(() => runStep(nextStep), 500);
+                  }
                 }
               }
             }
@@ -243,7 +264,6 @@ export default function OnboardingTour() {
 
       const stepAtual = parseInt(localStorage.getItem('@vehlox:tour_step') || '2', 10);
       
-      // Se a página já carregou no meio do tour, espera o elemento da página aparecer
       const currentConfig = getStepConfig(stepAtual).config;
       if (currentConfig && currentConfig.element) {
         waitForElement(currentConfig.element, () => runStep(stepAtual));
