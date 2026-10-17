@@ -1,151 +1,315 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { Lock, User } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { 
+  Lock, Mail, Building, CreditCard, ChevronRight, KeyRound, 
+  User, ArrowRight, ArrowLeft, CheckCircle2, Loader2
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function AuthPage() {
+  const router = useRouter();
+  
+  // Estado que controla qual tela está visível
+  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [registerSuccess, setRegisterSuccess] = useState(false);
+  
+  // Estados dos formulários
+  const [loginData, setLoginData] = useState({ email: '', password: '' });
+  const [registerData, setRegisterData] = useState({
+    invite_token: '',
+    empresa_nome: '',
+    cnpj: '',
+    nome_admin: '',
+    email: '',
+    senha: ''
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // ==========================================
+  // LÓGICA DE LOGIN
+  // ==========================================
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(loginData)
       });
 
       const data = await res.json();
 
-      if (data.success) {
-        window.location.href = data.redirect || '/dashboard';
+      if (res.ok) {
+        toast.success('Login realizado com sucesso!');
+        router.push(data.redirect || '/dashboard');
+        router.refresh();
       } else {
-        setError(data.error || 'Credenciais inválidas');
+        toast.error(data.error || 'E-mail ou senha incorretos.');
       }
-    } catch (error) {
-      setError('Erro ao conectar ao servidor');
+    } catch {
+      toast.error('Erro de conexão com o servidor.');
     } finally {
       setLoading(false);
     }
   };
 
+  // ==========================================
+  // LÓGICA DE CADASTRO
+  // ==========================================
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registerData)
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setRegisterSuccess(true);
+        setTimeout(() => {
+          router.push('/bem-vindo');
+        }, 3000);
+      } else {
+        toast.error(data.error || 'Erro ao realizar cadastro.');
+      }
+    } catch {
+      toast.error('Erro de conexão ao criar conta.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ==========================================
+  // TELA DE SUCESSO DO CADASTRO
+  // ==========================================
+  if (registerSuccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-950">
+        <div className="w-full max-w-md p-8 bg-zinc-900 border border-zinc-800 rounded-3xl text-center space-y-4 shadow-2xl animate-in zoom-in-95 duration-300">
+          <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+          </div>
+          <h1 className="text-2xl font-black text-white uppercase tracking-tight">Conta Criada!</h1>
+          <p className="text-sm text-zinc-400">
+            Sua oficina foi registrada com sucesso. Você será redirecionado para o tutorial de primeiros passos em instantes...
+          </p>
+          <div className="pt-4 flex justify-center">
+            <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 relative overflow-hidden">
-      {/* Glow decorativo */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-orange-500/10 rounded-full blur-[120px] pointer-events-none" />
+      
+      {/* Efeitos de fundo */}
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Grade decorativa */}
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px',
-        }}
-      />
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md p-6 lg:p-8 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-2xl lg:rounded-3xl shadow-2xl relative z-10"
-      >
-        {/* Header com logo VEHLOX */}
+      <div className="w-full max-w-lg p-6 lg:p-10 bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-[2rem] shadow-2xl relative z-10 my-8">
+        
+        {/* Cabeçalho com Logo */}
         <div className="text-center mb-8">
-          <div className="w-24 h-24 mx-auto mb-5 rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center shadow-lg shadow-orange-900/20">
-            <Image
-              src={BRANDING.logo.url}
-              alt={BRANDING.logo.alt}
-              width={96}
-              height={96}
-              className="object-contain p-2"
-              priority
-            />
+          <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-900/20 transform -rotate-6">
+            <Lock className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-black text-white mb-1 tracking-tight uppercase">
-            {BRANDING.name}
+          <h1 className="text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">
+            {isLogin ? `Acessar ${BRANDING.name}` : 'Registro de Oficina'}
           </h1>
           <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest">
-            {BRANDING.slogan}
+            {isLogin ? 'Entre com suas credenciais' : 'Crie sua conta para começar'}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-mono uppercase text-zinc-500 tracking-wider">
-              Email Institucional
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 lg:py-4 pl-10 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 text-sm lg:text-base focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 transition-all font-mono"
-                placeholder="seu@email.com"
-              />
+        {/* FORMULÁRIO DE LOGIN */}
+        {isLogin ? (
+          <form onSubmit={handleLogin} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 px-1">E-mail Corporativo</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="email"
+                  required
+                  value={loginData.email}
+                  onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                  placeholder="seu@email.com"
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-mono uppercase text-zinc-500 tracking-wider">
-              Senha Mestre
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 lg:py-4 pl-10 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 text-sm lg:text-base focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 transition-all font-mono"
-                placeholder="••••••••"
-              />
+            <div className="space-y-2">
+              <div className="flex justify-between items-center px-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Senha de Acesso</label>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="password"
+                  required
+                  value={loginData.password}
+                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                  placeholder="••••••••"
+                />
+              </div>
             </div>
-          </div>
 
-          {error && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-xs font-mono"
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-orange-950/20 disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
             >
-              ERROR: {error}
-            </motion.div>
-          )}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Entrar no Sistema'}
+              {!loading && <ArrowRight className="w-4 h-4" />}
+            </button>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full text-white py-3 lg:py-4 rounded-xl font-black text-sm uppercase tracking-widest bg-orange-600 hover:bg-orange-500 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-orange-600/20 active:scale-[0.98]"
-          >
-            {loading ? (
-              <>
-                ENTRANDO...
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              </>
-            ) : (
-              'ENTRAR NO SISTEMA'
-            )}
-          </button>
-        </form>
+            <div className="pt-6 border-t border-zinc-800/60 text-center">
+              <p className="text-xs text-zinc-500">
+                Ainda não tem uma conta?
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsLogin(false)}
+                className="mt-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-orange-400 transition-colors flex items-center justify-center gap-1 mx-auto"
+              >
+                Criar conta da oficina <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* FORMULÁRIO DE CADASTRO */
+          <form onSubmit={handleRegister} className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-orange-500 px-1">Código de Convite</label>
+                <div className="relative">
+                  <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    required
+                    value={registerData.invite_token}
+                    onChange={(e) => setRegisterData({ ...registerData, invite_token: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-mono font-bold text-white outline-none focus:border-orange-500 transition shadow-inner uppercase"
+                    placeholder="CÓDIGO DE ACESSO"
+                  />
+                </div>
+              </div>
 
-        <p className="text-center text-zinc-600 text-xs mt-8 font-mono uppercase tracking-widest">
-          © {new Date().getFullYear()} {BRANDING.name}
-        </p>
-      </motion.div>
+              <div className="md:col-span-2 space-y-2 pt-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 px-1">Nome da Oficina</label>
+                <div className="relative">
+                  <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    required
+                    value={registerData.empresa_nome}
+                    onChange={(e) => setRegisterData({ ...registerData, empresa_nome: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                    placeholder="EX: OFICINA DIESEL PRO"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 px-1">CNPJ (Opcional)</label>
+                <div className="relative">
+                  <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={registerData.cnpj}
+                    onChange={(e) => setRegisterData({ ...registerData, cnpj: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-mono font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                    placeholder="00.000.000/0000-00"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 px-1">Seu Nome (Admin)</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    required
+                    value={registerData.nome_admin}
+                    onChange={(e) => setRegisterData({ ...registerData, nome_admin: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                    placeholder="SEU NOME"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 px-1">E-mail de Acesso</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="email"
+                    required
+                    value={registerData.email}
+                    onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                    placeholder="admin@oficina.com"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 px-1">Criar Senha</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={registerData.senha}
+                    onChange={(e) => setRegisterData({ ...registerData, senha: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-white outline-none focus:border-orange-500 transition shadow-inner"
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-orange-950/20 disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Finalizar Cadastro'}
+              {!loading && <ArrowRight className="w-4 h-4" />}
+            </button>
+
+            <div className="pt-6 border-t border-zinc-800/60 text-center">
+              <p className="text-xs text-zinc-500">
+                Já tem uma conta?
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsLogin(true)}
+                className="mt-2 text-xs font-black uppercase tracking-widest text-orange-500 hover:text-orange-400 transition-colors flex items-center justify-center gap-1 mx-auto"
+              >
+                <ArrowLeft className="w-3 h-3" /> Voltar para o Login
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
