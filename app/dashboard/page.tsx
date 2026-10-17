@@ -17,7 +17,7 @@ import { apiFetch } from '@/lib/api';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { BRANDING } from '@/lib/branding';
-import OnboardingTour from '@/components/OnboardingTour'; // <--- IMPORT ADICIONADO
+import OnboardingChecklist from '@/components/OnboardingChecklist'; // <--- IMPORT CORRIGIDO
 
 const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#06b6d4', '#eab308'];
 
@@ -374,9 +374,6 @@ export default function DashboardPage() {
   return (
     <div id="dashboard-viewport" className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-8 pb-24 overflow-hidden text-zinc-100 font-sans">
       
-      {/* TOUR GUIA INJETADO AQUI */}
-      <OnboardingTour />
-
       {/* 1. HERO HEADER DASHBOARD */}
       <div id="hero-header-section" className="bg-gradient-to-tr from-zinc-950 via-zinc-900 to-zinc-905 border border-zinc-800/80 rounded-[2rem] p-6 md:p-8 relative overflow-hidden shadow-2xl">
         <div className="absolute right-0 top-0 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
@@ -1130,6 +1127,9 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      {/* 👇 ONBOARDING CHECKLIST AQUI NO FINAL */}
+      <OnboardingChecklist />
 
     </div>
   );
