@@ -11,7 +11,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
-// --- ADICIONADO RENDER ERROR BOUNDARY DE SEGURANÇA ---
 interface ErrorBoundaryProps {
   children?: ReactNode;
 }
@@ -23,15 +22,11 @@ interface ErrorBoundaryState {
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = {
-    hasError: false
+    hasError: false,
   };
 
   public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary detectou falha no fluxo do frontend:", error, errorInfo);
   }
 
   public render() {
@@ -75,21 +70,19 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-// --- FUNÇÃO UNIVERSAL COMPATÍVEL COM MÚLTIPLOS FORMATOS (OBJETO/ARRAY/JSON STRING) ---
+// Função universal compatível com múltiplos formatos (objeto/array/JSON string)
 function getResposta(itemId: string, respostas: any): any {
   if (!respostas) return null;
-  
+
   let parsed = respostas;
   if (typeof respostas === 'string') {
     try {
       parsed = JSON.parse(respostas);
-    } catch (e) {
-      console.error('Falha ao parsear respostas como JSON string:', e);
+    } catch {
       return null;
     }
   }
 
-  // Se for um Array (Formato B)
   if (Array.isArray(parsed)) {
     const found = parsed.find((item: any) => {
       if (!item) return false;
@@ -109,7 +102,6 @@ function getResposta(itemId: string, respostas: any): any {
     return null;
   }
 
-  // Se for um Objeto (Formato A)
   if (typeof parsed === 'object') {
     return parsed[itemId] !== undefined ? parsed[itemId] : null;
   }
@@ -145,10 +137,9 @@ interface Execucao {
   }[];
 }
 
-// Wrapper local para expor a página envelopada no ErrorBoundary
 export default function ChecklistResultadoPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
-  
+
   return (
     <ErrorBoundary>
       <ChecklistResultadoContent id={resolvedParams.id} />
@@ -163,32 +154,15 @@ function ChecklistResultadoContent({ id }: { id: string }) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<any>(null);
 
-  // LOGS EXIGIDOS: ENTRADA / MOUNT
-  useEffect(() => {
-    console.log('COMPONENT MOUNT', { id });
-  }, [id]);
-
-  // LOGS EXIGIDOS: ESTADOS DO COMPONENTE
-  console.log('RENDER INICIADO');
-  console.log('LOADING', loading);
-  console.log('ERROR', error);
-  console.log('EXECUCAO STATE', execucao);
-
   useEffect(() => {
     let active = true;
     const fetchExecucao = async () => {
       try {
-        console.log('BUSCANDO EXECUCAO', id);
         const response = await fetch(`/api/checklist/execucao/${id}`, { credentials: 'include' });
-        console.log('STATUS EXECUCAO', response.status);
-        
+
         if (response.ok && active) {
           const data = await response.json();
-          console.log('DADOS EXECUCAO RAW', data);
-          console.log('CHECKLIST RESPONSE', data);
-          console.log('CHECKLIST RESPONSE KEYS', Object.keys(data || {}));
-          
-          // MAP ATRIBUTOS DE MANEIRA ULTRA ULTRA RESILIENTE
+
           const checklistObj = data.checklist || data.Checklist;
           const osObj = data.os || data.OrdemServico;
           const fotosObj = data.fotos || data.ChecklistFoto || [];
@@ -197,38 +171,38 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           if (typeof data.respostas === 'string') {
             try {
               parsedRespostas = JSON.parse(data.respostas);
-            } catch (err) {
-              console.error('Erro ao normalizar respostas json string:', err);
+            } catch {
+              parsedRespostas = {};
             }
           }
 
-          // Normalização completa (Prisma/Casing flex)
           const normalized: Execucao = {
             ...data,
             respostas: parsedRespostas || {},
-            checklist: checklistObj ? {
-              nome: checklistObj.nome || 'Checklist sem nome',
-              itens: checklistObj.itens || checklistObj.ChecklistItem || []
-            } : { nome: 'Checklist sem nome', itens: [] },
-            os: osObj ? {
-              id: osObj.id,
-              numero: osObj.numero,
-              cliente: osObj.cliente || osObj.Cliente || { nome: 'Cliente não identificado' },
-              veiculo: osObj.veiculo || osObj.Veiculo || { placa: '—', modelo: '—' }
-            } : undefined,
-            fotos: Array.isArray(fotosObj) ? fotosObj : []
+            checklist: checklistObj
+              ? {
+                  nome: checklistObj.nome || 'Checklist sem nome',
+                  itens: checklistObj.itens || checklistObj.ChecklistItem || [],
+                }
+              : { nome: 'Checklist sem nome', itens: [] },
+            os: osObj
+              ? {
+                  id: osObj.id,
+                  numero: osObj.numero,
+                  cliente: osObj.cliente || osObj.Cliente || { nome: 'Cliente não identificado' },
+                  veiculo: osObj.veiculo || osObj.Veiculo || { placa: '—', modelo: '—' },
+                }
+              : undefined,
+            fotos: Array.isArray(fotosObj) ? fotosObj : [],
           };
 
-          console.log('DADOS EXECUCAO NORMALIZED', normalized);
           setExecucao(normalized);
         } else if (!response.ok && active) {
-          console.log('FALHA STATUS EXECUCAO', response.status);
           const errData = await response.json().catch(() => ({}));
           setError(errData || 'Erro no servidor');
           toast.error('Laudo não encontrado ou erro no servidor.');
         }
       } catch (err: any) {
-        console.error('Erro ao buscar resultado:', err);
         if (active) {
           setError(err);
           toast.error('Falha de comunicação com o sistema.');
@@ -238,17 +212,19 @@ function ChecklistResultadoContent({ id }: { id: string }) {
       }
     };
     fetchExecucao();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   const handleDelete = async () => {
     if (!confirm('DESEJA REALMENTE CANCELAR E REMOVER ESTE LAUDO PERMANENTEMENTE?')) return;
-    
+
     setDeleting(true);
     try {
-      const res = await fetch(`/api/checklist/execucao/${id}`, { 
+      const res = await fetch(`/api/checklist/execucao/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (res.ok) {
         toast.success('Laudo removido com sucesso.');
@@ -257,7 +233,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
         const errorData = await res.json();
         toast.error(errorData.error || 'Não foi possível excluir o laudo.');
       }
-    } catch (err) {
+    } catch {
       toast.error('Erro ao conectar com a API.');
     } finally {
       setDeleting(false);
@@ -286,12 +262,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
   }
 
   const { checklist, os, respostas, observacoes, executado_por, created_at, fotos } = execucao;
-
-  console.log('EXECUCAO COMPLETA', execucao);
-  console.log('RESPOSTAS RAW', execucao.respostas);
-  console.log('TIPO RESPOSTAS', typeof execucao.respostas);
-
-  console.log('RENDER FINALIZADO');
 
   return (
     <div className="max-w-[900px] mx-auto space-y-12 pb-20 print:p-0 print:m-0 print:max-w-none">
@@ -323,7 +293,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* CABEÇALHO PARA IMPRESSÃO (HIDDEN ON WEB) */}
+      {/* CABEÇALHO PARA IMPRESSÃO */}
       <div className="hidden print:flex flex-col border-b-4 border-zinc-900 pb-10 mb-10">
          <div className="flex justify-between items-start">
             <div>
@@ -433,17 +403,10 @@ function ChecklistResultadoContent({ id }: { id: string }) {
 
          <div className="space-y-2 print:space-y-0 print:border print:border-gray-200 print:rounded-lg overflow-hidden">
             {(checklist?.itens || []).map((item, index) => {
-              console.log('ITEM', item);
-              console.log('ITEM ID', item.id);
-              console.log('BUSCANDO RESPOSTA PARA', item.id);
-              console.log('OBJETO RESPOSTAS', respostas);
-
               const resposta = getResposta(item.id, respostas);
-              console.log('RESPOSTA ENCONTRADA', resposta);
-
-              const fotosDoItem = fotos?.filter(f => f.item_id === item.id) || [];
+              const fotosDoItem = fotos?.filter((f) => f.item_id === item.id) || [];
               const displayResposta = resposta;
-              
+
               return (
                 <div 
                   key={item.id}
