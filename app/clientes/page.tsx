@@ -130,6 +130,36 @@ export default function ClientesPage() {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ATIVO' | 'INATIVO'>('ALL');
   const [page, setPage] = useState(1);
 
+  // 👇 INÍCIO DA LÓGICA DO TOUR (Ouve o comando para abrir o modal)
+  useEffect(() => {
+    const handleOpenTourModal = () => {
+      setEditingCliente(null);
+      setFormData({ 
+        tipo: 'PF', 
+        tipo_pessoa: 'FISICA',
+        nome: '', 
+        razao_social: '',
+        nome_fantasia: '',
+        cpf_cnpj: '', 
+        inscricao_estadual: '',
+        telefone: '', 
+        contato: '',
+        email: '', 
+        status: 'ATIVO',
+        perfil: 'CLIENTE' as 'CLIENTE' | 'FORNECEDOR' | 'AMBOS',
+        endereco: '',
+        cidade: '',
+        uf: '',
+        observacoes: ''
+      });
+      setShowModal(true);
+    };
+    
+    window.addEventListener('vehlox:open-client-modal', handleOpenTourModal);
+    return () => window.removeEventListener('vehlox:open-client-modal', handleOpenTourModal);
+  }, []);
+  // 👆 FIM DA LÓGICA DO TOUR
+
   useEffect(() => {
     const hand = setTimeout(() => {
       setDebouncedSearch(search);
@@ -294,9 +324,6 @@ export default function ClientesPage() {
     }
   };
 
-  // A38: filtros aplicados no servidor. Não há mais re-filtro client-side.
-  // Total de páginas e total de itens vêm da API.
-
   const formatDate = (date: string) => {
     if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('pt-BR');
@@ -315,6 +342,7 @@ export default function ClientesPage() {
         </div>
 
         <button 
+          id="btn-novo-cliente" /* 👈 ID ADICIONADO PARA O TOUR ACHAR */
           onClick={openNewModal}
           className="bg-orange-600 hover:bg-orange-500 text-white rounded-2xl px-6 py-3 font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-orange-950/20 flex items-center gap-2"
         >
