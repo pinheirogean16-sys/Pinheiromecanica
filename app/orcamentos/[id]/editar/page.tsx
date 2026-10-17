@@ -6,6 +6,7 @@ import {
   ArrowLeft, Save, Plus, Trash2, 
   Search, Loader2, Send
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatCurrency, parseHoras, formatHoras } from '@/lib/utils';
 
 export default function EditarOrcamentoPage() {
@@ -57,7 +58,9 @@ export default function EditarOrcamentoPage() {
         
         const listaPecas = Array.isArray(dataP) ? dataP : (dataP.items || []);
         setPecasEstoque(listaPecas);
-      } catch (err) { console.error(err); } finally { setFetchingData(false); }
+      } catch {
+        toast.error('Erro ao carregar dados do orçamento');
+      } finally { setFetchingData(false); }
     };
     if (id) fetchData();
   }, [id]);
@@ -112,7 +115,6 @@ export default function EditarOrcamentoPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Filtrar serviços vazios
       const servicosFiltrados = formData.servicos
         .filter((s: any) => s.descricao?.trim())
         .map(({ id: _id, ...s }: any) => ({
@@ -122,20 +124,14 @@ export default function EditarOrcamentoPage() {
           valor_total: Number(s.valor_total || 0),
         }));
 
-      console.log('[SERVICOS ENVIADOS]', servicosFiltrados);
-
-      // Filtrar e converter peças
       const pecasProcessadas = formData.pecas
         .filter((p: any) => p.descricao?.trim())
-        .map(({ id: _id, ...p }: any) => {
-          console.log('[ORCAMENTO PECA]', p);
-          return {
-            ...p,
-            quantidade: Number(p.quantidade || 0),
-            valor_unit: Number(p.valor_unit || 0),
-            valor_total: Number(p.valor_total || 0),
-          };
-        });
+        .map(({ id: _id, ...p }: any) => ({
+          ...p,
+          quantidade: Number(p.quantidade || 0),
+          valor_unit: Number(p.valor_unit || 0),
+          valor_total: Number(p.valor_total || 0),
+        }));
 
       const payload = {
         ...formData,
@@ -155,7 +151,11 @@ export default function EditarOrcamentoPage() {
       });
       if (!res.ok) throw new Error('Erro ao salvar');
       router.push(`/orcamentos/${id}`);
-    } catch (err) { alert('Erro ao salvar alterações'); } finally { setLoading(false); }
+    } catch {
+      toast.error('Erro ao salvar alterações');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (fetchingData) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-orange-500" size={32} /></div>;
@@ -244,7 +244,6 @@ export default function EditarOrcamentoPage() {
                           <option value="">+ Adicionar peça do estoque</option>
                           {pecasEstoque.map(p => {
                             const precoVendaValor = p.preco_venda;
-                            console.log('[TOFIXED DEBUG]', precoVendaValor, typeof precoVendaValor);
                             const formattedPreco = Number.isFinite(Number(precoVendaValor)) 
                               ? Number(precoVendaValor).toFixed(2) 
                               : '0.00';
