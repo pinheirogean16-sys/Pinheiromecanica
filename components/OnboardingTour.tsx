@@ -29,7 +29,7 @@ export default function OnboardingTour() {
     setShowIntro(false);
   };
 
-  // 2. Motor do Tour (Driver.js)
+  // 2. Motor do Tour
   useEffect(() => {
     if (showIntro) return; 
     if (localStorage.getItem('@vehlox:tour_done')) return;
@@ -37,24 +37,45 @@ export default function OnboardingTour() {
     const currentStep = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
     if (currentStep < 2) return; 
 
-    // Carrega Driver.js dinamicamente
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css';
-    document.head.appendChild(link);
+    let driverInstance: any = null;
 
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js';
-    script.async = true;
+    // Carrega Driver.js dinamicamente se ainda não estiver carregado
+    const loadDriver = () => {
+      if ((window as any).driver) {
+        startDriverEngine();
+        return;
+      }
 
-    script.onload = () => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css';
+      document.head.appendChild(link);
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js';
+      script.async = true;
+      script.onload = () => {
+        startDriverEngine();
+      };
+      document.body.appendChild(script);
+    };
+
+    const startDriverEngine = () => {
       // @ts-ignore
       const driver = window.driver.js.driver;
 
-      const buildStep = (stepIndex: number) => {
-        switch (stepIndex) {
+      const runStep = (stepStr: string) => {
+        // Se já houver um tutorial na tela, destrói ele antes de abrir o próximo
+        if (driverInstance) {
+          driverInstance.destroy();
+        }
+
+        const stepNum = parseInt(stepStr, 10);
+        let stepConfig: any = null;
+
+        switch (stepNum) {
           case 2:
-            return {
+            stepConfig = {
               element: '#action-new-client',
               popover: {
                 title: 'Iniciando o Cadastro',
@@ -66,8 +87,9 @@ export default function OnboardingTour() {
                 }
               }
             };
+            break;
           case 3:
-            return {
+            stepConfig = {
               element: '#btn-novo-cliente',
               popover: {
                 title: 'Abrindo o Cadastro',
@@ -75,14 +97,17 @@ export default function OnboardingTour() {
                 side: 'bottom',
                 onNextClick: () => {
                   localStorage.setItem('@vehlox:tour_step', '4');
+                  if (driverInstance) driverInstance.destroy();
+                  // Abre o modal
                   window.dispatchEvent(new Event('vehlox:open-client-modal'));
-                  // Como o modal abre na mesma tela, forçamos um refresh no estado do driver
-                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                  // Dá um tempo pro modal renderizar na tela e inicia o próximo passo
+                  setTimeout(() => runStep('4'), 600);
                 }
               }
             };
+            break;
           case 4:
-            return {
+            stepConfig = {
               element: '#field-cliente-nome',
               popover: {
                 title: 'Nome do Cliente',
@@ -90,12 +115,13 @@ export default function OnboardingTour() {
                 side: 'bottom',
                 onNextClick: () => {
                   localStorage.setItem('@vehlox:tour_step', '5');
-                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                  runStep('5');
                 }
               }
             };
+            break;
           case 5:
-            return {
+            stepConfig = {
               element: '#field-cliente-cpf',
               popover: {
                 title: 'CPF ou CNPJ',
@@ -103,12 +129,13 @@ export default function OnboardingTour() {
                 side: 'bottom',
                 onNextClick: () => {
                   localStorage.setItem('@vehlox:tour_step', '6');
-                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                  runStep('6');
                 }
               }
             };
+            break;
           case 6:
-            return {
+            stepConfig = {
               element: '#field-cliente-telefone',
               popover: {
                 title: 'Contato',
@@ -116,99 +143,95 @@ export default function OnboardingTour() {
                 side: 'bottom',
                 onNextClick: () => {
                   localStorage.setItem('@vehlox:tour_step', '7');
-                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                  runStep('7');
                 }
               }
             };
+            break;
           case 7:
-            return {
+            stepConfig = {
               element: '#btn-salvar-cliente',
               popover: {
                 title: 'Salvar o Cliente',
                 description: 'Depois de preencher, é só clicar aqui. Vamos avançar para o cadastro do Veículo!',
                 side: 'top',
+                doneBtnText: 'Ir para Veículos',
                 onNextClick: () => {
                   localStorage.setItem('@vehlox:tour_step', '8');
+                  if (driverInstance) driverInstance.destroy();
                   window.dispatchEvent(new Event('vehlox:close-client-modal'));
-                  window.dispatchEvent(new Event('vehlox:advance-tour'));
+                  router.push('/veiculos/novo');
+                  // O passo 8 vai iniciar automaticamente na próxima tela por causa do useEffect
                 }
               }
             };
+            break;
           case 8:
-            return {
-              element: '#form-veiculo', 
+            stepConfig = {
+              element: 'form', // Aponta para o form principal de veículos
               popover: {
                 title: 'Cadastrando o Veículo',
-                description: 'Aqui você vincula a placa, modelo e ano ao cliente que acabou de criar. Parabéns, você já sabe o básico!',
+                description: 'Aqui você vincula a placa, modelo e ano ao cliente que acabou de criar. Parabéns, você concluiu o básico!',
                 side: 'top',
+                doneBtnText: 'Finalizar Tutorial',
                 onNextClick: () => {
                   localStorage.setItem('@vehlox:tour_done', 'true');
                   localStorage.setItem('@vehlox:tour_step', '0');
+                  if (driverInstance) driverInstance.destroy();
                   router.push('/dashboard');
                 }
               }
             };
+            break;
           default:
-            return null;
+            return;
+        }
+
+        if (stepConfig) {
+          driverInstance = driver({
+            showProgress: true,
+            allowClose: false,
+            overlayClickNext: false,
+            steps: [stepConfig],
+            onPopoverRender: (popover: any, opts: any) => {
+              const skipBtn = document.createElement('button');
+              skipBtn.innerText = 'Pular Tutorial';
+              skipBtn.style.marginLeft = '10px';
+              skipBtn.style.background = 'transparent';
+              skipBtn.style.border = 'none';
+              skipBtn.style.color = '#ef4444';
+              skipBtn.style.cursor = 'pointer';
+              skipBtn.style.fontSize = '12px';
+              skipBtn.style.fontWeight = 'bold';
+              skipBtn.onclick = () => {
+                localStorage.setItem('@vehlox:tour_done', 'true');
+                localStorage.setItem('@vehlox:tour_step', '0');
+                opts.driver.destroy();
+                window.dispatchEvent(new Event('vehlox:close-client-modal'));
+                router.push('/dashboard');
+              };
+              popover.footerButtons.prepend(skipBtn);
+            }
+          });
+          
+          // Pequeno delay para garantir que o DOM atualizou
+          setTimeout(() => {
+            driverInstance.drive();
+          }, 300);
         }
       };
 
-      const initDriver = () => {
-        const stepNum = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
-        const step = buildStep(stepNum);
-        if (!step) return;
-
-        const tour = driver({
-          showProgress: true,
-          allowClose: false,
-          overlayClickNext: false,
-          nextBtnText: 'Avançar',
-          doneBtnText: 'Concluir',
-          steps: [step],
-          onPopoverRender: (popover: any, opts: any) => {
-            const skipBtn = document.createElement('button');
-            skipBtn.innerText = 'Pular Tutorial';
-            skipBtn.style.marginLeft = '10px';
-            skipBtn.style.background = 'transparent';
-            skipBtn.style.border = 'none';
-            skipBtn.style.color = '#ef4444';
-            skipBtn.style.cursor = 'pointer';
-            skipBtn.style.fontSize = '12px';
-            skipBtn.onclick = () => {
-              localStorage.setItem('@vehlox:tour_done', 'true');
-              opts.driver.destroy();
-              window.dispatchEvent(new Event('vehlox:close-client-modal'));
-              router.push('/dashboard');
-            };
-            popover.footerButtons.prepend(skipBtn);
-          }
-        });
-
-        // Espera o elemento aparecer na tela (importante para quando o modal abre)
-        setTimeout(() => {
-          tour.drive();
-        }, 500);
-      };
-
-      // Ouve o evento para trocar de passo sem recarregar a página
-      const handleAdvance = () => {
-        initDriver();
-      };
-      window.addEventListener('vehlox:advance-tour', handleAdvance);
-
-      // Inicia a primeira vez
-      setTimeout(initDriver, 300);
-
-      // Cleanup
-      return () => {
-        window.removeEventListener('vehlox:advance-tour', handleAdvance);
-      };
+      // Inicia o passo atual com base no localStorage
+      const stepAtual = localStorage.getItem('@vehlox:tour_step') || '2';
+      runStep(stepAtual);
     };
 
-    document.body.appendChild(script);
+    loadDriver();
+
     return () => {
-      if (document.head.contains(link)) document.head.removeChild(link);
-      if (document.body.contains(script)) document.body.removeChild(script);
+      if (driverInstance) {
+        driverInstance.destroy();
+      }
     };
   }, [pathname, showIntro, router]);
 
