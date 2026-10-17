@@ -97,8 +97,6 @@ const telemetryExtension = Prisma.defineExtension({
 // continuar funcionando — em produção, todos os métodos do
 // basePrisma continuam disponíveis (a extensão só adiciona).
 // ============================================================
-type ExtendedPrismaClient = ReturnType<typeof basePrisma.$extends>;
-
-export const prisma: ExtendedPrismaClient = (
+export const prisma: PrismaClient = (
   isDev ? basePrisma.$extends(telemetryExtension) : basePrisma
-) as ExtendedPrismaClient;
+) as PrismaClient;
