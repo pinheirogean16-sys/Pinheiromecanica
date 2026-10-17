@@ -7,6 +7,7 @@ import {
   Search, User, Car, DollarSign, Calendar,
   ChevronRight, Calculator, Clock, Loader2, Send
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatCurrency, parseHoras, formatHoras } from '@/lib/utils';
 
 export default function NovoOrcamentoPage() {
@@ -49,7 +50,9 @@ export default function NovoOrcamentoPage() {
         
         const listaPecas = Array.isArray(dataP) ? dataP : (dataP.items || []);
         setPecasEstoque(listaPecas);
-      } catch (err) { console.error(err); } finally { setFetchingData(false); }
+      } catch {
+        toast.error('Erro ao carregar dados do formulário');
+      } finally { setFetchingData(false); }
     };
     fetchData();
   }, []);
@@ -102,10 +105,12 @@ export default function NovoOrcamentoPage() {
 
   const onSubmit = async (e: React.FormEvent, statusOverride?: string) => {
     e.preventDefault();
-    if (!formData.cliente_id) return alert('Selecione um cliente');
+    if (!formData.cliente_id) {
+      toast.error('Selecione um cliente');
+      return;
+    }
     setLoading(true);
     try {
-      // Filtrar serviços vazios
       const servicosFiltrados = formData.servicos
         .filter((s: any) => s.descricao?.trim())
         .map(({ id, ...s }: any) => ({
@@ -115,20 +120,14 @@ export default function NovoOrcamentoPage() {
           valor_total: Number(s.valor_total || 0),
         }));
 
-      console.log('[SERVICOS ENVIADOS]', servicosFiltrados);
-
-      // Filtrar e converter peças
       const pecasProcessadas = formData.pecas
         .filter((p: any) => p.descricao?.trim())
-        .map(({ id, ...p }: any) => {
-          console.log('[ORCAMENTO PECA]', p);
-          return {
-            ...p,
-            quantidade: Number(p.quantidade || 0),
-            valor_unit: Number(p.valor_unit || 0),
-            valor_total: Number(p.valor_total || 0),
-          };
-        });
+        .map(({ id, ...p }: any) => ({
+          ...p,
+          quantidade: Number(p.quantidade || 0),
+          valor_unit: Number(p.valor_unit || 0),
+          valor_total: Number(p.valor_total || 0),
+        }));
 
       const payload = {
         ...formData,
@@ -149,7 +148,11 @@ export default function NovoOrcamentoPage() {
       if (!res.ok) throw new Error('Erro ao salvar');
       const r = await res.json();
       router.push(`/orcamentos/${r.id}`);
-    } catch (err) { alert('Erro ao salvar orçamento'); } finally { setLoading(false); }
+    } catch {
+      toast.error('Erro ao salvar orçamento');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -238,7 +241,6 @@ export default function NovoOrcamentoPage() {
                           <option value="">+ Adicionar peça do estoque</option>
                           {pecasEstoque.map(p => {
                             const precoVendaValor = p.preco_venda;
-                            console.log('[TOFIXED DEBUG]', precoVendaValor, typeof precoVendaValor);
                             const formattedPreco = Number.isFinite(Number(precoVendaValor)) 
                               ? Number(precoVendaValor).toFixed(2) 
                               : '0.00';
