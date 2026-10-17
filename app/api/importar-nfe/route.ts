@@ -26,30 +26,30 @@ export async function POST(request: NextRequest) {
 
     const empresa_id = user.empresa_id;
 
-    // Verify which pieces are already registered in the database for the current empresa_id
-    const codigos = nfeData.itens.map(item => item.codigo);
+    // Verifica quais peças já estão cadastradas no banco para esta empresa
+    const codigos = nfeData.itens.map((item) => item.codigo);
     const existingPecas = await prisma.peca.findMany({
       where: {
         empresa_id,
-        codigo: { in: codigos }
+        codigo: { in: codigos },
       },
       select: {
         codigo: true,
         descricao: true,
         preco_custo: true,
         preco_venda: true,
-        quantidade: true
-      }
+        quantidade: true,
+      },
     });
 
-    const existingMap = new Map(existingPecas.map(p => [p.codigo, p]));
+    const existingMap = new Map(existingPecas.map((p) => [p.codigo, p]));
 
-    const enrichedItens = nfeData.itens.map(item => {
+    const enrichedItens = nfeData.itens.map((item) => {
       const dbPeca = existingMap.get(item.codigo);
       return {
         ...item,
         existe: !!dbPeca,
-        pecaLocal: dbPeca || null
+        pecaLocal: dbPeca || null,
       };
     });
 
@@ -57,25 +57,34 @@ export async function POST(request: NextRequest) {
       ...nfeData,
       itens: enrichedItens,
       resumo: {
-        encontrados: enrichedItens.filter(i => i.existe).length,
-        novos: enrichedItens.filter(i => !i.existe).length,
-        total: enrichedItens.length
-      }
+        encontrados: enrichedItens.filter((i) => i.existe).length,
+        novos: enrichedItens.filter((i) => !i.existe).length,
+        total: enrichedItens.length,
+      },
     };
 
-    log('INFO', 'NFE', 'NF-e importada/processada para pré-visualização', { fileName: file.name }, user?.name);
-
-    const fornecedor = nfeData.fornecedor;
-    console.log('[IMPORTAR-NFE RESULTADO]', {
-      fornecedor,
-      totalItens: nfeData.itens.length
-    });
+    log(
+      'INFO',
+      'NFE',
+      'NF-e importada/processada para pré-visualização',
+      { fileName: file.name, totalItens: nfeData.itens.length },
+      user?.name
+    );
 
     return NextResponse.json(enrichedData);
   } catch (error: any) {
-    log('ERROR', 'NFE', 'Erro ao processar NF-e', { error: error.message }, 'sistema');
-    return NextResponse.json({ 
-      error: error.message || 'Erro interno ao processar o XML da NF-e' 
-    }, { status: 500 });
+    log(
+      'ERROR',
+      'NFE',
+      'Erro ao processar NF-e',
+      { error: error?.message },
+      'sistema'
+    );
+    return NextResponse.json(
+      {
+        error: error?.message || 'Erro interno ao processar o XML da NF-e',
+      },
+      { status: 500 }
+    );
   }
 }
