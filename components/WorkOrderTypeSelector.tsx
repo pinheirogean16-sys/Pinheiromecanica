@@ -2,6 +2,7 @@
 
 import { ChevronLeft, Hammer, Milestone } from 'lucide-react';
 import Link from 'next/link';
+import { BRANDING } from '@/lib/branding';
 
 interface WorkOrderTypeSelectorProps {
   onSelect: (type: 'OFICINA' | 'CAMPO') => void;
@@ -16,7 +17,7 @@ export default function WorkOrderTypeSelector({ onSelect }: WorkOrderTypeSelecto
         </Link>
         <div className="flex flex-col">
           <h1 className="text-xl font-black text-white uppercase tracking-tighter italic">
-            PINHEIRO DIESEL PRO <span className="text-zinc-700">|</span> <span className="text-orange-500">NOVA OS</span>
+            {BRANDING.name} <span className="text-zinc-700">|</span> <span className="text-orange-500">NOVA OS</span>
           </h1>
           <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.3em] leading-none mt-1">
             Selecione o Tipo de Atendimento correspondente
@@ -27,6 +28,7 @@ export default function WorkOrderTypeSelector({ onSelect }: WorkOrderTypeSelecto
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* OPÇÃO 1: OFICINA */}
         <button
+          id="btn-tipo-oficina" /* 👈 ID ADICIONADO PARA O TOUR */
           onClick={() => onSelect('OFICINA')}
           className="group relative text-left bg-gradient-to-br from-zinc-900 to-zinc-950 hover:from-zinc-850 hover:to-zinc-900 border border-zinc-800 hover:border-blue-500/50 rounded-[2.5rem] p-8 md:p-10 shadow-xl hover:shadow-blue-500/5 transition-all duration-300 overflow-hidden cursor-pointer"
         >
