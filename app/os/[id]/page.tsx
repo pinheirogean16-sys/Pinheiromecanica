@@ -49,8 +49,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     }
   }, [resolvedParams.id]);
 
-  // A23-followup: /api/checklist/execucoes agora devolve { items, total, ... }.
-  // Aceita tanto array direto (compatibilidade) quanto objeto paginado.
   const carregarChecklists = useCallback(async () => {
     try {
       const res = await fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, {
@@ -183,11 +181,6 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     return ids;
   };
 
-  /**
-   * A28: quando o próximo status é FINALIZADA, abre o modal de finalização
-   * (que permite escolher forma de pagamento e número de parcelas) em vez
-   * de fazer PATCH direto. Sem isso, o modal nunca era aberto.
-   */
   const handleStatusChange = async (novoStatus: string) => {
     if (novoStatus === 'FINALIZADA') {
       setShowFinalizarModal(true);
@@ -998,7 +991,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
-      {/* MODAL: Finalizar (A28 — agora abre pelo botão de avançar quando próximo status é FINALIZADA) */}
+      {/* MODAL: Finalizar */}
       {showFinalizarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl">
