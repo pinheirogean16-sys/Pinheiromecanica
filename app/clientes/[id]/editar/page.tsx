@@ -96,34 +96,34 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-4">
         <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-        <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-[0.3em]">Resgatando Registro...</p>
+        <p className="text-zinc-500 font-mono text-[10px] uppercase tracking-[0.3em]">Resgatando Registro...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-20">
+    <div className="max-w-4xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
       <div className="flex items-center gap-4">
         <Link href="/clientes" className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition">
           <ChevronLeft size={20} />
         </Link>
         <div>
           <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter">Atualizar Registro de Cliente</h1>
-          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.3em]">Edição de Dossiê de Frota</p>
+          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em]">Edição de Dossiê de Frota</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Segmentação & Status Selection */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="grid grid-cols-2 gap-4 p-2 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl">
+          <div className="grid grid-cols-2 gap-4 p-2 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl">
             <button
               type="button"
               onClick={() => setFormData({ ...formData, tipo: 'PF', tipo_pessoa: 'FISICA' })}
-              className={`py-4 rounded-2xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
+              className={`py-4 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
                 formData.tipo === 'PF' 
                   ? 'bg-zinc-800 text-white shadow-xl border border-zinc-700' 
-                  : 'text-zinc-650 hover:text-zinc-450'
+                  : 'text-zinc-500 hover:text-zinc-400'
               }`}
             >
               <User size={20} className={formData.tipo === 'PF' ? 'text-orange-500' : 'text-zinc-700'} />
@@ -135,10 +135,10 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
             <button
               type="button"
               onClick={() => setFormData({ ...formData, tipo: 'PJ', tipo_pessoa: 'JURIDICA' })}
-              className={`py-4 rounded-2xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
+              className={`py-4 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
                 formData.tipo === 'PJ' 
                   ? 'bg-zinc-800 text-white shadow-xl border border-zinc-700' 
-                  : 'text-zinc-650 hover:text-zinc-450'
+                  : 'text-zinc-500 hover:text-zinc-400'
               }`}
             >
               <Building2 size={20} className={formData.tipo === 'PJ' ? 'text-orange-500' : 'text-zinc-700'} />
@@ -148,14 +148,14 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 p-2 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl">
+          <div className="grid grid-cols-2 gap-4 p-2 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl">
             <button
               type="button"
               onClick={() => setFormData({ ...formData, status: 'ATIVO' })}
-              className={`py-4 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+              className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                 formData.status === 'ATIVO' 
-                  ? 'bg-green-650/10 text-green-500 shadow-xl border border-green-600/20' 
-                  : 'text-zinc-650 hover:text-zinc-400'
+                  ? 'bg-green-500/10 text-green-500 shadow-xl border border-green-500/20' 
+                  : 'text-zinc-500 hover:text-zinc-400'
               }`}
             >
               <span className="block text-[10px] font-black uppercase tracking-widest italic">ATIVO</span>
@@ -164,10 +164,10 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
             <button
               type="button"
               onClick={() => setFormData({ ...formData, status: 'INATIVO' })}
-              className={`py-4 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+              className={`py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                 formData.status === 'INATIVO' 
-                  ? 'bg-red-650/10 text-red-500 shadow-xl border border-red-650/20' 
-                  : 'text-zinc-650 hover:text-zinc-400'
+                  ? 'bg-red-500/10 text-red-500 shadow-xl border border-red-500/20' 
+                  : 'text-zinc-500 hover:text-zinc-400'
               }`}
             >
               <span className="block text-[10px] font-black uppercase tracking-widest italic">INATIVO</span>
@@ -190,7 +190,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                     type="text"
                     value={formData.nome}
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-bold uppercase tracking-widest placeholder:text-zinc-850 shadow-inner"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-bold uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
                     placeholder="NOME COMPLETO OU RAZÃO SOCIAL..."
                     required
                   />
@@ -204,7 +204,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                         type="text"
                         value={formData.razao_social}
                         onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-black uppercase tracking-widest placeholder:text-zinc-850 shadow-inner"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-black uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
                         placeholder="RAZÃO SOCIAL DA EMPRESA..."
                       />
                     </div>
@@ -214,7 +214,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                         type="text"
                         value={formData.nome_fantasia}
                         onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-black uppercase tracking-widest placeholder:text-zinc-850 shadow-inner"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-black uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
                         placeholder="NOME FANTASIA..."
                       />
                     </div>
@@ -227,7 +227,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                     type="text"
                     value={formData.cpf_cnpj}
                     onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner placeholder:text-zinc-700"
                     placeholder={formData.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
                     required
                   />
@@ -239,7 +239,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                       type="text"
                       value={formData.inscricao_estadual}
                       onChange={(e) => setFormData({ ...formData, inscricao_estadual: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner placeholder:text-zinc-700"
                       placeholder="000000000-0"
                     />
                   </div>
@@ -251,8 +251,8 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                     type="text"
                     value={formData.contato}
                     onChange={(e) => setFormData({ ...formData, contato: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-bold shadow-inner uppercase"
-                    placeholder="NOME CONTATO"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-bold shadow-inner uppercase placeholder:text-zinc-700"
+                    placeholder="NOME DO CONTATO"
                   />
                 </div>
 
@@ -264,7 +264,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                       type="tel"
                       value={formData.telefone}
                       onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-12 pr-5 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-12 pr-5 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner placeholder:text-zinc-700"
                       placeholder="(00) 00000-0000"
                       required
                     />
@@ -279,7 +279,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                       type="email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-12 pr-5 text-xs text-white focus:border-orange-500 outline-none transition font-black lowercase shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-12 pr-5 text-xs text-white focus:border-orange-500 outline-none transition font-black lowercase shadow-inner placeholder:text-zinc-700"
                       placeholder="contato@email.com"
                       required
                     />
@@ -291,8 +291,8 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                   <textarea
                     value={formData.observacoes}
                     onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition min-h-[140px] resize-y shadow-inner uppercase"
-                    placeholder="NOTAS SOBRE O CLIENTE..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition min-h-[140px] resize-y shadow-inner placeholder:text-zinc-700"
+                    placeholder="Notas sobre o cliente..."
                   />
                 </div>
              </div>
@@ -308,13 +308,13 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="col-span-full md:col-span-2 space-y-2">
                   <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Endereço Completo <span className="text-orange-500">*</span></label>
-                  <div className="relative group animate-none">
+                  <div className="relative group">
                     <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-blue-500 transition-colors" size={14} />
                     <input
                       type="text"
                       value={formData.endereco}
                       onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-12 pr-5 text-xs text-white focus:border-blue-500 outline-none transition font-black uppercase italic shadow-inner animate-none"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-12 pr-5 text-xs text-white focus:border-blue-500 outline-none transition font-black uppercase italic shadow-inner placeholder:text-zinc-700"
                       placeholder="AVENIDA BRASIL..."
                       required
                     />
@@ -326,7 +326,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                     type="text"
                     value={formData.cidade}
                     onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-blue-500 outline-none transition font-black uppercase shadow-inner"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-blue-500 outline-none transition font-black uppercase shadow-inner placeholder:text-zinc-700"
                     placeholder="CIDADE"
                     required
                   />
@@ -338,7 +338,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
                     value={formData.uf}
                     maxLength={2}
                     onChange={(e) => setFormData({ ...formData, uf: e.target.value.toUpperCase() })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-blue-500 outline-none transition font-black text-center shadow-inner uppercase"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-blue-500 outline-none transition font-black text-center shadow-inner uppercase placeholder:text-zinc-700"
                     placeholder="UF"
                     required
                   />
@@ -350,7 +350,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
         {/* DESKTOP ACTIONS FOOTER */}
         <div className="hidden sm:flex flex-row gap-6 pt-10">
           <Link href="/clientes" className="flex-1">
-            <button type="button" className="w-full py-6 text-zinc-550 hover:text-zinc-350 font-black uppercase text-[10px] tracking-[0.2em] transition border border-zinc-800 rounded-2xl italic cursor-pointer">
+            <button type="button" className="w-full py-6 text-zinc-500 hover:text-zinc-300 font-black uppercase text-[10px] tracking-[0.2em] transition border border-zinc-800 rounded-2xl italic cursor-pointer">
               Descartar Alterações
             </button>
           </Link>
@@ -365,7 +365,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
         </div>
 
         {/* MOBILE STICKY LOWER DOCK */}
-        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-850 p-3 flex gap-2 z-50">
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 p-3 flex gap-2 z-50">
           <Link href="/clientes" className="flex-1">
             <button 
               type="button" 
@@ -385,7 +385,7 @@ export default function EditarClientePage({ params }: { params: Promise<{ id: st
           <button
             type="submit"
             disabled={loading}
-            className="flex-2 min-h-[50px] bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+            className="flex-[2] min-h-[50px] bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
             Confirmar
