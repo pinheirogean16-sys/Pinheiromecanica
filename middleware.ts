@@ -4,7 +4,11 @@ import { verifyTokenEdge } from '@/lib/auth-edge';
 const PUBLIC_ROUTES = [
   '/login',
   '/register',
+  '/recuperar-senha', // 👈 ADICIONE AQUI
+  '/redefinir-senha', // 👈 E AQUI
   '/api/auth/login',
+  '/api/auth/recuperar-senha', // 👈 E AQUI
+  '/api/auth/redefinir-senha', // 👈 E AQUI
   '/api/register',
   '/api/auth/refresh',
   '/manifest.json',
