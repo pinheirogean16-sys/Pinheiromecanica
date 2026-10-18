@@ -13,7 +13,8 @@ export async function sendEmail(to: string, subject: string, html: string) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: 'VEHLOX <noreply@pinheiromecanica.com>', // Troque para o seu domínio verificado no Resend
+        // 👇 ATENÇÃO: Troque para o domínio que você está verificando no Resend
+        from: 'VEHLOX <noreply@login.pinheiromecanica.com>', 
         to: [to],
         subject: subject,
         html: html,
