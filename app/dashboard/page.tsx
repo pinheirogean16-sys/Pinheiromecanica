@@ -559,8 +559,8 @@ export default function DashboardPage() {
                     cx="50%" cy="50%"
                     innerRadius={60} outerRadius={80}
                     paddingAngle={4}
-                    dataKey="quantidade"
-                    nameKey="status"
+                    dataKey="value"    // 👈 CORRIGIDO: lê o campo "value" da API
+                    nameKey="name"     // 👈 CORRIGIDO: lê o campo "name" da API
                   >
                     {osPorStatus.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="#09090b" strokeWidth={2} />
@@ -569,6 +569,7 @@ export default function DashboardPage() {
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '12px', fontSize: '11px' }}
                     itemStyle={{ color: '#eaeaea' }}
+                    formatter={(value: number) => [value, 'OS']}
                   />
                   <Legend 
                     verticalAlign="bottom" 
