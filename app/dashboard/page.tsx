@@ -133,7 +133,7 @@ export default function DashboardPage() {
   const [agendaEvents, setAgendaEvents] = useState<any[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(true);
 
-  const [chartPeriod, setChartPeriod] = useState<'30_DIAS' | '6_MESES'>('30_DIAS');
+  const [chartPeriod, setChartPeriod] = useState<'30_DIAS' | '6_MESES'>('6_MESES');
   const [agendaFilter, setAgendaFilter] = useState<'TODOS' | 'OS' | 'ENTREGAS' | 'EXECUCAO'>('TODOS');
   const [stockTab, setStockTab] = useState<'LOW_STOCK' | 'MOST_MOVE'>('LOW_STOCK');
 
@@ -298,11 +298,6 @@ export default function DashboardPage() {
     loadVeiculoStats();
     loadAgenda();
   }, [loadUser, loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda]);
-
-  // A13: removido o gerador com Math.sin/cos. O gráfico de 30 dias passa
-  // a usar APENAS dados reais de /api/dashboard/faturamento-mensal.
-  // Enquanto o endpoint não devolver granularidade diária, mostramos a
-  // mensagem de "dados insuficientes" no gráfico (tratada abaixo).
 
   const computedAlerts = useMemo(() => {
     const list: { type: 'CRITICAL' | 'ATTENTION' | 'NORMAL'; message: string; sub: string; date?: string }[] = [];
@@ -497,11 +492,11 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
             
-            {/* KPI 1 — A13: selo "+14.2%" removido (número inventado) */}
+            {/* KPI 1 */}
             <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-emerald-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                  <TrendingUp className="w-4.5 h-4.5" />
+                  <TrendingUp className="w-4 h-4" />
                 </div>
               </div>
               <div className="min-w-0">
@@ -517,7 +512,7 @@ export default function DashboardPage() {
             <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-blue-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                  <Wallet className="w-4.5 h-4.5" />
+                  <Wallet className="w-4 h-4" />
                 </div>
                 <span className="text-[9px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full font-mono">A vencer</span>
               </div>
@@ -534,7 +529,7 @@ export default function DashboardPage() {
             <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-orange-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-500 border border-orange-500/20">
-                  <Wrench className="w-4.5 h-4.5" />
+                  <Wrench className="w-4 h-4" />
                 </div>
                 <span className="text-[9px] font-black uppercase tracking-widest bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full font-mono">Execução</span>
               </div>
@@ -551,7 +546,7 @@ export default function DashboardPage() {
             <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-cyan-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
-                  <Truck className="w-4.5 h-4.5" />
+                  <Truck className="w-4 h-4" />
                 </div>
                 <span className="text-[9px] font-black uppercase tracking-widest bg-cyan-500/10 text-cyan-500 px-2 py-0.5 rounded-full font-mono">No Pátio</span>
               </div>
@@ -568,7 +563,7 @@ export default function DashboardPage() {
             <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-red-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20">
-                  <Package className="w-4.5 h-4.5" />
+                  <Package className="w-4 h-4" />
                 </div>
                 <span className="text-[8.5px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full font-mono">Abaixo Mínimo</span>
               </div>
@@ -585,7 +580,7 @@ export default function DashboardPage() {
             <div className="bg-zinc-900/40 border border-zinc-800/70 hover:border-amber-500/40 rounded-2xl px-5 py-5 transition-all duration-300 hover:-translate-y-1 group relative overflow-hidden flex flex-col justify-between h-34 shadow-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                  <ShieldAlert className="w-4.5 h-4.5" />
+                  <ShieldAlert className="w-4 h-4" />
                 </div>
                 {alertsBadgeCount > 0 && (
                   <span className="text-[9px] font-black uppercase tracking-widest bg-red-500 text-white px-2 py-0.5 rounded-full animate-pulse">{alertsBadgeCount}</span>
@@ -869,9 +864,9 @@ export default function DashboardPage() {
                     key={idx} 
                     className={cn(
                       "p-4 rounded-2xl flex gap-4 border transition duration-300",
-                      alert.type === 'CRITICAL' ? "bg-red-550/10 border-red-500/15" :
-                      alert.type === 'ATTENTION' ? "bg-amber-550/10 border-amber-500/15" :
-                      "bg-emerald-555/10 border-emerald-500/15"
+                      alert.type === 'CRITICAL' ? "bg-red-500/10 border-red-500/15" :
+                      alert.type === 'ATTENTION' ? "bg-amber-500/10 border-amber-500/15" :
+                      "bg-emerald-500/10 border-emerald-500/15"
                     )}
                   >
                     <div className="flex-shrink-0 mt-0.5">
