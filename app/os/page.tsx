@@ -3,43 +3,42 @@
 
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Search, Plus, Filter, FileText, 
-  Eye, Edit, Printer, ChevronLeft, ChevronRight,
-  Trash2, TrendingUp, Clock, Package, CheckCircle, List,
-  AlertTriangle, AlertCircle
+  Search, Plus, FileText, 
+  Eye, Edit, Printer, 
+  Clock, Package, CheckCircle, List,
+  AlertTriangle, AlertCircle, Trash2, Inbox
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
-import { StatusCard } from '@/components/StatusCard';
 import Link from 'next/link';
-import { OrdemServico_status as StatusOS } from '@prisma/client';
 import { Pagination } from '@/components/Pagination';
+import { toast } from 'sonner';
 
 // Componente de Linha Memoizado
-const OSRow = memo(({ os, formatCurrency, handlePrint }: { os: any, formatCurrency: any, handlePrint: any }) => (
+const OSRow = memo(({ os, formatCurrency, handlePrint, handleDelete }: { os: any, formatCurrency: any, handlePrint: any, handleDelete: any }) => (
   <tr className="border-zinc-800 hover:bg-zinc-900/50 transition-all group">
     <td className="p-4 text-sm">
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="font-bold text-orange-500 font-mono">#{os.numero}</span>
+          <span className="font-bold text-orange-500 font-mono text-base">#{os.numero}</span>
           {os.tipoOS === 'CAMPO' ? (
-            <span className="text-[7px] bg-amber-500/10 border border-amber-500/20 text-amber-500 font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+            <span className="text-[8px] bg-amber-500/10 border border-amber-500/20 text-amber-500 font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider">
               🌾 CAMPO
             </span>
           ) : (
-            <span className="text-[7px] bg-blue-500/10 border border-blue-500/20 text-blue-400 font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+            <span className="text-[8px] bg-blue-500/10 border border-blue-500/20 text-blue-400 font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider">
               🏭 OFICINA
             </span>
           )}
         </div>
-        <span className="text-[9px] text-zinc-650 font-mono uppercase tracking-[0.2em]">{os.id.slice(-8)}</span>
+        <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-[0.2em]">{os.id.slice(-8)}</span>
       </div>
     </td>
     <td className="p-4 text-sm">
       <div className="flex flex-col">
         <p className="font-black text-white group-hover:text-orange-500 transition-colors uppercase tracking-tight italic truncate max-w-[200px]">{os.cliente.nome}</p>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[9px] bg-zinc-950 border border-zinc-800 py-0.5 px-1.5 rounded-xl font-black text-zinc-400">{os.veiculo.placa}</span>
-          <span className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest truncate max-w-[150px]">{os.veiculo.modelo}</span>
+          <span className="text-[10px] bg-zinc-950 border border-zinc-800 py-0.5 px-2 rounded-full font-mono font-bold text-zinc-400">{os.veiculo.placa}</span>
+          <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest truncate max-w-[150px]">{os.veiculo.modelo}</span>
         </div>
       </div>
     </td>
@@ -60,35 +59,45 @@ const OSRow = memo(({ os, formatCurrency, handlePrint }: { os: any, formatCurren
       <div className="flex flex-col gap-2 items-center">
         <StatusBadge status={os.status} />
         <div className="text-[8px] font-black uppercase tracking-tighter text-zinc-600">
-          {new Date(os.data_entrada).toLocaleDateString()}
+          {new Date(os.data_entrada).toLocaleDateString('pt-BR')}
         </div>
       </div>
     </td>
     <td className="p-4 text-sm text-right">
       <div className="flex flex-col">
-        <span className="font-bold text-white font-mono tracking-tighter">{formatCurrency(os.valor_total)}</span>
+        <span className="font-bold text-white font-mono tracking-tighter text-base">{formatCurrency(os.valor_total)}</span>
         <span className="text-[8px] text-zinc-600 font-bold uppercase tracking-widest italic">{os._count?.pecas || 0} PEÇAS</span>
       </div>
     </td>
     <td className="p-4 text-sm text-center">
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-1">
          <Link 
             href={`/os/${os.id}`}
-            className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"
+            className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"
+            title="Visualizar OS"
           >
             <Eye size={14} />
           </Link>
           <Link 
             href={`/os/${os.id}/editar`}
-            className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"
+            className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"
+            title="Editar OS"
           >
             <Edit size={14} />
           </Link>
           <button 
             onClick={() => handlePrint(os.id)}
-            className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"
+            className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition"
+            title="Imprimir OS"
           >
             <Printer size={14} />
+          </button>
+          <button 
+            onClick={() => handleDelete(os.id, os.numero)}
+            className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition"
+            title="Excluir OS"
+          >
+            <Trash2 size={14} />
           </button>
       </div>
     </td>
@@ -108,7 +117,6 @@ export default function OSListingPage() {
   const [tipoFilter, setTipoFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
 
-  // Inicializar tipoFilter a partir de query param (ex: redirecionamento do Dashboard)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -119,7 +127,6 @@ export default function OSListingPage() {
     }
   }, []);
 
-  // Debounce search effect (300ms) sem memory leaks
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(search);
@@ -127,7 +134,6 @@ export default function OSListingPage() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  // Reset page to 1 when filters or search change
   useEffect(() => {
     setPage(1);
   }, [search, statusFilter, tipoFilter]);
@@ -197,14 +203,15 @@ export default function OSListingPage() {
     try {
       const res = await fetch(`/api/ordens/${id}`, { method: 'DELETE' });
       if (res.ok) {
+        toast.success(`OS #${numero} excluída com sucesso.`);
         fetchOS();
         fetchStats();
       } else {
-        alert('Erro ao excluir OS');
+        toast.error('Erro ao excluir OS');
       }
     } catch (err) {
       console.error(err);
-      alert('Erro de conexão ao excluir OS');
+      toast.error('Erro de conexão ao excluir OS');
     }
   };
 
@@ -226,7 +233,7 @@ export default function OSListingPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5">
         {[
           { label: 'Abertas', key: 'ABERTA', icon: FileText, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
           { label: 'Diagnóstico', key: 'EM_DIAGNOSTICO', icon: Search, color: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -237,11 +244,11 @@ export default function OSListingPage() {
         ].map((item, idx) => (
           <div 
             key={idx}
-            className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-3xl relative overflow-hidden group shadow-lg min-w-0"
+            className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-2xl relative overflow-hidden group shadow-lg min-w-0"
           >
             <div className={`absolute -top-6 -right-6 w-16 h-16 ${item.bg} blur-2xl group-hover:scale-150 transition-transform`} />
             <div className="flex items-center gap-2 mb-3">
-              <item.icon className={`w-3 h-3 ${item.color}`} />
+              <item.icon className={`w-3.5 h-3.5 ${item.color}`} />
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest truncate">{item.label}</span>
             </div>
             <div className="flex items-baseline gap-2">
@@ -260,18 +267,18 @@ export default function OSListingPage() {
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
         <div className="p-6 border-b border-zinc-800 flex flex-col lg:flex-row gap-4 items-stretch lg:items-center">
           <div className="flex-1 relative min-w-0">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
             <input 
               type="text" 
               placeholder="BUSCAR POR Nº DA OS, CLIENTE, PLACA OU SERVIÇO..." 
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-14 text-sm text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700 min-h-[48px]"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-12 text-sm text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700 min-h-[48px]"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             />
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
             <select 
-              className="w-full sm:w-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] font-mono uppercase tracking-widest text-zinc-500 outline-none focus:border-orange-500 min-h-[48px] cursor-pointer"
+              className="w-full sm:w-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] font-mono uppercase tracking-widest text-zinc-300 outline-none focus:border-orange-500 min-h-[48px] cursor-pointer appearance-none"
               value={tipoFilter}
               onChange={(e) => { setTipoFilter(e.target.value); setPage(1); }}
             >
@@ -281,7 +288,7 @@ export default function OSListingPage() {
             </select>
 
             <select 
-              className="w-full sm:w-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] font-mono uppercase tracking-widest text-zinc-500 outline-none focus:border-orange-500 min-h-[48px] cursor-pointer"
+              className="w-full sm:w-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] font-mono uppercase tracking-widest text-zinc-300 outline-none focus:border-orange-500 min-h-[48px] cursor-pointer appearance-none"
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             >
@@ -314,22 +321,22 @@ export default function OSListingPage() {
             <tbody className="divide-y divide-zinc-800">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-20 text-center">
+                  <td colSpan={7} className="p-20 text-center">
                     <div className="w-8 h-8 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin mx-auto mb-4" />
                     <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest italic">Sincronizando protocolos...</p>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={8} className="p-20 text-center text-zinc-700 italic font-black uppercase tracking-widest text-[10px]">
+                  <td colSpan={7} className="p-20 text-center text-zinc-700 italic font-black uppercase tracking-widest text-[10px]">
                     Erro de Comunicação Tática
                   </td>
                 </tr>
               ) : osData.items.length > 0 ? osData.items.map((os: any) => (
-                <OSRow key={os.id} os={os} formatCurrency={formatCurrency} handlePrint={handlePrint} />
+                <OSRow key={os.id} os={os} formatCurrency={formatCurrency} handlePrint={handlePrint} handleDelete={handleDelete} />
               )) : (
                 <tr>
-                  <td colSpan={8} className="p-20 text-center">
+                  <td colSpan={7} className="p-20 text-center">
                     <FileText className="w-8 h-8 text-zinc-800 mx-auto mb-4 opacity-50" />
                     <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-widest italic">Nenhuma ordem de serviço localizada</p>
                   </td>
@@ -390,7 +397,7 @@ export default function OSListingPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-0.5 min-w-0">
                     <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest font-sans">Mecânico / Operador</p>
-                    <p className="text-zinc-350 font-bold uppercase truncate">
+                    <p className="text-zinc-400 font-bold uppercase truncate">
                       {os.mecanico?.name?.split(' ')[0] || 'NÃO ATRIBUÍDO'}
                     </p>
                   </div>
@@ -411,7 +418,7 @@ export default function OSListingPage() {
               </div>
 
               {/* Botões Mobile com Toque 44px */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                 <Link href={`/os/${os.id}`} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition" title="Visualizar">
                   <Eye size={12} /> Visualizar
                 </Link>
@@ -420,6 +427,9 @@ export default function OSListingPage() {
                 </Link>
                 <button onClick={() => handlePrint(os.id)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Imprimir">
                   <Printer size={12} /> Imprimir
+                </button>
+                <button onClick={() => handleDelete(os.id, os.numero)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-red-500 text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Excluir">
+                  <Trash2 size={12} /> Excluir
                 </button>
               </div>
             </div>
