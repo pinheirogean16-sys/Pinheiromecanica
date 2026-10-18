@@ -1,20 +1,27 @@
 'use client';
 
-import { useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CheckCircle2, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
-function RedefinirSenhaForm() {
+export default function RedefinirSenhaPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const token = searchParams.get('token');
-
+  const [token, setToken] = useState<string | null>(null);
+  
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 👇 LÊ A URL DIRETAMENTE DO NAVEGADOR (Garante que o token seja pego)
+  useEffect(() => {
+    setIsMounted(true);
+    const params = new URLSearchParams(window.location.search);
+    setToken(params.get('token'));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,12 +52,21 @@ function RedefinirSenhaForm() {
       } else {
         toast.error(data.error || 'Erro ao redefinir senha.');
       }
-    } catch {
-      toast.error('Erro de conexão.');
+    } catch (err) {
+      toast.error('Erro de conexão com o servidor.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Evita erro de hidratação antes de ler a URL
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -61,7 +77,7 @@ function RedefinirSenhaForm() {
           </div>
           <h1 className="text-2xl font-black text-white uppercase tracking-tight">Senha Redefinida!</h1>
           <p className="text-sm text-zinc-400">
-            Sua senha foi alterada com sucesso. Você será redirecionado para o login em instantes...
+            Sua senha foi alterada com sucesso. Você será redirecionado para o login...
           </p>
           <Loader2 className="w-6 h-6 text-orange-500 animate-spin mx-auto" />
         </div>
@@ -76,7 +92,7 @@ function RedefinirSenhaForm() {
           <ShieldAlert className="w-16 h-16 text-red-500 mx-auto" />
           <h1 className="text-2xl font-black text-white uppercase">Token Inválido</h1>
           <p className="text-sm text-zinc-400">
-            O link de recuperação está incompleto ou expirou.
+            O link de recuperação está incompleto ou expirou. Solicite um novo.
           </p>
           <Link href="/recuperar-senha" className="block w-full py-4 bg-orange-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest">
             Solicitar Novo Link
@@ -132,17 +148,5 @@ function RedefinirSenhaForm() {
         </form>
       </div>
     </div>
-  );
-}
-
-export default function RedefinirSenhaPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-      </div>
-    }>
-      <RedefinirSenhaForm />
-    </Suspense>
   );
 }
