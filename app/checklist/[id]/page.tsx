@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { 
   Plus, Trash2, Save, ArrowLeft, Loader2, ClipboardCheck, 
-  CheckCircle2, XCircle, FileText, Hash, Image as ImageIcon
+  CheckCircle2, XCircle, FileText, Hash, Image as ImageIcon,
+  ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -140,14 +141,14 @@ export default function ChecklistFormPage() {
       {/* HEADER INDUSTRIAL */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-6">
-          <Link href="/checklist" className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group">
+          <Link href="/checklist" className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group">
             <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
           </Link>
           <div>
             <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">
               {isEditing ? 'EDITAR PROTOCOLO' : 'NOVO PROTOCOLO'}
             </h1>
-            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.4em] leading-none mt-1">
+            <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.4em] leading-none mt-1">
               ESTRUTURAÇÃO DE VERIFICAÇÃO TÉCNICA
             </p>
           </div>
@@ -166,7 +167,7 @@ export default function ChecklistFormPage() {
       </div>
 
       <div className="space-y-8">
-        {/* DEFINIÇÕES DE IDENTIFICAÇÃO (RUID-FREE FULL WIDTH GRID) */}
+        {/* DEFINIÇÕES DE IDENTIFICAÇÃO */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-4 bg-orange-600 rounded-full" />
@@ -181,7 +182,7 @@ export default function ChecklistFormPage() {
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
                 placeholder="EX: INSPEÇÃO DE ENTRADA"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-sm text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest shadow-inner placeholder:text-zinc-900"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-sm text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest shadow-inner placeholder:text-zinc-700"
               />
             </div>
 
@@ -206,7 +207,7 @@ export default function ChecklistFormPage() {
         {/* ITENS DINÂMICOS */}
         <div className="w-full">
           <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden flex flex-col min-h-[500px] shadow-2xl relative">
-            <div className="p-8 border-b border-zinc-800 bg-zinc-950/20 flex items-center justify-between">
+            <div className="p-8 border-b border-zinc-800 bg-zinc-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-orange-500 shadow-inner">
                   <ClipboardCheck size={20} />
@@ -219,74 +220,82 @@ export default function ChecklistFormPage() {
               <button 
                 type="button"
                 onClick={addItem}
-                className="p-4 bg-zinc-950 border border-zinc-800 text-orange-500 hover:bg-orange-600 hover:text-white rounded-2xl transition shadow-lg active:scale-95 group"
-                title="Adicionar Item"
+                className="flex items-center justify-center gap-2 px-6 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl transition shadow-lg active:scale-95 font-black text-[10px] uppercase tracking-widest"
               >
-                <Plus size={20} className="group-hover:rotate-90 transition-transform" />
+                <Plus size={16} />
+                Adicionar Item
               </button>
             </div>
 
             <div className="p-8 space-y-4 max-h-[1000px] overflow-y-auto custom-scrollbar">
-              {itens.map((item, index) => (
-                <div 
-                  key={item.id}
-                  className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 group relative grid grid-cols-1 md:grid-cols-12 gap-6 items-end hover:border-orange-500/20 transition-all border-l-4 border-l-orange-600/10 hover:border-l-orange-600"
-                >
+              {itens.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 opacity-40 space-y-4">
+                  <ClipboardCheck size={48} className="text-zinc-600" />
+                  <p className="text-xs font-black uppercase tracking-widest text-zinc-500 italic">Nenhum item adicionado</p>
                   <button 
-                    onClick={() => removeItem(item.id)}
-                    className="absolute -top-3 -right-3 w-8 h-8 bg-zinc-900 border border-zinc-800 hover:bg-red-600 hover:border-red-600 rounded-full flex items-center justify-center text-zinc-600 hover:text-white transition-all shadow-xl z-20"
+                    onClick={addItem}
+                    className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition"
                   >
-                    <Trash2 size={14} />
+                    Adicionar Primeiro Item
                   </button>
+                </div>
+              ) : (
+                itens.map((item, index) => (
+                  <div 
+                    key={item.id}
+                    className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 group relative grid grid-cols-1 md:grid-cols-12 gap-6 items-end hover:border-orange-500/20 transition-all border-l-4 border-l-orange-600/10 hover:border-l-orange-600"
+                  >
+                    <button 
+                      onClick={() => removeItem(item.id)}
+                      className="absolute -top-3 -right-3 w-8 h-8 bg-zinc-900 border border-zinc-800 hover:bg-red-600 hover:border-red-600 rounded-full flex items-center justify-center text-zinc-600 hover:text-white transition-all shadow-xl z-20"
+                    >
+                      <Trash2 size={14} />
+                    </button>
 
-                  <div className="md:col-span-1 flex items-center justify-center h-full">
-                    <span className="text-2xl font-black text-zinc-800 font-mono italic">{(index + 1).toString().padStart(2, '0')}</span>
-                  </div>
+                    <div className="md:col-span-1 flex items-center justify-center h-full">
+                      <span className="text-2xl font-black text-zinc-800 font-mono italic">{(index + 1).toString().padStart(2, '0')}</span>
+                    </div>
 
-                  <div className="md:col-span-6 space-y-2">
-                    <label className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-1">Descrição do Item</label>
-                    <input 
-                      type="text" 
-                      value={item.descricao}
-                      onChange={(e) => updateItem(item.id, 'descricao', e.target.value)}
-                      placeholder="EX: VERIFICAR NÍVEL DE ÓLEO..."
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-5 text-[11px] text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-950"
-                    />
-                  </div>
+                    <div className="md:col-span-6 space-y-2">
+                      <label className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-1">Descrição do Item</label>
+                      <input 
+                        type="text" 
+                        value={item.descricao}
+                        onChange={(e) => updateItem(item.id, 'descricao', e.target.value)}
+                        placeholder="EX: VERIFICAR NÍVEL DE ÓLEO..."
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-5 text-[11px] text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-700"
+                      />
+                    </div>
 
-                  <div className="md:col-span-3 space-y-2">
-                    <label className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-1 text-center block">Tipo de Resposta</label>
-                    <div className="relative">
-                       <select 
-                        value={item.tipo}
-                        onChange={(e) => updateItem(item.id, 'tipo', e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-5 text-[10px] text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner appearance-none cursor-pointer pr-10"
-                      >
-                        <option value="SIM_NAO">SIM / NÃO</option>
-                        <option value="FOTO">REGISTRO FOTO</option>
-                        <option value="TEXTO">TEXTO LIVRE</option>
-                        <option value="NUMERICO">VALOR NUMÉRICO</option>
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-700">
-                        {item.tipo === 'SIM_NAO' && <CheckCircle2 size={12} />}
-                        {item.tipo === 'FOTO' && <ImageIcon size={12} />}
-                        {item.tipo === 'TEXTO' && <FileText size={12} />}
-                        {item.tipo === 'NUMERICO' && <Hash size={12} />}
+                    <div className="md:col-span-3 space-y-2">
+                      <label className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-1 text-center block">Tipo de Resposta</label>
+                      <div className="relative">
+                         <select 
+                          value={item.tipo}
+                          onChange={(e) => updateItem(item.id, 'tipo', e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-5 text-[10px] text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner appearance-none cursor-pointer pr-10"
+                        >
+                          <option value="SIM_NAO">SIM / NÃO</option>
+                          <option value="FOTO">REGISTRO FOTO</option>
+                          <option value="TEXTO">TEXTO LIVRE</option>
+                          <option value="NUMERICO">VALOR NUMÉRICO</option>
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
                       </div>
                     </div>
-                  </div>
 
-                  <div className="md:col-span-2 flex flex-col items-center justify-center gap-2">
-                    <label className="text-[8px] font-black text-zinc-700 uppercase tracking-[0.2em] leading-none mb-1">Obrigatório</label>
-                    <button 
-                      onClick={() => updateItem(item.id, 'obrigatorio', !item.obrigatorio)}
-                      className={`w-12 h-6 rounded-full p-1 transition-all flex items-center ${item.obrigatorio ? 'bg-orange-600 justify-end' : 'bg-zinc-800 justify-start'}`}
-                    >
-                      <div className="w-3.5 h-3.5 bg-white rounded-full shadow-lg" />
-                    </button>
+                    <div className="md:col-span-2 flex flex-col items-center justify-center gap-2">
+                      <label className="text-[8px] font-black text-zinc-700 uppercase tracking-[0.2em] leading-none mb-1">Obrigatório</label>
+                      <button 
+                        onClick={() => updateItem(item.id, 'obrigatorio', !item.obrigatorio)}
+                        className={`w-12 h-6 rounded-full p-1 transition-all flex items-center ${item.obrigatorio ? 'bg-orange-600 justify-end' : 'bg-zinc-800 justify-start'}`}
+                      >
+                        <div className="w-3.5 h-3.5 bg-white rounded-full shadow-lg" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
             <div className="p-8 border-t border-zinc-800 bg-zinc-950/20 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -302,6 +311,24 @@ export default function ChecklistFormPage() {
             </div>
           </section>
         </div>
+      </div>
+
+      {/* Mobile Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-zinc-950/95 border-t border-zinc-800 p-4 flex gap-3 z-40 backdrop-blur-md">
+        <Link 
+          href="/checklist"
+          className="flex-1 min-h-[48px] bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1"
+        >
+          <ArrowLeft size={16} /> Voltar
+        </Link>
+        <button 
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-[2] min-h-[48px] bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2 shadow-lg"
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          {isEditing ? 'Atualizar' : 'Concluir'}
+        </button>
       </div>
     </div>
   );
