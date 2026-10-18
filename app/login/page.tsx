@@ -6,6 +6,7 @@ import {
   Lock, Mail, Building, CreditCard, ChevronRight, KeyRound, 
   User, ArrowRight, ArrowLeft, CheckCircle2, Loader2
 } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
 
@@ -160,6 +161,10 @@ export default function AuthPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Senha de Acesso</label>
+                {/* 👇 LINK DE RECUPERAÇÃO DE SENHA ADICIONADO AQUI */}
+                <Link href="/recuperar-senha" className="text-[10px] font-bold text-orange-500 hover:underline">
+                  Esqueceu a senha?
+                </Link>
               </div>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
