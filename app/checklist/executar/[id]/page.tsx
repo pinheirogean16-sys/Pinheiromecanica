@@ -6,7 +6,8 @@ import {
   ArrowLeft, Save, Loader2, CheckCircle2, XCircle, 
   Camera, FileText, Hash, User, ClipboardCheck, 
   AlertCircle, ChevronRight, AlertTriangle, XOctagon,
-  PenTool, RefreshCw, Eye, ShieldAlert, Check, CheckSquare
+  PenTool, RefreshCw, Eye, ShieldAlert, Check, CheckSquare,
+  ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -34,7 +35,6 @@ const TIPO_VEICULOS = [
   { id: 'OUTROS', label: '🚗 Outros' }
 ];
 
-// C10: normaliza o que vem da API, aceitando `itens` ou `ChecklistItem`
 function normalizarChecklist(raw: any): Checklist | null {
   if (!raw || !raw.id) return null;
   const itensBrutos = raw?.itens ?? raw?.ChecklistItem ?? [];
@@ -51,7 +51,6 @@ function normalizarChecklist(raw: any): Checklist | null {
   };
 }
 
-// C10 (bug): aceita tanto NUMERO quanto NUMERICO (a tela de edição usa um, essa usa outro)
 function isTipoNumerico(tipo: string): boolean {
   return tipo === 'NUMERO' || tipo === 'NUMERICO';
 }
@@ -61,7 +60,7 @@ export default function ExecutarFormPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const id = params?.id as string;
-  const osIdFromQuery = searchParams?.get('os_id');
+  const osIdFromQuery = searchParams?.get('osId') || searchParams?.get('os_id');
 
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +80,6 @@ export default function ExecutarFormPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
 
-  // Fetch OS abertas
   useEffect(() => {
     fetch('/api/ordens', { credentials: 'include' })
       .then((r) => r.json())
@@ -121,7 +119,6 @@ export default function ExecutarFormPage() {
     fetchChecklist();
   }, [fetchChecklist]);
 
-  // M16: rascunho em sessionStorage (limpa ao fechar a aba) e SEM a assinatura
   useEffect(() => {
     if (!loading && id) {
       const savedDraft = sessionStorage.getItem(`checklist_draft_${id}`);
@@ -141,7 +138,6 @@ export default function ExecutarFormPage() {
     }
   }, [loading, id]);
 
-  // Auto-saver (a cada 4s) — agora em sessionStorage e sem assinatura
   useEffect(() => {
     if (!loading && id && checklist) {
       const interval = setInterval(() => {
@@ -260,7 +256,7 @@ export default function ExecutarFormPage() {
       });
 
       if (faltantes.length > 0) {
-        toast.error(`Responda todos os itens obrigatórios (${faltantes.length} pendentes).`);
+        toast.error(`Preencha os itens obrigatórios: ${faltantes.map(i => i.descricao).join(', ')}`);
         return;
       }
     }
@@ -306,22 +302,17 @@ export default function ExecutarFormPage() {
           formData.append('execucao_id', newExecucaoId);
           formData.append('item_id', itemId);
 
-          const uploadRes = await fetch('/api/checklist/upload-foto', {
+          await fetch('/api/checklist/upload-foto', {
             method: 'POST',
             body: formData,
             credentials: 'include',
           });
-
-          if (!uploadRes.ok) {
-            // apenas registra; não quebra o fluxo todo por causa de uma foto
-          }
         });
 
         await Promise.all(uploadPromises);
         toast.success('Fotos enviadas com sucesso!', { id: 'upload-toast' });
       }
 
-      // M16: limpa rascunho
       try {
         sessionStorage.removeItem(`checklist_draft_${id}`);
       } catch {}
@@ -339,7 +330,7 @@ export default function ExecutarFormPage() {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center space-y-4 text-white bg-zinc-950">
         <Loader2 className="w-12 h-12 text-orange-500 animate-spin" />
-        <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.4em] italic">
+        <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.4em] italic">
           Preparando Formulário Técnico...
         </p>
       </div>
@@ -352,10 +343,10 @@ export default function ExecutarFormPage() {
     <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-10 pb-20 py-4 sm:py-8 overflow-hidden text-white min-h-screen">
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           <Link
-            href="/checklist"
-            className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group"
+            href="/checklist/executar"
+            className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group"
           >
             <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
           </Link>
@@ -372,7 +363,7 @@ export default function ExecutarFormPage() {
         <button
           onClick={handleFinalizar}
           disabled={saving}
-          className="bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all shadow-2xl active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 italic shadow-orange-950/20 shrink-0"
+          className="hidden md:flex bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all shadow-2xl active:scale-95 disabled:opacity-50 items-center justify-center gap-3 italic shadow-orange-950/20 shrink-0"
         >
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save size={20} />}
           FINALIZAR E PUBLICAR LAUDO
@@ -382,7 +373,7 @@ export default function ExecutarFormPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* RESPONSÁVEL E INFO */}
         <div className="lg:col-span-4 space-y-6">
-          <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 space-y-8 shadow-2xl sticky top-8">
+          <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 sm:p-8 space-y-8 shadow-2xl lg:sticky lg:top-8">
             <div className="flex items-center gap-3">
               <div className="w-1.5 h-4 bg-orange-600 rounded-full" />
               <h2 className="text-sm font-black text-white uppercase italic tracking-tight">
@@ -402,7 +393,7 @@ export default function ExecutarFormPage() {
                     value={executadoPor}
                     onChange={(e) => setExecutadoPor(e.target.value)}
                     placeholder="DIGITE NOME"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 pl-14 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest placeholder:text-zinc-900"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 pl-14 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest placeholder:text-zinc-700"
                   />
                 </div>
               </div>
@@ -411,17 +402,20 @@ export default function ExecutarFormPage() {
                 <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">
                   Especificador Veicular
                 </label>
-                <select
-                  value={tipoVeiculo}
-                  onChange={(e) => setTipoVeiculo(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-xs text-white font-bold cursor-pointer transition appearance-none outline-none focus:border-orange-500"
-                >
-                  {TIPO_VEICULOS.map((tv) => (
-                    <option key={tv.id} value={tv.id}>
-                      {tv.label.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={tipoVeiculo}
+                    onChange={(e) => setTipoVeiculo(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-xs text-white font-bold cursor-pointer transition appearance-none outline-none focus:border-orange-500 pr-10"
+                  >
+                    {TIPO_VEICULOS.map((tv) => (
+                      <option key={tv.id} value={tv.id}>
+                        {tv.label.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -463,7 +457,7 @@ export default function ExecutarFormPage() {
                   onChange={(e) => setObservacoes(e.target.value)}
                   placeholder="OBSERVAÇÕES ADICIONAIS..."
                   rows={3}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-orange-500 transition uppercase font-black tracking-wider placeholder:text-zinc-900 resize-none leading-relaxed"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-orange-500 transition font-medium tracking-wide placeholder:text-zinc-700 resize-none leading-relaxed"
                 />
               </div>
 
@@ -495,7 +489,7 @@ export default function ExecutarFormPage() {
                     className="w-full h-full cursor-crosshair touch-none"
                   />
                   {!signatureDrawing && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-20">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-30">
                       <PenTool size={18} className="text-orange-500 mb-1" />
                       <p className="text-[8px] font-black uppercase tracking-widest">
                         Assine com o dedo ou mouse
@@ -507,7 +501,7 @@ export default function ExecutarFormPage() {
             </div>
           </section>
 
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-[2rem] p-6 text-[9px] text-zinc-500 font-black uppercase text-center flex items-center justify-center gap-2">
+          <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 text-[9px] text-zinc-500 font-black uppercase text-center flex items-center justify-center gap-2">
             <CheckSquare className="text-green-500 shrink-0" size={14} /> Salvamento automático a cada 4 segundos.
           </div>
         </div>
@@ -518,18 +512,21 @@ export default function ExecutarFormPage() {
             <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 block">
               Vincular a Ordem de Serviço (Opcional)
             </label>
-            <select
-              value={osId}
-              onChange={(e) => setOsId(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white font-bold outline-none focus:border-orange-500 cursor-pointer transition shadow-inner"
-            >
-              <option value="">SEM VÍNCULO</option>
-              {ordens.map((os) => (
-                <option key={os.id} value={os.id}>
-                  OS #{os.numero} - {os.cliente?.nome}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={osId}
+                onChange={(e) => setOsId(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white font-bold outline-none focus:border-orange-500 cursor-pointer transition shadow-inner appearance-none pr-10"
+              >
+                <option value="">SEM VÍNCULO</option>
+                {ordens.map((os) => (
+                  <option key={os.id} value={os.id}>
+                    OS #{os.numero} - {os.cliente?.nome}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            </div>
           </div>
 
           {checklist.itens.length === 0 && (
@@ -547,21 +544,21 @@ export default function ExecutarFormPage() {
           {checklist.itens.map((item, index) => (
             <div
               key={item.id}
-              className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 md:p-10 space-y-8 hover:border-orange-500/20 transition relative group shadow-xl"
+              className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 sm:p-8 space-y-6 hover:border-orange-500/20 transition relative group shadow-xl"
             >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-start gap-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
                   <div className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-800 w-12 h-12 rounded-2xl shadow-inner shrink-0 group-hover:bg-orange-500/10 transition-colors">
                     <span className="text-xl font-black text-zinc-800 font-mono italic group-hover:text-orange-500/50 transition">
                       {(index + 1).toString().padStart(2, '0')}
                     </span>
                   </div>
                   <div className="space-y-1">
-                    <h3 className="text-base font-black text-white uppercase italic tracking-tight line-clamp-1">
+                    <h3 className="text-base font-black text-white uppercase italic tracking-tight line-clamp-2">
                       {item.descricao}
                     </h3>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[8px] text-zinc-600 font-black uppercase tracking-widest bg-zinc-950 px-3 py-1 rounded-full border border-zinc-800">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[8px] text-zinc-600 font-black uppercase tracking-widest bg-zinc-950 px-2 py-1 rounded-full border border-zinc-800">
                         TIPO: {item.tipo.replace('_', ' ')}
                       </span>
                       {item.obrigatorio && (
@@ -574,14 +571,14 @@ export default function ExecutarFormPage() {
                 </div>
               </div>
 
-              <div className="bg-zinc-950 border border-zinc-900/50 rounded-3xl p-6 md:p-8 min-h-24 flex items-center justify-center shadow-inner">
+              <div className="bg-zinc-950 border border-zinc-900/50 rounded-3xl p-4 sm:p-6 min-h-24 flex items-center justify-center shadow-inner">
                 {item.tipo === 'SIM_NAO' && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
                     <button
                       onClick={() => handleRespostaChange(item.id, 'OK')}
-                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all min-h-[70px] ${
                         respostas[item.id] === 'OK'
-                          ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-lg scale-105'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-lg'
                           : 'bg-zinc-900 text-zinc-600 border border-transparent hover:bg-zinc-800'
                       }`}
                     >
@@ -589,9 +586,9 @@ export default function ExecutarFormPage() {
                     </button>
                     <button
                       onClick={() => handleRespostaChange(item.id, 'MEDIO')}
-                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all min-h-[70px] ${
                         respostas[item.id] === 'MEDIO'
-                          ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 shadow-lg scale-105'
+                          ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 shadow-lg'
                           : 'bg-zinc-900 text-zinc-600 border border-transparent hover:bg-zinc-800'
                       }`}
                     >
@@ -599,9 +596,9 @@ export default function ExecutarFormPage() {
                     </button>
                     <button
                       onClick={() => handleRespostaChange(item.id, 'RUIM')}
-                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all min-h-[70px] ${
                         respostas[item.id] === 'RUIM'
-                          ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-lg scale-105'
+                          ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-lg'
                           : 'bg-zinc-900 text-zinc-600 border border-transparent hover:bg-zinc-800'
                       }`}
                     >
@@ -609,9 +606,9 @@ export default function ExecutarFormPage() {
                     </button>
                     <button
                       onClick={() => handleRespostaChange(item.id, 'CRITICO')}
-                      className={`flex flex-col items-center justify-center gap-4 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                      className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all min-h-[70px] ${
                         respostas[item.id] === 'CRITICO'
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-lg scale-105'
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-lg'
                           : 'bg-zinc-900 text-zinc-600 border border-transparent hover:bg-zinc-800'
                       }`}
                     >
@@ -664,7 +661,7 @@ export default function ExecutarFormPage() {
                     onChange={(e) => handleRespostaChange(item.id, e.target.value)}
                     placeholder="DESCREVA O ESTADO DESTE ITEM..."
                     rows={3}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-5 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-wider placeholder:text-zinc-800"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-5 text-xs text-white outline-none focus:border-orange-500 transition font-medium tracking-wide placeholder:text-zinc-700"
                   />
                 )}
 
