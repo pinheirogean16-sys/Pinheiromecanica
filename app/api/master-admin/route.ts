@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 
+// ==========================================
+// GET: Buscar dados para o Painel Master
+// ==========================================
 export async function GET() {
   try {
     const { error, user } = await requireAuth();
@@ -28,7 +31,6 @@ export async function GET() {
     const totalOS = await prisma.ordemServico.count();
     
     // Simulação de MRR (Faturamento Mensal Recorrente)
-    // Se o plano for PRO, cobra 149.90, se BASICO cobra 89.90
     let mrr = 0;
     empresas.forEach(emp => {
       if (emp.plano === 'PRO') mrr += 149.90;
@@ -54,5 +56,43 @@ export async function GET() {
 
   } catch (error: any) {
     return NextResponse.json({ error: 'Erro interno no servidor master' }, { status: 500 });
+  }
+}
+
+// ==========================================
+// PATCH: Atualizar Plano ou Status da Empresa
+// ==========================================
+export async function PATCH(request: Request) {
+  try {
+    const { error, user } = await requireAuth();
+    if (error) return error;
+
+    // 🔒 TRAVA DE SEGURANÇA MÁXIMA
+    if (user.email !== process.env.SUPER_ADMIN_EMAIL) {
+      return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { empresa_id, status, plano } = body;
+
+    if (!empresa_id) {
+      return NextResponse.json({ error: 'ID da empresa não enviado.' }, { status: 400 });
+    }
+
+    // Atualiza a empresa no banco de dados
+    const updated = await prisma.empresa.update({
+      where: { id: empresa_id },
+      data: { 
+        ...(status && { status }),
+        ...(plano && { plano })
+      }
+    });
+
+    return NextResponse.json(updated);
+    
+  } catch (error: any) {
+    // 👇 ISSO VAI MOSTRAR O ERRO REAL NO TOAST SE ALGO FALHAR
+    console.error("ERRO NO PATCH MASTER:", error);
+    return NextResponse.json({ error: error.message || 'Erro ao atualizar empresa.' }, { status: 500 });
   }
 }
