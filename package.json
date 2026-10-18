@@ -54,6 +54,7 @@
   },
   "devDependencies": {},
   "overrides": {
-    "deepmerge-ts": ">=8.0.1"
+    "deepmerge-ts": ">=8.0.1",
+    "postcss": ">=8.5.18"
   }
 }
