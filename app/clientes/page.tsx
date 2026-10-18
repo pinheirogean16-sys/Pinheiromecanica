@@ -5,7 +5,7 @@ import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Plus, Search, Edit, Phone, Truck, Terminal, 
   User as UserIcon, Loader2, Building, UserCheck, AlertCircle, 
-  Eye, Car, X, Save
+  Eye, Car, X, Save, ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -52,19 +52,19 @@ const ClienteRow = memo(({
               <span className="text-zinc-500 mb-0.5">{cliente.tipo}</span>
               <span>{cliente.tipo_pessoa === 'FISICA' ? 'PF' : 'PJ'}</span>
            </div>
-           <span className="text-[10px] font-mono text-zinc-700 font-bold uppercase tracking-widest">{cliente.id.slice(-6)}</span>
+           <span className="text-[10px] font-mono text-zinc-500 font-bold uppercase tracking-widest">{cliente.id.slice(-6)}</span>
         </div>
       </td>
       <td className="p-4 text-sm">
         <p className="font-black text-white uppercase group-hover:text-orange-500 transition-colors tracking-tight italic truncate max-w-[200px]">{cliente.nome}</p>
-        <p className="text-[10px] font-mono text-zinc-600 uppercase mt-0.5 truncate">{maskCPF_CNPJ(cliente.cpf_cnpj, cliente.tipo)}</p>
+        <p className="text-[10px] font-mono text-zinc-500 uppercase mt-0.5 truncate">{maskCPF_CNPJ(cliente.cpf_cnpj, cliente.tipo)}</p>
       </td>
       <td className="p-4 text-sm">
          <div className="space-y-1">
             <p className="text-[11px] font-black text-zinc-400 font-mono tracking-tighter flex items-center gap-2">
                <Phone className="w-3 h-3 text-orange-600" /> {maskPhone(cliente.telefone)}
             </p>
-            <p className="text-[10px] text-zinc-600 truncate max-w-[150px] font-medium">{cliente.email || '— —'}</p>
+            <p className="text-[10px] text-zinc-500 truncate max-w-[150px] font-medium">{cliente.email || '— —'}</p>
          </div>
       </td>
       <td className="p-4 text-sm text-center">
@@ -79,17 +79,17 @@ const ClienteRow = memo(({
       <td className="p-4 text-sm text-center">
          <div className="flex flex-col items-center">
             <span className="text-xl font-black text-white italic tracking-tighter">{cliente._count?.veiculos || 0}</span>
-            <span className="text-[8px] text-zinc-700 font-black uppercase tracking-widest mt-1">Unidades</span>
+            <span className="text-[8px] text-zinc-500 font-black uppercase tracking-widest mt-1">Unidades</span>
          </div>
       </td>
       <td className="p-4 text-sm text-right font-mono font-bold">
          {cliente.ordens?.[0] ? (
            <div className="space-y-1">
               <p className="text-[10px] font-black text-zinc-400 uppercase italic">OS #{cliente.ordens[0].numero}</p>
-              <p className="text-[9px] text-zinc-600 uppercase font-bold tracking-widest">{formatDate(cliente.ordens[0].created_at)}</p>
+              <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest">{formatDate(cliente.ordens[0].created_at)}</p>
            </div>
          ) : (
-           <span className="text-[10px] text-zinc-800 font-black italic tracking-widest">NENHUMA</span>
+           <span className="text-[10px] text-zinc-600 font-black italic tracking-widest">NENHUMA</span>
          )}
       </td>
       <td className="p-4 text-sm text-right">
@@ -130,7 +130,7 @@ export default function ClientesPage() {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ATIVO' | 'INATIVO'>('ALL');
   const [page, setPage] = useState(1);
 
-  // 👇 LÓGICA DO TOUR (Ouve o comando para abrir/fechar o modal)
+  // Lógica do Tour
   useEffect(() => {
     const handleOpenTourModal = () => {
       openNewModal();
@@ -318,7 +318,7 @@ export default function ClientesPage() {
   };
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden">
+    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden">
       {/* HEADER INDUSTRIAL */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div className="space-y-1">
@@ -330,7 +330,7 @@ export default function ClientesPage() {
         </div>
 
         <button 
-          id="btn-novo-cliente" /* 👈 ID ADICIONADO */
+          id="btn-novo-cliente"
           onClick={openNewModal}
           className="bg-orange-600 hover:bg-orange-500 text-white rounded-2xl px-6 py-3 font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-orange-950/20 flex items-center gap-2"
         >
@@ -341,7 +341,7 @@ export default function ClientesPage() {
 
       {/* STATS — APENAS DADOS REAIS DA API */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-3xl space-y-3 relative overflow-hidden group shadow-xl">
+        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
             <UserIcon className="w-4 h-4 text-orange-500" /> Total de Clientes
           </p>
@@ -351,7 +351,7 @@ export default function ClientesPage() {
           </div>
         </div>
 
-        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-3xl space-y-3 relative overflow-hidden group shadow-xl">
+        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-green-500" /> Mostrando Nesta Página
           </p>
@@ -361,7 +361,7 @@ export default function ClientesPage() {
           </div>
         </div>
 
-        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-3xl space-y-3 relative overflow-hidden group shadow-xl">
+        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-orange-500" /> Paginação
           </p>
@@ -375,7 +375,7 @@ export default function ClientesPage() {
       </div>
 
       {/* FILTROS E BUSCA */}
-      <div className="flex flex-col lg:flex-row gap-3 items-stretch bg-zinc-900/50 border border-zinc-800 p-4 rounded-3xl shadow-2xl">
+      <div className="flex flex-col lg:flex-row gap-3 items-stretch bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl shadow-2xl">
          <div className="relative flex-1 group w-full">
            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={18} />
            <input 
@@ -383,11 +383,11 @@ export default function ClientesPage() {
              placeholder="BUSCAR POR NOME, DOCUMENTO OU EMAIL..."
              value={search}
              onChange={(e) => setSearch(e.target.value)}
-             className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-16 text-xs text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-800 min-h-[44px]"
+             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 pl-16 text-xs text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-700 min-h-[44px]"
            />
          </div>
          
-         <div className="flex p-1 bg-zinc-950 border border-zinc-800 rounded-2xl w-full lg:w-auto">
+         <div className="flex p-1 bg-zinc-950 border border-zinc-800 rounded-xl w-full lg:w-auto">
            {[
              { id: 'ALL', label: 'ALL' },
              { id: 'PF', label: 'PF' },
@@ -397,7 +397,7 @@ export default function ClientesPage() {
                key={t.id}
                type="button"
                onClick={() => setFilterType(t.id as any)}
-               className={`flex-1 lg:flex-none px-4 py-3 lg:p-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all min-h-[44px] lg:min-h-0 ${
+               className={`flex-1 lg:flex-none px-4 py-3 lg:p-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all min-h-[44px] lg:min-h-0 ${
                  filterType === t.id 
                    ? 'bg-zinc-800 text-white shadow-lg' 
                    : 'text-zinc-600 hover:text-white'
@@ -408,7 +408,7 @@ export default function ClientesPage() {
            ))}
          </div>
 
-         <div className="flex p-1 bg-zinc-950 border border-zinc-800 rounded-2xl w-full lg:w-auto">
+         <div className="flex p-1 bg-zinc-950 border border-zinc-800 rounded-xl w-full lg:w-auto">
            {[
              { id: 'ALL', label: 'TODOS' },
              { id: 'ATIVO', label: 'ATIVO' },
@@ -418,7 +418,7 @@ export default function ClientesPage() {
                key={s.id}
                type="button"
                onClick={() => setFilterStatus(s.id as any)}
-               className={`flex-1 lg:flex-none px-4 py-3 lg:p-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all min-h-[44px] lg:min-h-0 ${
+               className={`flex-1 lg:flex-none px-4 py-3 lg:p-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all min-h-[44px] lg:min-h-0 ${
                  filterStatus === s.id 
                    ? s.id === 'ATIVO' ? 'bg-green-600/25 text-green-400 font-black' : 'bg-red-600/25 text-red-400 font-black'
                    : 'text-zinc-600 hover:text-white'
@@ -431,7 +431,7 @@ export default function ClientesPage() {
       </div>
 
       {/* TABELA INDUSTRIAL (DESKTOP) */}
-      <div className="hidden lg:block bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="hidden lg:block bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
         <div className="w-full overflow-x-auto">
           <table className="min-w-full text-left border-collapse">
             <thead>
@@ -451,21 +451,21 @@ export default function ClientesPage() {
                   <td colSpan={7} className="p-20 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
-                      <p className="text-[10px] font-black text-zinc-700 uppercase tracking-widest italic">Sincronizando registros...</p>
+                      <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest italic">Sincronizando registros...</p>
                     </div>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={7} className="p-20 text-center text-zinc-700 italic font-black uppercase tracking-widest text-[10px]">
+                  <td colSpan={7} className="p-20 text-center text-zinc-600 italic font-black uppercase tracking-widest text-[10px]">
                     Falha na Sincronização de Dados
                   </td>
                 </tr>
               ) : data.items.length === 0 ? (
                 <tr>
-                   <td colSpan={7} className="p-20 text-center opacity-30">
-                     <AlertCircle className="w-12 h-12 mx-auto mb-4" />
-                     <p className="font-black uppercase tracking-widest text-xs italic">Nenhum cliente catalogado na base</p>
+                   <td colSpan={7} className="p-20 text-center opacity-60">
+                     <AlertCircle className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
+                     <p className="font-black uppercase tracking-widest text-xs italic text-zinc-500">Nenhum cliente catalogado na base</p>
                    </td>
                 </tr>
               ) : data.items.map((cliente) => (
@@ -503,9 +503,9 @@ export default function ClientesPage() {
             Falha na Sincronização de Dados
           </div>
         ) : data.items.length === 0 ? (
-          <div className="p-12 text-center bg-zinc-900/50 border border-zinc-800 rounded-2xl space-y-3 opacity-35">
-            <AlertCircle className="w-10 h-10 mx-auto" />
-            <p className="font-black uppercase tracking-widest text-xs italic">Nenhum cliente catalogado na base</p>
+          <div className="p-12 text-center bg-zinc-900/50 border border-zinc-800 rounded-2xl space-y-3 opacity-60">
+            <AlertCircle className="w-10 h-10 mx-auto text-zinc-600" />
+            <p className="font-black uppercase tracking-widest text-xs italic text-zinc-500">Nenhum cliente catalogado na base</p>
           </div>
         ) : (
           <>
@@ -627,11 +627,10 @@ export default function ClientesPage() {
               <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl">
-                    <button
-                      type="button"
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl">
+                    <button                      type="button"
                       onClick={() => setFormData({ ...formData, tipo: 'PF', tipo_pessoa: 'FISICA' })}
-                      className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      className={`py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.tipo === 'PF' 
                           ? 'bg-zinc-800 text-white shadow-md' 
                           : 'text-zinc-600 hover:text-white'
@@ -644,7 +643,7 @@ export default function ClientesPage() {
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, tipo: 'PJ', tipo_pessoa: 'JURIDICA' })}
-                      className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      className={`py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.tipo === 'PJ' 
                           ? 'bg-zinc-800 text-white shadow-md' 
                           : 'text-zinc-600 hover:text-white'
@@ -655,11 +654,11 @@ export default function ClientesPage() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl">
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl">
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, status: 'ATIVO' })}
-                      className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      className={`py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.status === 'ATIVO' 
                           ? 'bg-green-600/20 text-green-500 border border-green-600/30' 
                           : 'text-zinc-600 hover:text-zinc-400'
@@ -671,7 +670,7 @@ export default function ClientesPage() {
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, status: 'INATIVO' })}
-                      className={`py-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      className={`py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.status === 'INATIVO' 
                           ? 'bg-red-600/20 text-red-500 border border-red-600/30' 
                           : 'text-zinc-600 hover:text-zinc-400'
@@ -688,15 +687,18 @@ export default function ClientesPage() {
                     <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 px-2 flex items-center gap-1">
                       Perfil do Cadastro <span className="text-orange-500">*</span>
                     </label>
-                    <select 
-                      value={formData.perfil}
-                      onChange={(e) => setFormData({...formData, perfil: e.target.value as any})}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner appearance-none cursor-pointer"
-                    >
-                      <option value="CLIENTE">CLIENTE</option>
-                      <option value="FORNECEDOR">FORNECEDOR</option>
-                      <option value="AMBOS">AMBOS (CLIENTE & FORNECEDOR)</option>
-                    </select>
+                    <div className="relative">
+                      <select 
+                        value={formData.perfil}
+                        onChange={(e) => setFormData({...formData, perfil: e.target.value as any})}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner appearance-none cursor-pointer pr-10"
+                      >
+                        <option value="CLIENTE">CLIENTE</option>
+                        <option value="FORNECEDOR">FORNECEDOR</option>
+                        <option value="AMBOS">AMBOS (CLIENTE & FORNECEDOR)</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                    </div>
                   </div>
 
                   <div className="space-y-2 col-span-full md:col-span-2">
@@ -705,11 +707,11 @@ export default function ClientesPage() {
                     </label>
                     <input 
                        type="text" 
-                       id="field-cliente-nome" /* 👈 ID ADICIONADO */
+                       id="field-cliente-nome"
                        required
                        value={formData.nome || ''}
                        onChange={(e) => setFormData({...formData, nome: e.target.value})}
-                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold tracking-tight uppercase transition shadow-inner"
+                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold tracking-tight uppercase transition shadow-inner placeholder:text-zinc-700"
                        placeholder="IDENTIFICAÇÃO RECONHECIDA"
                     />
                   </div>
@@ -722,7 +724,7 @@ export default function ClientesPage() {
                            type="text" 
                            value={formData.razao_social || ''}
                            onChange={(e) => setFormData({...formData, razao_social: e.target.value})}
-                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner"
+                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner placeholder:text-zinc-700"
                            placeholder="RAZÃO SOCIAL"
                         />
                       </div>
@@ -732,7 +734,7 @@ export default function ClientesPage() {
                            type="text" 
                            value={formData.inscricao_estadual || ''}
                            onChange={(e) => setFormData({...formData, inscricao_estadual: e.target.value})}
-                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-mono transition shadow-inner"
+                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-mono transition shadow-inner placeholder:text-zinc-700"
                            placeholder="000.000.000"
                         />
                       </div>
@@ -745,11 +747,11 @@ export default function ClientesPage() {
                     </label>
                     <input 
                       type="text" 
-                      id="field-cliente-cpf" /* 👈 ID ADICIONADO */
+                      id="field-cliente-cpf"
                       required
                       value={formData.cpf_cnpj || ''}
                       onChange={(e) => setFormData({...formData, cpf_cnpj: e.target.value})}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-mono tracking-widest uppercase transition shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-mono tracking-widest uppercase transition shadow-inner placeholder:text-zinc-700"
                       placeholder="DOCUMENTO"
                     />
                   </div>
@@ -759,7 +761,7 @@ export default function ClientesPage() {
                       type="text" 
                       value={formData.contato || ''}
                       onChange={(e) => setFormData({...formData, contato: e.target.value})}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner placeholder:text-zinc-700"
                       placeholder="PESSOA DE CONTATO"
                     />
                   </div>
@@ -770,11 +772,11 @@ export default function ClientesPage() {
                     </label>
                     <input 
                       type="text" 
-                      id="field-cliente-telefone" /* 👈 ID ADICIONADO */
+                      id="field-cliente-telefone"
                       required
                       value={formData.telefone || ''}
                       onChange={(e) => setFormData({...formData, telefone: e.target.value})}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-mono transition shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-mono transition shadow-inner placeholder:text-zinc-700"
                       placeholder="(00) 00000-0000"
                     />
                   </div>
@@ -787,7 +789,7 @@ export default function ClientesPage() {
                       required
                       value={formData.email || ''}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition shadow-inner"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition shadow-inner placeholder:text-zinc-700"
                       placeholder="email@exemplo.com"
                     />
                   </div>
@@ -801,7 +803,7 @@ export default function ClientesPage() {
                        required
                        value={formData.endereco || ''}
                        onChange={(e) => setFormData({...formData, endereco: e.target.value})}
-                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner"
+                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner placeholder:text-zinc-700"
                        placeholder="RUA, NÚMERO, BAIRRO"
                     />
                   </div>
@@ -815,7 +817,7 @@ export default function ClientesPage() {
                        required
                        value={formData.cidade || ''}
                        onChange={(e) => setFormData({...formData, cidade: e.target.value})}
-                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner"
+                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition shadow-inner placeholder:text-zinc-700"
                        placeholder="CIDADE"
                     />
                   </div>
@@ -829,7 +831,7 @@ export default function ClientesPage() {
                        value={formData.uf || ''}
                        maxLength={2}
                        onChange={(e) => setFormData({...formData, uf: e.target.value.toUpperCase()})}
-                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition text-center shadow-inner font-mono"
+                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 font-bold uppercase transition text-center shadow-inner font-mono placeholder:text-zinc-700"
                        placeholder="UF"
                     />
                   </div>
@@ -839,8 +841,8 @@ export default function ClientesPage() {
                     <textarea 
                        value={formData.observacoes || ''}
                        onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 min-h-[140px] resize-y uppercase transition shadow-inner"
-                       placeholder="NOTAS ADICIONAIS"
+                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 min-h-[140px] resize-y transition shadow-inner placeholder:text-zinc-700"
+                       placeholder="Notas adicionais..."
                     />
                   </div>
                 </div>
@@ -857,7 +859,7 @@ export default function ClientesPage() {
                 </button>
                 <button 
                   type="submit" 
-                  id="btn-salvar-cliente" /* 👈 ID ADICIONADO */
+                  id="btn-salvar-cliente"
                   disabled={modalLoading}
                   className="bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-xl font-black uppercase tracking-wider text-xs transition-all active:scale-[0.98] shadow-xl shadow-orange-950/20 flex items-center justify-center gap-2 cursor-pointer"
                 >
