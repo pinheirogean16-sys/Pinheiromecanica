@@ -18,7 +18,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
     }
 
-    // 1. Validação de tipo e tamanho
     if (!file.type.startsWith('image/')) {
       return NextResponse.json({ error: 'O arquivo deve ser uma imagem.' }, { status: 400 });
     }
@@ -27,31 +26,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'A imagem deve ter no máximo 2MB.' }, { status: 400 });
     }
 
-    // 2. Prepara o diretório de destino
-    // Em produção (Hostinger standalone), os arquivos estáticos ficam em .next/standalone/public
-    // Em dev, ficam em public/
+    // 👇 Define o caminho do upload
+    // Em produção (Hostinger), salva em public_html/uploads
+    // Em desenvolvimento, salva em public/uploads
     const isProd = process.env.NODE_ENV === 'production';
+    
+    // O caminho da Hostinger para o public_html.
+    // Se o seu usuário for outro, ajuste aqui (ex: u123456789).
+    const hostingerUser = 'u710924521'; 
+    
     const uploadDir = isProd 
-      ? join(process.cwd(), '.next', 'standalone', 'public', 'uploads')
+      ? join('/home', hostingerUser, 'public_html', 'uploads')
       : join(process.cwd(), 'public', 'uploads');
 
-    // Garante que a pasta existe
+    // Cria a pasta se não existir
     if (!existsSync(uploadDir)) {
       await mkdir(uploadDir, { recursive: true });
     }
 
-    // 3. Gera um nome único para o arquivo
+    // Gera um nome único para o arquivo
     const timestamp = Date.now();
     const ext = file.name.split('.').pop() || 'png';
     const fileName = `logo-${timestamp}.${ext}`;
     const filePath = join(uploadDir, fileName);
 
-    // 4. Salva o arquivo no disco
+    // Salva o arquivo fisicamente
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
-    // 5. Retorna a URL pública (relativa)
+    // Retorna a URL pública
     return NextResponse.json({ url: `/uploads/${fileName}` });
 
   } catch (error) {
