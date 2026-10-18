@@ -5,7 +5,7 @@ import {
   ArrowLeft, Printer, Trash2, CheckCircle2, XCircle, 
   Camera, FileText, Hash, User, Calendar, ClipboardCheck,
   Loader2, AlertCircle, ExternalLink, Hash as HashIcon,
-  AlertTriangle, XOctagon, ChevronRight
+  AlertTriangle, XOctagon, ChevronRight, Maximize2
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -153,6 +153,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<any>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -218,8 +219,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
   }, [id]);
 
   const handleDelete = async () => {
-    if (!confirm('DESEJA REALMENTE CANCELAR E REMOVER ESTE LAUDO PERMANENTEMENTE?')) return;
-
     setDeleting(true);
     try {
       const res = await fetch(`/api/checklist/execucao/${id}`, {
@@ -237,6 +236,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
       toast.error('Erro ao conectar com a API.');
     } finally {
       setDeleting(false);
+      setShowDeleteModal(false);
     }
   };
 
@@ -267,8 +267,8 @@ function ChecklistResultadoContent({ id }: { id: string }) {
     <div className="max-w-[900px] mx-auto space-y-12 pb-20 print:p-0 print:m-0 print:max-w-none">
       {/* HEADER LAUDO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 print:hidden">
-        <div className="flex items-center gap-6">
-          <button onClick={() => router.push('/checklist')} className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group">
+        <div className="flex items-center gap-4">
+          <button onClick={() => router.push('/checklist')} className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group">
             <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
           </button>
           <div>
@@ -284,7 +284,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
             <Printer size={18} /> IMPRIMIR
           </button>
           <button 
-            onClick={handleDelete}
+            onClick={() => setShowDeleteModal(true)}
             disabled={deleting}
             className="p-4 bg-zinc-900 border border-zinc-800 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-2xl transition disabled:opacity-50"
           >
@@ -314,38 +314,18 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           <div className="flex items-center gap-3 relative mb-6">
             <div className="w-1.5 h-4 bg-orange-600 rounded-full" />
             <h2 className="text-sm font-black text-white print:text-black uppercase italic tracking-tight">Referência Operacional</h2>
-            
-            {execucao?.os && (
-              <Link href={`/os/${execucao.os.id}`} className="ml-auto hidden md:flex items-center gap-2 px-4 py-2 bg-orange-500/10 border border-orange-500/20 rounded-xl hover:bg-orange-500/20 transition-all print:hidden">
-                <FileText size={14} className="text-orange-500" />
-                <span className="text-[10px] font-black text-white uppercase tracking-widest">
-                  OS VINCULADA: #{execucao.os.numero}
-                </span>
-                <ChevronRight size={12} className="text-zinc-600" />
-              </Link>
-            )}
           </div>
           
           <div className="space-y-4 relative">
              {os ? (
                <div className="grid grid-cols-1 gap-4">
-                  <Link href={`/os/${os.id}`} className="block group/oslink print:hidden">
-                    <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl flex items-center justify-between group-hover/oslink:border-orange-500 transition-all">
-                       <div className="flex items-center gap-4">
-                          <div className="p-3 bg-zinc-900 rounded-xl text-zinc-500"><FileText size={18} /></div>
-                          <div>
-                             <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest">Ordem de Serviço</p>
-                             <p className="text-xs font-black text-white uppercase italic tracking-tighter">OS #{os.numero}</p>
-                          </div>
-                       </div>
-                       <ChevronRight size={16} className="text-zinc-800 group-hover/oslink:text-orange-500" />
-                    </div>
-                  </Link>
-                  <div className="hidden print:flex bg-white border border-gray-100 p-5 rounded-2xl items-center gap-4">
-                     <div className="p-3 bg-gray-100 rounded-xl text-zinc-500"><FileText size={18} /></div>
-                     <div>
-                        <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest">Ordem de Serviço</p>
-                        <p className="text-xs font-black text-black uppercase italic tracking-tighter">OS #{os.numero}</p>
+                  <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl print:bg-white print:border-gray-100">
+                     <div className="flex items-center gap-4">
+                        <div className="p-3 bg-zinc-900 rounded-xl text-zinc-500 print:bg-gray-100"><FileText size={18} /></div>
+                        <div>
+                           <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest">Ordem de Serviço</p>
+                           <p className="text-xs font-black text-white print:text-black uppercase italic tracking-tighter">OS #{os.numero}</p>
+                        </div>
                      </div>
                   </div>
                   <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl print:bg-white print:border-gray-100 flex items-center gap-4">
@@ -410,10 +390,10 @@ function ChecklistResultadoContent({ id }: { id: string }) {
               return (
                 <div 
                   key={item.id}
-                  className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] p-8 md:p-10 flex flex-col md:flex-row md:items-center gap-10 hover:border-orange-500/20 transition-all group print:bg-white print:border-b print:border-gray-100 print:rounded-none print:p-6"
+                  className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] p-6 sm:p-8 md:p-10 flex flex-col md:flex-row md:items-center gap-6 hover:border-orange-500/20 transition-all group print:bg-white print:border-b print:border-gray-100 print:rounded-none print:p-6"
                 >
                   <div className="flex flex-col items-center justify-center bg-zinc-950 border border-zinc-800 w-14 h-14 rounded-2xl shadow-inner shrink-0 group-hover:bg-orange-500/10 transition-colors print:bg-gray-100 print:border-gray-200">
-                     <span className="text-xl font-black text-zinc-800 font-mono italic group-hover:text-orange-500/30 transition-colors print:text-gray-400">{(index + 1).toString().padStart(2, '0')}</span>
+                     <span className="text-xl font-black text-zinc-700 font-mono italic group-hover:text-orange-500/50 transition-colors print:text-gray-400">{(index + 1).toString().padStart(2, '0')}</span>
                   </div>
 
                   <div className="flex-1 space-y-2">
@@ -461,6 +441,9 @@ function ChecklistResultadoContent({ id }: { id: string }) {
                                     alt={`Foto ${idx + 1}`} 
                                     className="w-28 h-24 object-cover flex-shrink-0 rounded-2xl border border-zinc-800 hover:scale-105 transition-transform" 
                                   />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-2xl">
+                                    <Maximize2 size={20} className="text-white" />
+                                  </div>
                                   {foto.legenda && <p className="text-[8px] text-zinc-500 mt-1 text-center font-black uppercase tracking-widest">{foto.legenda}</p>}
                                 </div>
                               ))
@@ -494,12 +477,12 @@ function ChecklistResultadoContent({ id }: { id: string }) {
 
          {/* OBSERVACOES FINAIS */}
          {observacoes && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-10 space-y-6 print:bg-white print:border-gray-200 print:rounded-lg">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 sm:p-10 space-y-6 print:bg-white print:border-gray-200 print:rounded-lg">
                <div className="flex items-center gap-3">
                   <div className="w-1.5 h-4 bg-zinc-600 rounded-full" />
                   <h2 className="text-sm font-black text-white print:text-black uppercase italic tracking-tight">Parecer Técnico Final</h2>
                </div>
-               <div className="bg-zinc-950 border border-zinc-900 p-8 rounded-3xl text-[11px] text-zinc-400 print:text-black font-bold uppercase tracking-[0.2em] leading-relaxed italic print:bg-white print:border-none print:p-0 line-clamp-3">
+               <div className="bg-zinc-950 border border-zinc-900 p-6 sm:p-8 rounded-3xl text-[11px] text-zinc-400 print:text-black font-bold uppercase tracking-[0.2em] leading-relaxed italic print:bg-white print:border-none print:p-0">
                   {observacoes}
                </div>
             </div>
@@ -507,7 +490,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
       </div>
 
       {/* FOOTER ASSINATURA (ONLY IN PRINT) */}
-      <div className="hidden print:grid grid-cols-2 gap-20 pt-20">
+      <div className="hidden print:grid grid-cols-2 gap-20 pt-20 page-break-inside-avoid">
           <div className="border-t border-black pt-4 text-center">
               <p className="text-[10px] font-black uppercase tracking-widest">Assinatura do Técnico</p>
               <p className="text-[8px] text-zinc-500 mt-1">{executado_por || 'Técnico Não Identificado'}</p>
@@ -517,6 +500,59 @@ function ChecklistResultadoContent({ id }: { id: string }) {
               <p className="text-[8px] text-zinc-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')}</p>
           </div>
       </div>
+
+      {/* MODAL DE EXCLUSÃO */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir Laudo</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente este laudo técnico?
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={deleting}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmar Exclusão
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
