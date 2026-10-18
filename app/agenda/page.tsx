@@ -22,7 +22,7 @@ const TIPOS_EVENTO = [
   { id: 'MANUTENCAO_PREVENTIVA', label: 'Mnt. Preventiva', color: 'bg-yellow-600', text: 'text-yellow-500' },
   { id: 'VISTORIA', label: 'Vistoria', color: 'bg-orange-600', text: 'text-orange-500' },
   { id: 'ENTREGA', label: 'Entrega', color: 'bg-purple-600', text: 'text-purple-500' },
-  { id: 'OUTRO', label: 'Outro', color: 'bg-zinc-600', text: 'text-zinc-600' },
+  { id: 'OUTRO', label: 'Outro', color: 'bg-zinc-600', text: 'text-zinc-500' },
 ];
 
 const STATUS_EVENTO = [
@@ -62,7 +62,7 @@ export default function AgendaPage() {
   const [mecanicos, setMecanicos] = useState<any[]>([]);
   const [ordens, setOrdens] = useState<any[]>([]);
 
-  // Drag and Drop State simulator (For rapid date moves)
+  // Drag and Drop State simulator
   const [movingEventId, setMovingEventId] = useState<string | null>(null);
 
   const loadEvents = useCallback(async () => {
@@ -80,7 +80,6 @@ export default function AgendaPage() {
         end = endOfDay(currentDate);
       }
 
-      // Expand temporal boundaries
       const queryStart = subDays(start, 7).toISOString();
       const queryEnd = addDays(end, 7).toISOString();
 
@@ -160,7 +159,6 @@ export default function AgendaPage() {
 
   const handleToday = () => setCurrentDate(new Date());
 
-  // Parses description prefix values: [BOX:BOX_01|DUR:2h] Raw text...
   const parsePrefixInfo = (desc: string) => {
     if (!desc) return { box: 'BOX_01', duracao: '2h', realDesc: '' };
     const match = desc.match(/^\[BOX:(.*?)\|DUR:(.*?)\]\s*(.*)/);
@@ -174,33 +172,28 @@ export default function AgendaPage() {
     return { box: 'BOX_01', duracao: '2h', realDesc: desc };
   };
 
-  // Compile full string for database standard storage
   const buildPrefixDesc = (box: string, duracao: string, realDesc: string) => {
     return `[BOX:${box || 'BOX_01'}|DUR:${duracao || '2h'}] ${realDesc || ''}`;
   };
 
-  // Front-end high-performance conflict detection
   const checkConflict = (eventID: string | null, startStr: string, endStr: string, mecanicoID: string | null, boxID: string | null) => {
     if (!startStr || !endStr) return { hasConflict: false, reason: '' };
     const startA = new Date(startStr).getTime();
     const endA = new Date(endStr).getTime();
 
     for (const other of events) {
-      if (other.id === eventID) continue; // Skip comparing to itself
+      if (other.id === eventID) continue;
       if (other.status === 'CANCELADO') continue;
 
       const startB = new Date(other.data_inicio).getTime();
       const endB = new Date(other.data_fim).getTime();
 
-      // Check overlap: (StartA < EndB) AND (EndA > StartB)
       if (startA < endB && endA > startB) {
-        // Mechanic conflict
         if (mecanicoID && other.mecanico_id === mecanicoID) {
           const mName = other.mecanico?.name || 'outro técnico';
           return { hasConflict: true, reason: `Conflito de agenda: o mecânico ${mName} já está alocado neste período.` };
         }
         
-        // Bay / Box conflict
         const otherMeta = parsePrefixInfo(other.descricao);
         if (boxID && otherMeta.box === boxID && boxID !== 'BOX_EXTERNO') {
           const boxLabel = BAYS_OFICINA.find(b => b.id === boxID)?.label || boxID;
@@ -213,9 +206,9 @@ export default function AgendaPage() {
 
   const openNewEvent = (date?: Date) => {
     const start = date ? startOfDay(date) : startOfDay(new Date());
-    start.setHours(8, 0, 0, 0); // Start slot
+    start.setHours(8, 0, 0, 0);
     const end = new Date(start);
-    end.setHours(10, 0, 0, 0); // +2h duration estimation
+    end.setHours(10, 0, 0, 0);
 
     setSelectedEvent({
       titulo: '',
@@ -255,7 +248,6 @@ export default function AgendaPage() {
 
       const newEnd = new Date(newStart.getTime() + durationMs);
 
-      // Perform conflict check before saving
       const targetPrefix = parsePrefixInfo(targetEvent.descricao);
       const conflict = checkConflict(movingEventId, newStart.toISOString(), newEnd.toISOString(), targetEvent.mecanico_id, targetPrefix.box);
       if (conflict.hasConflict) {
@@ -299,7 +291,6 @@ export default function AgendaPage() {
     setModalLoading(true);
 
     try {
-      // Build serialized prefix description
       const fullDesc = buildPrefixDesc(selectedEvent.box, selectedEvent.duracao, selectedEvent.realDesc);
       
       const payload = {
@@ -307,7 +298,7 @@ export default function AgendaPage() {
         descricao: fullDesc,
         tipo: selectedEvent.tipo,
         status: selectedEvent.status,
-        cor: TIPOS_EVENTO.find(t => t.id === selectedEvent.tipo)?.color || 'bg-zinc-650',
+        cor: TIPOS_EVENTO.find(t => t.id === selectedEvent.tipo)?.color || 'bg-zinc-500',
         data_inicio: new Date(selectedEvent.data_inicio).toISOString(),
         data_fim: new Date(selectedEvent.data_fim).toISOString(),
         cliente_id: selectedEvent.cliente_id || null,
@@ -316,7 +307,6 @@ export default function AgendaPage() {
         os_id: selectedEvent.os_id || null,
       };
 
-      // Conflict warning popup
       const conflict = checkConflict(selectedEvent.id || null, payload.data_inicio, payload.data_fim, selectedEvent.mecanico_id, selectedEvent.box);
       if (conflict.hasConflict) {
         if (!confirm(`⚠️ ATENÇÃO: ${conflict.reason}\nDeseja continuar mesmo assim e forçar a sobreposição?`)) {
@@ -376,7 +366,6 @@ export default function AgendaPage() {
     }
   };
 
-  // Month compilation variables
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const weekStart = startOfWeek(monthStart, { weekStartsOn: 0 });
@@ -385,7 +374,6 @@ export default function AgendaPage() {
 
   const weekDays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
-  // Front-end visual filtering based on checkbox select + technicians
   const filteredEvents = useMemo(() => {
     return events.filter(e => {
       const matchesTipo = filtrosTipo.includes(e.tipo);
@@ -395,57 +383,57 @@ export default function AgendaPage() {
   }, [events, filtrosTipo, filtroMecanico]);
 
   const getEventStyle = (tipo: string) => {
-    return TIPOS_EVENTO.find(t => t.id === tipo)?.color || 'bg-zinc-650';
+    return TIPOS_EVENTO.find(t => t.id === tipo)?.color || 'bg-zinc-500';
   };
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden bg-zinc-950 text-white min-h-screen">
+    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden bg-zinc-950 text-white min-h-screen">
       
       {/* HEADER PRINCIPAL */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-zinc-900">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-zinc-800">
         <div>
           <div className="flex items-center gap-3">
             <div className="w-2 h-7 bg-orange-600 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)]" />
             <h1 className="text-3xl font-black uppercase tracking-tight italic">Agenda Operacional Oficina</h1>
           </div>
-          <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.3em] mt-1 ml-5">Pinheiro Diesel Pro Workspace Allocator</p>
+          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mt-1 ml-5">VEHLOX Workspace Allocator</p>
         </div>
 
         <div className="flex flex-wrap gap-3">
           {movingEventId && (
             <button 
               onClick={() => setMovingEventId(null)}
-              className="bg-red-650 text-white rounded-2xl px-5 py-3 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 animate-pulse"
+              className="bg-red-600 text-white rounded-2xl px-5 py-3 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 animate-pulse"
             >
               Cancelar Planejador Mover
             </button>
           )}
 
-          <div className="flex items-center gap-2 bg-zinc-900/50 border border-zinc-805 p-1 rounded-[2rem] shadow-xl h-full">
+          <div className="flex items-center gap-2 bg-zinc-900/50 border border-zinc-800 p-1 rounded-2xl shadow-xl h-full">
             <button 
               onClick={() => setView('month')} 
-              className={`px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 ${view === 'month' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+              className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 ${view === 'month' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
             >
               <LayoutGrid size={14} /> Mês
             </button>
             <button 
               onClick={() => setView('week')} 
-              className={`px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 ${view === 'week' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+              className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 ${view === 'week' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
             >
               <List size={14} /> Semana
             </button>
             <button 
               onClick={() => setView('day')} 
-              className={`px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 ${view === 'day' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+              className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 ${view === 'day' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
             >
               <Maximize2 size={14} /> Dia
             </button>
           </div>
 
           <div className="flex items-center gap-1.5 bg-zinc-900/50 border border-zinc-800 p-1 rounded-2xl h-full">
-            <button onClick={handlePrev} className="p-3 text-zinc-400 hover:text-white hover:bg-zinc-850 rounded-xl transition"><ChevronLeft size={16} /></button>
-            <button onClick={handleToday} className="px-3 py-1 font-black text-[10px] text-zinc-550 hover:text-white uppercase transition tracking-widest italic">Hoje</button>
-            <button onClick={handleNext} className="p-3 text-zinc-400 hover:text-white hover:bg-zinc-850 rounded-xl transition"><ChevronRight size={16} /></button>
+            <button onClick={handlePrev} className="p-3 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition"><ChevronLeft size={16} /></button>
+            <button onClick={handleToday} className="px-3 py-1 font-black text-[10px] text-zinc-500 hover:text-white uppercase transition tracking-widest italic">Hoje</button>
+            <button onClick={handleNext} className="p-3 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition"><ChevronRight size={16} /></button>
           </div>
 
           <button 
@@ -461,7 +449,7 @@ export default function AgendaPage() {
         
         {/* FILTROS LATERAIS */}
         <div className="lg:col-span-3 space-y-6">
-          <section className="bg-zinc-900/40 border border-zinc-850 rounded-3xl p-8 space-y-8 shadow-2xl">
+          <section className="bg-zinc-900/40 border border-zinc-800 rounded-3xl p-6 space-y-6 shadow-2xl">
             <div>
               <div className="flex items-center gap-2 mb-6">
                 <Filter size={14} className="text-orange-600" />
@@ -484,7 +472,7 @@ export default function AgendaPage() {
                             }}
                             className="w-4 h-4 rounded border-zinc-800 bg-zinc-950 text-orange-600 focus:ring-orange-600/50 cursor-pointer"
                           />
-                          <span className={`text-[10px] font-black uppercase truncate ${filtrosTipo.includes(tipo.id) ? 'text-white' : 'text-zinc-650'}`}>
+                          <span className={`text-[10px] font-black uppercase truncate ${filtrosTipo.includes(tipo.id) ? 'text-white' : 'text-zinc-500'}`}>
                             {tipo.label}
                           </span>
                         </div>
@@ -508,7 +496,7 @@ export default function AgendaPage() {
               </div>
             </div>
 
-            <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-5 text-center flex items-center justify-between">
+            <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4 text-center flex items-center justify-between">
               <span className="text-[10px] text-zinc-500 font-black uppercase">Fila no Gráfico:</span>
               <span className="text-xl font-black text-orange-500 italic font-mono">{filteredEvents.length}</span>
             </div>
@@ -517,7 +505,7 @@ export default function AgendaPage() {
 
         {/* CALENDÁRIO GRID */}
         <div className="lg:col-span-9">
-          <section className="bg-zinc-900/40 border border-zinc-850 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col flex-1 min-h-0">
+          <section className="bg-zinc-900/40 border border-zinc-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col flex-1 min-h-0">
             <div className="p-6 border-b border-zinc-900 bg-zinc-950/20 flex items-center justify-between">
               <h2 className="text-lg font-black text-white uppercase tracking-widest italic">
                 {format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })}
@@ -527,16 +515,14 @@ export default function AgendaPage() {
 
             {view === 'month' && (
               <div className="flex-1 flex flex-col">
-                {/* HEADERS (DESKTOP) */}
                 <div className="hidden md:grid grid-cols-7 border-b border-zinc-900 bg-zinc-950/10">
                   {weekDays.map(day => (
-                    <div key={day} className="py-4 text-center text-[10px] font-black text-zinc-650 uppercase tracking-widest italic">
+                    <div key={day} className="py-4 text-center text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">
                       {day}
                     </div>
                   ))}
                 </div>
 
-                {/* GRID DE MÊS (DESKTOP) */}
                 <div className="hidden md:grid grid-cols-7 grid-rows-6 auto-rows-fr select-none">
                   {days.map((day) => {
                     const dayEvents = filteredEvents.filter(e => isSameDay(parseISO(e.data_inicio), day));
@@ -556,7 +542,7 @@ export default function AgendaPage() {
                         className={`min-h-[110px] border-r border-b border-zinc-900 p-2.5 space-y-1 relative group cursor-pointer transition ${!isCurrentMonth ? 'opacity-10' : ''} ${movingEventId ? 'hover:bg-orange-500/10 border-orange-500/20' : 'hover:bg-zinc-900/30'}`}
                       >
                         <div className="flex justify-between items-start">
-                          <span className={`text-[11px] font-mono font-black ${isTodayTag ? 'bg-orange-650 text-white w-5 h-5 flex items-center justify-center rounded-md font-bold' : 'text-zinc-600'}`}>
+                          <span className={`text-[11px] font-mono font-black ${isTodayTag ? 'bg-orange-600 text-white w-5 h-5 flex items-center justify-center rounded-md font-bold' : 'text-zinc-600'}`}>
                             {format(day, 'dd')}
                           </span>
                         </div>
@@ -564,8 +550,6 @@ export default function AgendaPage() {
                         <div className="space-y-1 overflow-hidden">
                           {dayEvents.slice(0, 3).map(event => {
                             const meta = parsePrefixInfo(event.descricao);
-                            
-                            // Check fast conflict badge
                             const conflict = checkConflict(event.id, event.data_inicio, event.data_fim, event.mecanico_id, meta.box);
 
                             return (
@@ -597,7 +581,7 @@ export default function AgendaPage() {
                             );
                           })}
                           {dayEvents.length > 3 && (
-                            <div className="text-[8px] text-zinc-650 font-black uppercase text-center font-mono">
+                            <div className="text-[8px] text-zinc-500 font-black uppercase text-center font-mono">
                               + {dayEvents.length - 3} mais
                             </div>
                           )}
@@ -607,13 +591,10 @@ export default function AgendaPage() {
                   })}
                 </div>
 
-                {/* TIMELINE VERTICAL (MOBILE) */}
                 <div className="md:hidden flex flex-col p-4 sm:p-6 space-y-6 bg-zinc-950/40">
                   {(() => {
-                    // Extract days of the current month
                     const monthDays = eachDayOfInterval({ start: startOfMonth(currentDate), end: endOfMonth(currentDate) });
                     
-                    // Filter days of the month that have events or is today
                     const timelineDays = monthDays.filter(day => {
                       const hasEvents = filteredEvents.some(e => isSameDay(parseISO(e.data_inicio), day));
                       const isDayToday = isToday(day);
@@ -641,7 +622,7 @@ export default function AgendaPage() {
                                 {format(day, "dd 'de' MMM", { locale: ptBR })}
                               </span>
                               {isDayToday && (
-                                <span className="bg-orange-650/20 text-orange-500 border border-orange-600/30 text-[8px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
+                                <span className="bg-orange-600/20 text-orange-500 border border-orange-600/30 text-[8px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
                                   HOJE
                                 </span>
                               )}
@@ -649,7 +630,7 @@ export default function AgendaPage() {
                             <button
                               type="button"
                               onClick={() => openNewEvent(day)}
-                              className="text-[10px] font-black text-orange-500 hover:text-orange-400 uppercase tracking-widest flex items-center gap-1 py-1.5 px-3 min-h-[44px] rounded-lg bg-zinc-900/50 border border-zinc-850 active:scale-95 transition"
+                              className="text-[10px] font-black text-orange-500 hover:text-orange-400 uppercase tracking-widest flex items-center gap-1 py-1.5 px-3 min-h-[44px] rounded-lg bg-zinc-900/50 border border-zinc-800 active:scale-95 transition"
                             >
                               <Plus size={12} /> Agendar
                             </button>
@@ -677,10 +658,10 @@ export default function AgendaPage() {
                                       setIsEditing(false);
                                       setShowModal(true); 
                                     }}
-                                    className="w-full min-w-0 break-words overflow-hidden rounded-xl bg-zinc-900 border border-zinc-805 p-4 flex flex-col gap-3 hover:border-orange-500/30 active:border-orange-500/50 transition cursor-pointer"
+                                    className="w-full min-w-0 break-words overflow-hidden rounded-xl bg-zinc-900 border border-zinc-800 p-4 flex flex-col gap-3 hover:border-orange-500/30 active:border-orange-500/50 transition cursor-pointer"
                                   >
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${TIPOS_EVENTO.find(t => t.id === event.tipo)?.text} bg-zinc-950 border border-zinc-850`}>
+                                      <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${TIPOS_EVENTO.find(t => t.id === event.tipo)?.text} bg-zinc-950 border border-zinc-800`}>
                                         {TIPOS_EVENTO.find(t => t.id === event.tipo)?.label}
                                       </span>
                                       {meta.duracao && (
@@ -696,7 +677,7 @@ export default function AgendaPage() {
                                         </p>
                                       )}
                                       {conflict.hasConflict && (
-                                        <div className="inline-block mt-1 text-[8px] bg-red-650 font-bold text-white px-2 py-0.5 rounded animate-pulse">⚠️ COLISÃO DE ESCOPO</div>
+                                        <div className="inline-block mt-1 text-[8px] bg-red-600 font-bold text-white px-2 py-0.5 rounded animate-pulse">⚠️ COLISÃO DE ESCOPO</div>
                                       )}
                                     </div>
 
@@ -706,7 +687,7 @@ export default function AgendaPage() {
                                       </p>
                                     )}
 
-                                    <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-850 text-zinc-500 text-[9px] font-black uppercase tracking-widest italic leading-none">
+                                    <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-800 text-zinc-500 text-[9px] font-black uppercase tracking-widest italic leading-none">
                                       <span className="flex items-center gap-1"><Clock size={10} className="text-zinc-700" /> {format(parseISO(event.data_inicio), 'HH:mm')} - {format(parseISO(event.data_fim), 'HH:mm')}</span>
                                       {event.mecanico && <span className="flex items-center gap-1 truncate"><UserIcon size={10} className="text-zinc-700 shrink-0" /> <span className="truncate">{event.mecanico.name}</span></span>}
                                     </div>
@@ -728,7 +709,7 @@ export default function AgendaPage() {
                 {filteredEvents.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-40 opacity-10 space-y-4">
                     <CalendarIcon size={100} className="text-zinc-500" />
-                    <p className="text-xs font-black uppercase tracking-[0.8em] text-zinc-650 italic">Fila Vazia</p>
+                    <p className="text-xs font-black uppercase tracking-[0.8em] text-zinc-500 italic">Fila Vazia</p>
                   </div>
                 ) : (
                   filteredEvents.map(event => {
@@ -738,7 +719,7 @@ export default function AgendaPage() {
                     return (
                       <div 
                         key={event.id}
-                        className={`bg-zinc-900 border ${conflict.hasConflict ? 'border-red-650/40 bg-zinc-950' : 'border-zinc-800'} rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-orange-500/30 transition group shadow-inner`}
+                        className={`bg-zinc-900 border ${conflict.hasConflict ? 'border-red-500/40 bg-zinc-950' : 'border-zinc-800'} rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-orange-500/30 transition group shadow-inner`}
                       >
                         <div className="flex items-center gap-6 min-w-0 flex-1">
                           <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center shadow-lg shrink-0 ${getEventStyle(event.tipo)}`}>
@@ -752,7 +733,7 @@ export default function AgendaPage() {
                                 {TIPOS_EVENTO.find(t => t.id === event.tipo)?.label}
                               </span>
                               {meta.duracao && (
-                                <span className="text-[8px] font-bold text-zinc-550 uppercase tracking-wider">⏱️ ESTIMADO: {meta.duracao}</span>
+                                <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-wider">⏱️ ESTIMADO: {meta.duracao}</span>
                               )}
                               {meta.box && (
                                 <span className="text-[8px] font-black bg-zinc-950 text-orange-500 border border-zinc-800 px-2 py-0.5 rounded uppercase">
@@ -806,7 +787,7 @@ export default function AgendaPage() {
                               setIsEditing(false);
                               setShowModal(true); 
                             }}
-                            className="p-3 bg-zinc-900 border border-zinc-800 text-zinc-650 group-hover:text-white rounded-xl hover:bg-zinc-800 transition"
+                            className="p-3 bg-zinc-900 border border-zinc-800 text-zinc-500 group-hover:text-white rounded-xl hover:bg-zinc-800 transition"
                           >
                             <ChevronRight size={18} />
                           </button>
@@ -839,7 +820,7 @@ export default function AgendaPage() {
               </div>
               <button 
                 onClick={() => { setShowModal(false); setSelectedEvent(null); setIsEditing(false); }}
-                className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-550 hover:text-white transition"
+                className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-white transition"
               >
                 <X size={20} />
               </button>
@@ -848,7 +829,6 @@ export default function AgendaPage() {
             {isEditing ? (
               <form onSubmit={handleSaveEvent} className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
                 
-                {/* Real-time conflict validation indicator inside modal */}
                 {(() => {
                   const conflict = checkConflict(selectedEvent.id || null, selectedEvent.data_inicio, selectedEvent.data_fim, selectedEvent.mecanico_id, selectedEvent.box);
                   if (conflict.hasConflict) {
@@ -905,7 +885,6 @@ export default function AgendaPage() {
                     </select>
                   </div>
 
-                  {/* SELECT BOX / ELEVADOR */}
                   <div className="space-y-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Alocação de Box / Elevador</label>
                     <select 
@@ -919,7 +898,6 @@ export default function AgendaPage() {
                     </select>
                   </div>
 
-                  {/* ESTIMATIVA DURAÇÃO SLIDER / FIELD */}
                   <div className="space-y-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Estimativa de Duração Operacional</label>
                     <select
@@ -1060,7 +1038,7 @@ export default function AgendaPage() {
                         <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
                         <div>
                           <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">Alerta de Colisão:</p>
-                          <p className="text-[10px] text-zinc-350 uppercase mt-0.5 leading-relaxed">{conflict.reason}</p>
+                          <p className="text-[10px] text-zinc-400 uppercase mt-0.5 leading-relaxed">{conflict.reason}</p>
                         </div>
                       </div>
                     );
@@ -1070,27 +1048,27 @@ export default function AgendaPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="md:col-span-2 space-y-1">
-                    <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Título do Agendamento</p>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Título do Agendamento</p>
                     <p className="text-xl font-black text-white uppercase italic tracking-tighter">{selectedEvent?.titulo || 'SEM TÍTULO'}</p>
                   </div>
 
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Tipo</p>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Tipo</p>
                       <span className={`inline-block px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest ${TIPOS_EVENTO.find(t => t.id === selectedEvent?.tipo)?.color || 'bg-zinc-600'} text-white`}>
                         {TIPOS_EVENTO.find(t => t.id === selectedEvent?.tipo)?.label || 'OUTRO'}
                       </span>
                     </div>
 
                     <div className="space-y-1">
-                      <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Status de Oficina</p>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Status de Oficina</p>
                       <span className="text-xs font-black text-white bg-zinc-950 px-3 py-1.5 border border-zinc-800 rounded-lg uppercase italic tracking-wider">{selectedEvent?.status || '---'}</span>
                     </div>
                   </div>
 
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Data Inicial de Carga</p>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Data Inicial de Carga</p>
                       <div className="flex items-center gap-2 text-white font-mono text-sm italic">
                         <CalendarIcon size={14} className="text-orange-500 animate-pulse" />
                         {selectedEvent?.data_inicio ? format(parseISO(selectedEvent.data_inicio), 'dd/MM/yyyy HH:mm') : '---'}
@@ -1098,7 +1076,7 @@ export default function AgendaPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Previsão de Desocupação</p>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Previsão de Desocupação</p>
                       <div className="flex items-center gap-2 text-white font-mono text-sm italic">
                         <Clock size={14} className="text-orange-500" />
                         {selectedEvent?.data_fim ? format(parseISO(selectedEvent.data_fim), 'dd/MM/yyyy HH:mm') : '---'}
@@ -1108,7 +1086,7 @@ export default function AgendaPage() {
 
                   <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
-                      <p className="text-[9px] text-zinc-700 font-black uppercase tracking-widest flex items-center gap-2">
+                      <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
                         <UserIcon size={12} /> Cliente
                       </p>
                       <p className="text-xs font-black text-white uppercase italic truncate">
@@ -1117,7 +1095,7 @@ export default function AgendaPage() {
                     </div>
 
                     <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
-                      <p className="text-[9px] text-zinc-700 font-black uppercase tracking-widest flex items-center gap-2">
+                      <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
                         <Car size={12} /> Veículo Placa
                       </p>
                       <p className="text-xs font-black text-white uppercase italic truncate">
@@ -1130,7 +1108,7 @@ export default function AgendaPage() {
                     </div>
 
                     <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
-                      <p className="text-[9px] text-zinc-700 font-black uppercase tracking-widest flex items-center gap-2">
+                      <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
                         <FileText size={12} /> Ordem Serviço
                       </p>
                       <p className="text-xs font-black text-white uppercase italic truncate">
@@ -1145,14 +1123,14 @@ export default function AgendaPage() {
 
                   <div className="md:col-span-2 grid grid-cols-2 gap-6 pt-4 border-t border-zinc-900 leading-none">
                     <div className="space-y-1.5">
-                      <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Responsável Mecânico</p>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Responsável Mecânico</p>
                       <p className="text-xs font-black text-white uppercase italic">
                         {selectedEvent?.mecanico?.name || mecanicos.find(m => m.id === selectedEvent?.mecanico_id)?.name || 'NÃO ATRIBUÍDO'}
                       </p>
                     </div>
 
                     <div className="space-y-1.5">
-                      <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Box Selecionado</p>
+                      <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Box Selecionado</p>
                       <p className="text-xs font-black text-orange-500 uppercase italic">
                         📍 {BAYS_OFICINA.find(b => b.id === selectedEvent?.box)?.label || 'BOX GERAL'}
                       </p>
@@ -1160,7 +1138,7 @@ export default function AgendaPage() {
                   </div>
 
                   <div className="md:col-span-2 space-y-2 mt-4">
-                    <p className="text-[10px] text-zinc-650 font-black uppercase tracking-widest">Descrição Operacional</p>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Descrição Operacional</p>
                     <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl min-h-[90px] text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-relaxed">
                       {selectedEvent?.realDesc || selectedEvent?.descricao || 'SEM DETALHES DE ESCOPO ADICIONADOS.'}
                     </div>
