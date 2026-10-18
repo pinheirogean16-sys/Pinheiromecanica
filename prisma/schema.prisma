@@ -154,12 +154,15 @@ model ConfiguracaoEmpresa {
 }
 
 model Empresa {
-  id         String   @id
-  nome       String
-  cnpj       String?  @unique
-  created_at DateTime @default(now())
-  updated_at DateTime
-  User       User[]
+  id             String    @id
+  nome           String
+  cnpj           String?   @unique
+  status         String    @default("ATIVO") // ATIVO, BLOQUEADO, CANCELADO
+  plano          String    @default("TRIAL") // TRIAL, BASICO, PRO
+  trial_ends_at  DateTime? // Data de expiração do teste grátis
+  created_at     DateTime  @default(now())
+  updated_at     DateTime
+  User           User[]
 }
 
 model EventoAgenda {
