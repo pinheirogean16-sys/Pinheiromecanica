@@ -320,19 +320,19 @@ export default function DashboardPage() {
           </div>
           <Link href="/configuracoes/plano" className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition shadow-lg shadow-orange-950/20">Fazer Upgrade</Link>
         </div>
- ) : planoData?.plano === 'PRO' ? (
-  <div className="bg-orange-500/10 border border-orange-500/30 rounded-3xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-    <div className="flex items-center gap-4">
-      <div className="p-3 bg-orange-500/20 rounded-2xl text-orange-500">
-        <Crown className="w-6 h-6" />
-      </div>
-      <div>
-        <h3 className="text-sm font-black text-white uppercase tracking-tight">Plano PRO Ativo</h3>
-        <p className="text-xs text-zinc-400 mt-1">Você tem acesso a todos os recursos. Próxima cobrança em breve.</p>
-      </div>
-    </div>
-    <Link href="/configuracoes/plano" className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition shadow-lg shadow-orange-950/20">Gerenciar Plano</Link>
-  </div>
+      ) : planoData?.plano === 'PRO' ? (
+        <div className="bg-orange-500/10 border border-orange-500/30 rounded-3xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-orange-500/20 rounded-2xl text-orange-500">
+              <Crown className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-white uppercase tracking-tight">Plano PRO Ativo</h3>
+              <p className="text-xs text-zinc-400 mt-1">Você tem acesso a todos os recursos. Próxima cobrança em breve.</p>
+            </div>
+          </div>
+          <Link href="/configuracoes/plano" className="px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition shadow-lg shadow-orange-950/20">Gerenciar Plano</Link>
+        </div>
       ) : null}
 
       {/* 1. HERO HEADER DASHBOARD */}
@@ -559,8 +559,8 @@ export default function DashboardPage() {
                     cx="50%" cy="50%"
                     innerRadius={60} outerRadius={80}
                     paddingAngle={4}
-                    dataKey="value"    // 👈 CORRIGIDO: lê o campo "value" da API
-                    nameKey="name"     // 👈 CORRIGIDO: lê o campo "name" da API
+                    dataKey="value"
+                    nameKey="name"
                   >
                     {osPorStatus.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="#09090b" strokeWidth={2} />
