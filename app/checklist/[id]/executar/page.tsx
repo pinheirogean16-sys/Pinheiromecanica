@@ -4,7 +4,8 @@ import { useState, useEffect, use, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   ChevronLeft, Loader2, ClipboardCheck, 
-  CheckCircle2, Camera, XCircle, AlertCircle, Check, TriangleAlert, Minus
+  CheckCircle2, Camera, XCircle, AlertCircle, Check, TriangleAlert, Minus,
+  ChevronDown // 👈 CORREÇÃO: import adicionado
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
