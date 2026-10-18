@@ -52,7 +52,9 @@ export default function MasterAdminPage() {
         toast.success(payload.plano ? 'Plano atualizado!' : 'Status atualizado!');
         await loadData(); // Recarrega os dados
       } else {
-        toast.error('Erro ao atualizar empresa.');
+        // 👇 LÊ O ERRO REAL DA API ANTES DE MOSTRAR O TOAST
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.error || 'Erro ao atualizar empresa.');
       }
     } catch {
       toast.error('Erro de conexão.');
@@ -207,8 +209,8 @@ export default function MasterAdminPage() {
                         onClick={() => handleUpdate(emp.id, { status: emp.status === 'ATIVO' ? 'BLOQUEADO' : 'ATIVO' })}
                         className={`p-2 rounded-lg transition ${
                           emp.status === 'ATIVO' 
-                          ? 'text-red-500 hover:bg-red-500/10' // Mantido vermelho (Ação Destrutiva)
-                          : 'text-emerald-500 hover:bg-emerald-500/10' // Verde para restaurar
+                          ? 'text-red-500 hover:bg-red-500/10' 
+                          : 'text-emerald-500 hover:bg-emerald-500/10' 
                         }`}
                         title={emp.status === 'ATIVO' ? 'Bloquear Empresa' : 'Desbloquear Empresa'}
                       >
