@@ -50,6 +50,20 @@ export async function middleware(request: NextRequest) {
     return denyAccess(pathname, request);
   }
 
+  // 4. 🔒 PROTEÇÃO DO PAINEL SUPER ADMIN
+  if (pathname.startsWith('/master-admin') || pathname.startsWith('/api/master-admin')) {
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+    
+    // Se o e-mail do token for diferente do e-mail mestre, bloqueia
+    if (!superAdminEmail || payload.email !== superAdminEmail) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'Acesso negado. Área restrita.' }, { status: 403 });
+      }
+      // Se for tentar acessar a tela pela URL, chuta pro dashboard
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
