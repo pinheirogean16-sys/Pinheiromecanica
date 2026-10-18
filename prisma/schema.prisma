@@ -161,7 +161,7 @@ model Empresa {
   plano          String    @default("TRIAL") // TRIAL, BASICO, PRO
   trial_ends_at  DateTime? // Data de expiração do teste grátis
   created_at     DateTime  @default(now())
-  updated_at     DateTime
+  updated_at     DateTime  @updatedAt // Corrigido aqui!
   User           User[]
 }
 
@@ -572,6 +572,12 @@ model User {
   empresa_id                                  String
   ativo                                       Boolean        @default(true)
   token_version                               Int            @default(0)
+  
+  // 👇 ADICIONADO PARA RECUPERAÇÃO DE SENHA
+  reset_token                                String?
+  reset_token_expires                        DateTime?
+  // 👆
+
   EventoAgenda_EventoAgenda_mecanico_idToUser EventoAgenda[] @relation("EventoAgenda_mecanico_idToUser")
   EventoAgenda_EventoAgenda_usuario_idToUser  EventoAgenda[] @relation("EventoAgenda_usuario_idToUser")
   Notificacao                                 Notificacao[]
