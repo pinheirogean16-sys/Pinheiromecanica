@@ -5,61 +5,72 @@ import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 import { verificarContasAtrasadas, verificarContasAVencer } from '@/lib/notificacoes-financeiras';
 import { notificarPreventivasPendentes } from '@/lib/preventivas';
 
+// ============================================================
+// SCHEMAS DE VALIDAÇÃO
+// ============================================================
 const notificacaoSchema = z.object({
-  titulo: z.string().min(1).trim(),
-  mensagem: z.string().min(1).trim(),
-  link: z.string().optional().nullable(),
-  usuario_id: z.string().min(1)
+  titulo: z.string().min(1).max(200).trim(),
+  mensagem: z.string().min(1).max(2000).trim(),
+  link: z.string().max(500).optional().nullable().refine(
+    (val) => !val || val.startsWith('/') || val.startsWith('https://') || val.startsWith('http://'),
+    { message: 'Link inválido. Use caminho relativo ou URL http(s).' }
+  ),
+  usuario_id: z.string().min(1),
 });
 
+const listarQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  lida: z.enum(['true', 'false']).optional(),
+});
+
+// ============================================================
+// GET — Listar notificações do usuário
+// ============================================================
 export async function GET(request: Request) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
 
     const { searchParams } = new URL(request.url);
-    const triggerCheck = searchParams.get('triggerCheck') === 'true';
 
-    // Trigger financial check for admin/financial roles if requested
-    if (triggerCheck && (user.role === 'ADMIN' || user.role === 'FINANCEIRO')) {
-      // Essas funções já criam notificações no banco para os admins
-      await verificarContasAtrasadas(user.empresa_id);
-      await verificarContasAVencer(3, user.empresa_id);
-    }
+    // ✅ REMOVIDO: triggerCheck via GET (violação semântica e DoS)
+    // A verificação de contas deve ser feita por cron job dedicado
+    // (POST /api/financeiro/alertas/verificar), nunca por GET público.
 
-    if (triggerCheck && (user.role === 'ADMIN' || user.role === 'LIDER')) {
-      await notificarPreventivasPendentes(user.empresa_id);
-    }
+    const parsed = listarQuerySchema.parse({
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit') || searchParams.get('limite'),
+      lida: searchParams.get('lida') || undefined,
+    });
 
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || searchParams.get('limite') || '10');
+    const { page, limit, lida } = parsed;
     const skip = (page - 1) * limit;
 
-    const where: any = { 
+    const where: any = {
       usuario_id: user.id,
-      empresa_id: user.empresa_id
+      empresa_id: user.empresa_id,
     };
 
-    const lidaParam = searchParams.get('lida');
-    if (lidaParam !== null) {
-      where.lida = lidaParam === 'true';
+    if (lida !== undefined) {
+      where.lida = lida === 'true';
     }
 
     const [items, total, naoLidas] = await Promise.all([
       prisma.notificacao.findMany({
         where,
-        orderBy: [
-          { lida: 'asc' },
-          { created_at: 'desc' }
-        ],
+        orderBy: [{ lida: 'asc' }, { created_at: 'desc' }],
         skip,
         take: limit,
       }),
       prisma.notificacao.count({ where }),
-      prisma.notificacao.count({ where: { usuario_id: user.id, empresa_id: user.empresa_id, lida: false } })
+      prisma.notificacao.count({
+        where: { usuario_id: user.id, empresa_id: user.empresa_id, lida: false },
+      }),
     ]);
 
     return NextResponse.json({
@@ -67,20 +78,28 @@ export async function GET(request: Request) {
       total,
       naoLidas,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
-  } catch (error) {
-    log('ERROR', 'NOTIFICACAO', 'Erro ao buscar notificações', { error }, 'sistema');
-    return NextResponse.json({ items: [], total: 0, page: 1, totalPages: 0 });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
+    // ✅ Não engole o erro: retorna 500 real
+    return apiError(error, 'NOTIFICACAO', 'Erro ao buscar notificações');
   }
 }
 
+// ============================================================
+// POST — Criar notificação manual
+// ============================================================
 export async function POST(request: Request) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // Apenas ADMIN ou LIDER costumam criar notificações manuais para outros
     if (!checkPermission(user, 'notificacao', 'criar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -88,29 +107,67 @@ export async function POST(request: Request) {
     const body = notificacaoSchema.parse(await request.json());
     const empresa_id = user.empresa_id;
 
+    // ✅ NOVO: valida que o usuario_id pertence à mesma empresa (IDOR fix)
+    const destinatario = await prisma.user.findFirst({
+      where: { id: body.usuario_id, empresa_id },
+      select: { id: true, name: true },
+    });
+
+    if (!destinatario) {
+      return NextResponse.json(
+        { error: 'Usuário destinatário não encontrado nesta empresa.' },
+        { status: 400 }
+      );
+    }
+
     const notificacao = await prisma.notificacao.create({
       data: {
         id: globalThis.crypto.randomUUID(),
         empresa_id,
         titulo: body.titulo,
         mensagem: body.mensagem,
-        link: body.link,
-        usuario_id: body.usuario_id
-      }
+        link: body.link || null,
+        usuario_id: body.usuario_id,
+      },
     });
 
-    log('INFO', 'NOTIFICACAO', 'Notificação criada', { id: notificacao.id, para: body.usuario_id }, user?.name);
+    // ✅ NOVO: auditoria da criação manual
+    await createAuditLog({
+      modulo: 'NOTIFICACAO',
+      acao: 'CRIAR',
+      entidade: 'Notificacao',
+      entidade_id: notificacao.id,
+      usuario: user?.name || user?.email || 'Sistema',
+      empresa_id,
+      dados_depois: {
+        titulo: body.titulo,
+        destinatario: destinatario.name,
+      },
+    });
+
+    log(
+      'INFO',
+      'NOTIFICACAO',
+      'Notificação criada',
+      { id: notificacao.id, para: body.usuario_id },
+      user?.name
+    );
 
     return NextResponse.json(notificacao);
-  } catch (error) {
-    log('ERROR', 'NOTIFICACAO', 'Erro ao criar notificação', { error }, 'sistema');
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: 'Erro ao criar notificação' }, { status: 500 });
+    return apiError(error, 'NOTIFICACAO', 'Erro ao criar notificação');
   }
 }
 
+// ============================================================
+// DELETE — Excluir notificações do usuário
+// ============================================================
 export async function DELETE(request: Request) {
   try {
     const { error, user } = await requireAuth();
@@ -120,18 +177,37 @@ export async function DELETE(request: Request) {
     const deleteType = searchParams.get('type');
 
     if (deleteType === 'todas') {
-      await prisma.notificacao.deleteMany({
-        where: { 
+      const result = await prisma.notificacao.deleteMany({
+        where: {
           usuario_id: user.id,
-          empresa_id: user.empresa_id
-        }
+          empresa_id: user.empresa_id,
+        },
       });
-      return NextResponse.json({ success: true });
+
+      // ✅ NOVO: auditoria da exclusão em massa
+      await createAuditLog({
+        modulo: 'NOTIFICACAO',
+        acao: 'EXCLUIR',
+        entidade: 'Notificacao',
+        entidade_id: 'TODAS',
+        usuario: user?.name || user?.email || 'Sistema',
+        empresa_id: user.empresa_id,
+        dados_antes: { deletadas: result.count },
+      });
+
+      log(
+        'INFO',
+        'NOTIFICACAO',
+        'Notificações excluídas em massa',
+        { quantidade: result.count },
+        user?.name
+      );
+
+      return NextResponse.json({ success: true, deleted: result.count });
     }
 
     return NextResponse.json({ error: 'Tipo de exclusão inválido' }, { status: 400 });
-  } catch (error) {
-    log('ERROR', 'NOTIFICACAO', 'Erro ao excluir notificações', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao excluir notificações' }, { status: 500 });
+  } catch (error: any) {
+    return apiError(error, 'NOTIFICACAO', 'Erro ao excluir notificações');
   }
 }
