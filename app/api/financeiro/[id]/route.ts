@@ -5,6 +5,7 @@ import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
+import { apiError } from '@/lib/api-error';
 import { z } from 'zod';
 
 // A17: status como enum (não texto livre)
@@ -18,13 +19,13 @@ const updateFinanceiroSchema = z.object({
   data_vencimento: z.string().optional().nullable(),
   data_pagamento: z.string().optional().nullable(),
   status: z.enum(STATUS_VALIDOS).optional(),
-  forma_pagamento: z.string().optional().nullable(),
-  categoria: z.string().optional().nullable(),
-  centro_custo: z.string().optional().nullable(),
-  numero_documento: z.string().optional().nullable(),
+  forma_pagamento: z.enum(['DINHEIRO', 'PIX', 'BOLETO', 'CARTAO', 'PARCELADO']).optional().nullable(), // 👈 ENUM
+  categoria: z.string().max(100).optional().nullable(),
+  centro_custo: z.enum(['OFICINA', 'CAMPO', 'RESGATE', 'MOTOR', 'CAIXA', 'DIFERENCIAL', 'ELETRICA', 'INJECAO', 'BORRACHARIA']).optional().nullable(), // 👈 ENUM
+  numero_documento: z.string().max(100).optional().nullable(),
   os_id: z.string().optional().nullable(),
   cliente_id: z.string().optional().nullable(),
-  comprovante_url: z.string().optional().nullable(),
+  comprovante_url: z.string().max(500).optional().nullable(),
 });
 
 // A16: grava data no meio-dia UTC para evitar deslocamento de fuso (UTC-3)
@@ -94,12 +95,8 @@ export async function GET(
     };
 
     return NextResponse.json(movimentacao);
-  } catch (error) {
-    log('ERROR', 'FINANCEIRO', 'Erro ao buscar movimentação', { error }, 'sistema');
-    return NextResponse.json(
-      { error: 'Erro ao buscar movimentação' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return apiError(error, 'FINANCEIRO', 'Erro ao buscar movimentação');
   }
 }
 
@@ -149,8 +146,6 @@ export async function PUT(
     }
 
     // A27: bloqueia transição de status para PAGO via PUT.
-    // A baixa de pagamento só pode acontecer via POST /api/financeiro/[id]/pagar,
-    // que limpa as notificações de atraso e não desvincula OS/cliente.
     if (body.status === 'PAGO' && antes.status !== 'PAGO') {
       log(
         'WARN',
@@ -220,8 +215,12 @@ export async function PUT(
     updateData.updated_by = user?.name || user?.email || 'Sistema';
     updateData.updated_at = new Date();
 
+    // ✅ Redundância de segurança: empresa_id no where
     const movimentacao = await prisma.movimentacaoFinanceira.update({
-      where: { id },
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      },
       data: updateData,
     });
 
@@ -244,18 +243,14 @@ export async function PUT(
     }
 
     return NextResponse.json(movimentacao);
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.issues[0].message },
         { status: 400 }
       );
     }
-    log('ERROR', 'FINANCEIRO', 'Erro ao atualizar movimentação', { error }, 'sistema');
-    return NextResponse.json(
-      { error: 'Erro ao atualizar movimentação' },
-      { status: 500 }
-    );
+    return apiError(error, 'FINANCEIRO', 'Erro ao atualizar movimentação');
   }
 }
 
@@ -296,8 +291,12 @@ export async function DELETE(
       );
     }
 
+    // ✅ Redundância de segurança: empresa_id no where
     await prisma.movimentacaoFinanceira.delete({
-      where: { id },
+      where: { 
+        id,
+        empresa_id: user.empresa_id 
+      },
     });
 
     await createAuditLog({
@@ -318,11 +317,7 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    log('ERROR', 'FINANCEIRO', 'Erro ao excluir movimentação', { error }, 'sistema');
-    return NextResponse.json(
-      { error: 'Erro ao excluir movimentação' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return apiError(error, 'FINANCEIRO', 'Erro ao excluir movimentação');
   }
 }
