@@ -65,7 +65,7 @@ function validarCpfCnpj(valor: string): boolean {
 // ============================================================
 const clienteSchema = z.object({
   tipo: z.enum(['PF', 'PJ']).default('PJ'),
-  tipo_pessoa: z.enum(['FISICA', 'JURIDICA']).optional(), // 👈 ENUM
+  tipo_pessoa: z.enum(['FISICA', 'JURIDICA']).optional(),
   nome: z.string().min(3, 'Nome muito curto').trim(),
   razao_social: z.string().optional().nullable(),
   nome_fantasia: z.string().optional().nullable(),
@@ -80,7 +80,7 @@ const clienteSchema = z.object({
   telefone_secundario: z.string().optional().nullable(),
   contato: z.string().optional().nullable(),
   email: z.string().email('E-mail inválido').optional().nullable().or(z.literal('')),
-  status: z.enum(['ATIVO', 'INATIVO']).default('ATIVO'), // 👈 ENUM
+  status: z.enum(['ATIVO', 'INATIVO']).default('ATIVO'),
   cep: z.string().optional().nullable(),
   endereco: z.string().optional().nullable(),
   numero: z.string().optional().nullable(),
@@ -94,11 +94,14 @@ const clienteSchema = z.object({
   ativo: z.boolean().optional().default(true),
 });
 
+// ✅ CORRIGIDO: `.nullish()` aceita `null` e `undefined`.
+// `searchParams.get()` retorna `null` quando o parâmetro não existe na URL,
+// e `.optional()` só aceita `undefined` — daí o erro "Expected string, received null".
 const listarClientesQuerySchema = z.object({
-  q: z.string().optional().transform(v => v?.slice(0, 100) || ''),
-  status: z.enum(['ATIVO', 'INATIVO']).optional(),
-  perfil: z.enum(['CLIENTE', 'FORNECEDOR', 'AMBOS']).optional(),
-  tipo: z.enum(['PF', 'PJ']).optional(),
+  q: z.string().nullish().transform((v) => v?.slice(0, 100) || ''),
+  status: z.enum(['ATIVO', 'INATIVO']).nullish(),
+  perfil: z.enum(['CLIENTE', 'FORNECEDOR', 'AMBOS']).nullish(),
+  tipo: z.enum(['PF', 'PJ']).nullish(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });
@@ -116,13 +119,16 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+
+    // ✅ CORRIGIDO: `|| undefined` converte `null` em `undefined`,
+    // garantindo compatibilidade com `.default()` e `.nullish()`.
     const parsed = listarClientesQuerySchema.parse({
-      q: searchParams.get('q'),
-      status: searchParams.get('status'),
-      perfil: searchParams.get('perfil'),
-      tipo: searchParams.get('tipo'),
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      q: searchParams.get('q') || undefined,
+      status: searchParams.get('status') || undefined,
+      perfil: searchParams.get('perfil') || undefined,
+      tipo: searchParams.get('tipo') || undefined,
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { q, status, perfil, tipo, page, limit } = parsed;
