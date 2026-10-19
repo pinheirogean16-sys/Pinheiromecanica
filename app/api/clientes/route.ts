@@ -94,16 +94,20 @@ const clienteSchema = z.object({
   ativo: z.boolean().optional().default(true),
 });
 
-// ✅ CORRIGIDO: `.nullish()` aceita `null` e `undefined`.
-// `searchParams.get()` retorna `null` quando o parâmetro não existe na URL,
-// e `.optional()` só aceita `undefined` — daí o erro "Expected string, received null".
+// ✅ CORRIGIDO: Aumentado o limite máximo para 1000 para aceitar o `limit=1000` do Dashboard
 const listarClientesQuerySchema = z.object({
   q: z.string().nullish().transform((v) => v?.slice(0, 100) || ''),
   status: z.enum(['ATIVO', 'INATIVO']).nullish(),
   perfil: z.enum(['CLIENTE', 'FORNECEDOR', 'AMBOS']).nullish(),
   tipo: z.enum(['PF', 'PJ']).nullish(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(1000).default(10)
+  ),
 });
 
 // ============================================================
@@ -120,8 +124,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
-    // ✅ CORRIGIDO: `|| undefined` converte `null` em `undefined`,
-    // garantindo compatibilidade com `.default()` e `.nullish()`.
     const parsed = listarClientesQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       status: searchParams.get('status') || undefined,
