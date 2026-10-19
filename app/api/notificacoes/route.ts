@@ -6,8 +6,6 @@ import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
-import { verificarContasAtrasadas, verificarContasAVencer } from '@/lib/notificacoes-financeiras';
-import { notificarPreventivasPendentes } from '@/lib/preventivas';
 
 // ============================================================
 // SCHEMAS DE VALIDAÇÃO
@@ -38,13 +36,13 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
 
-    // ✅ REMOVIDO: triggerCheck via GET (violação semântica e DoS)
-    // A verificação de contas deve ser feita por cron job dedicado
-    // (POST /api/financeiro/alertas/verificar), nunca por GET público.
-
+    // ✅ CORRIGIDO: O `|| undefined` é essencial. 
+    // Se o parâmetro não estiver na URL, searchParams.get retorna `null`. 
+    // O Zod coerce.number() transforma `null` em `0`, o que quebra o .min(1).
+    // Usando `|| undefined`, o .default() do Zod entra em ação corretamente.
     const parsed = listarQuerySchema.parse({
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit') || searchParams.get('limite'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || searchParams.get('limite') || undefined,
       lida: searchParams.get('lida') || undefined,
     });
 
@@ -87,7 +85,6 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-    // ✅ Não engole o erro: retorna 500 real
     return apiError(error, 'NOTIFICACAO', 'Erro ao buscar notificações');
   }
 }
@@ -107,7 +104,6 @@ export async function POST(request: Request) {
     const body = notificacaoSchema.parse(await request.json());
     const empresa_id = user.empresa_id;
 
-    // ✅ NOVO: valida que o usuario_id pertence à mesma empresa (IDOR fix)
     const destinatario = await prisma.user.findFirst({
       where: { id: body.usuario_id, empresa_id },
       select: { id: true, name: true },
@@ -131,7 +127,6 @@ export async function POST(request: Request) {
       },
     });
 
-    // ✅ NOVO: auditoria da criação manual
     await createAuditLog({
       modulo: 'NOTIFICACAO',
       acao: 'CRIAR',
@@ -184,7 +179,6 @@ export async function DELETE(request: Request) {
         },
       });
 
-      // ✅ NOVO: auditoria da exclusão em massa
       await createAuditLog({
         modulo: 'NOTIFICACAO',
         acao: 'EXCLUIR',
