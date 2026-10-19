@@ -6,7 +6,7 @@ import {
   Key, Save, Check, AlertTriangle, 
   ShieldCheck, Wrench, Briefcase, UserCheck, Package,
   Building2, Landmark, FileText,
-  ChevronRight, History, Upload
+  ChevronRight, History, Upload, Eye, EyeOff, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
@@ -37,7 +37,7 @@ const UserRow = memo(({
     <tr className="hover:bg-zinc-800/10 transition-all border-l-4 border-l-transparent hover:border-l-orange-600">
       <td className="p-6 min-w-0">
         <p className="text-sm font-black text-white uppercase tracking-tight truncate">{u.name}</p>
-        <p className="text-[10px] text-zinc-600 font-mono font-black uppercase tracking-widest mt-1 truncate">{u.email}</p>
+        <p className="text-[10px] text-zinc-500 font-mono font-black uppercase tracking-widest mt-1 truncate">{u.email}</p>
       </td>
       <td className="p-6">
         <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest border italic ${config.color}`}>
@@ -46,9 +46,9 @@ const UserRow = memo(({
       </td>
       <td className="p-6">
         <div className="flex items-center justify-center gap-2">
-          <button onClick={() => handleOpenUserModal(u)} className="p-3 bg-zinc-950 border border-zinc-900 rounded-xl text-zinc-500 hover:text-white transition shadow-lg"><Edit className="w-4 h-4" /></button>
-          <button onClick={() => handleResetPassword(u.id)} className="p-3 bg-zinc-950 border border-zinc-900 rounded-xl text-zinc-500 hover:text-orange-600 transition shadow-lg"><Key className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteUser(u.id)} className="p-3 bg-zinc-950 border border-zinc-900 rounded-xl text-zinc-500 hover:text-red-500 transition shadow-lg disabled:opacity-20" disabled={u.id === currentUser.id}><Trash2 className="w-4 h-4" /></button>
+          <button onClick={() => handleOpenUserModal(u)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-white transition shadow-lg"><Edit className="w-4 h-4" /></button>
+          <button onClick={() => handleResetPassword(u.id)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-orange-600 transition shadow-lg"><Key className="w-4 h-4" /></button>
+          <button onClick={() => handleDeleteUser(u.id)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-red-500 transition shadow-lg disabled:opacity-20" disabled={u.id === currentUser.id}><Trash2 className="w-4 h-4" /></button>
         </div>
       </td>
     </tr>
@@ -90,6 +90,7 @@ export default function ConfiguracoesPage() {
 
   const [logoPreview, setLogoPreview] = useState<string>('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [showToken, setShowToken] = useState(false);
 
   const fetchCompanyData = useCallback(async () => {
     try {
@@ -505,7 +506,7 @@ export default function ConfiguracoesPage() {
                 </button>
               </div>
 
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
                 <div className="w-full overflow-x-auto">
                   <table className="min-w-full text-left">
                     <thead>
@@ -516,17 +517,29 @@ export default function ConfiguracoesPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/40">
-                      {usersData.items.map((u) => (
-                        <UserRow 
-                          key={u.id} 
-                          u={u} 
-                          currentUser={currentUser} 
-                          roleConfigs={roleConfigs} 
-                          handleOpenUserModal={handleOpenUserModal} 
-                          handleResetPassword={handleResetPassword} 
-                          handleDeleteUser={handleDeleteUser} 
-                        />
-                      ))}
+                      {usersData.items.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="p-12 text-center">
+                            <User className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
+                            <p className="text-sm font-black text-white uppercase italic tracking-tighter">Nenhum usuário cadastrado</p>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                              Clique em "Novo Colaborador" para adicionar.
+                            </p>
+                          </td>
+                        </tr>
+                      ) : (
+                        usersData.items.map((u) => (
+                          <UserRow 
+                            key={u.id} 
+                            u={u} 
+                            currentUser={currentUser} 
+                            roleConfigs={roleConfigs} 
+                            handleOpenUserModal={handleOpenUserModal} 
+                            handleResetPassword={handleResetPassword} 
+                            handleDeleteUser={handleDeleteUser} 
+                          />
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -558,7 +571,7 @@ export default function ConfiguracoesPage() {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-6 shadow-2xl relative overflow-hidden group">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl relative overflow-hidden group">
                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                     <Building2 className="w-24 h-24" />
                   </div>
@@ -566,15 +579,14 @@ export default function ConfiguracoesPage() {
                     <Building2 className="w-4 h-4 text-orange-600" /> Identidade Visual e Registro
                   </h3>
                   
-                  {/* 👇 CAMPO DE UPLOAD DA LOGO ADICIONADO AQUI 👇 */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Logo da Oficina</label>
                     <div className="flex items-center gap-4">
-                      <div className="w-24 h-24 bg-zinc-950 border border-zinc-800 rounded-2xl flex items-center justify-center overflow-hidden flex-shrink-0">
+                      <div className="w-24 h-24 bg-white border border-zinc-800 rounded-2xl flex items-center justify-center overflow-hidden flex-shrink-0 p-1">
                         {logoPreview ? (
                           <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
                         ) : (
-                          <Building2 className="w-10 h-10 text-zinc-700" />
+                          <Building2 className="w-10 h-10 text-zinc-400" />
                         )}
                       </div>
                       <div className="flex-1 space-y-2">
@@ -608,74 +620,71 @@ export default function ConfiguracoesPage() {
                       </div>
                     </div>
                   </div>
-                  {/* 👆 FIM DO CAMPO DE UPLOAD 👆 */}
 
                   <div className="space-y-6">
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nome Fantasia / Display</label>
-                      <input name="nome_fantasia" value={companyData.nome_fantasia} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="VEHLOX" />
+                      <input name="nome_fantasia" value={companyData.nome_fantasia} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="VEHLOX" />
                     </div>
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Razão Social Completa</label>
-                      <input name="razao_social" value={companyData.razao_social} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" />
+                      <input name="razao_social" value={companyData.razao_social} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="VEHLOX LTDA" />
                     </div>
                     <div className="grid grid-cols-2 gap-6">
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">CNPJ</label>
-                        <input name="cnpj" value={companyData.cnpj} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" placeholder="00.000.000/0001-00" />
+                        <input name="cnpj" value={companyData.cnpj} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="00.000.000/0001-00" />
                       </div>
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">I.E.</label>
-                        <input name="inscricao_estadual" value={companyData.inscricao_estadual} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" />
+                        <input name="inscricao_estadual" value={companyData.inscricao_estadual} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="ISENTO" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-6">
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Canal de Contato</label>
-                        <input name="telefone" value={companyData.telefone} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" placeholder="(00) 00000-0000" />
+                        <input name="telefone" value={companyData.telefone} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="(00) 00000-0000" />
                       </div>
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Endpoint de Email</label>
-                        <input name="email" value={companyData.email} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" placeholder="CONTATO@VEHLOX.COM.BR" />
+                        <input name="email" value={companyData.email} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="CONTATO@VEHLOX.COM.BR" />
                       </div>
                     </div>
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Logradouro Administrativo</label>
-                      <input name="endereco" value={companyData.endereco} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="RUA DAS OFICINAS, 999" />
+                      <input name="endereco" value={companyData.endereco} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="RUA DAS OFICINAS, 999" />
                     </div>
 
-                    {/* 👇 CAMPOS DE ENDEREÇO COMPLETO ADICIONADOS AQUI 👇 */}
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Número</label>
-                        <input name="numero" value={companyData.numero} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="123" />
+                        <input name="numero" value={companyData.numero} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="123" />
                       </div>
                       <div className="col-span-2">
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Bairro</label>
-                        <input name="bairro" value={companyData.bairro} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="CENTRO" />
+                        <input name="bairro" value={companyData.bairro} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="CENTRO" />
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2">
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Cidade</label>
-                        <input name="cidade" value={companyData.cidade} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="SÃO PAULO" />
+                        <input name="cidade" value={companyData.cidade} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="SÃO PAULO" />
                       </div>
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">UF</label>
-                        <input name="uf" value={companyData.uf} onChange={handleCompanyChange} maxLength={2} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner text-center" placeholder="SP" />
+                        <input name="uf" value={companyData.uf} onChange={handleCompanyChange} maxLength={2} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner text-center placeholder:text-zinc-700" placeholder="SP" />
                       </div>
                     </div>
                     <div>
                       <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">CEP</label>
-                      <input name="cep" value={companyData.cep} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" placeholder="00000-000" />
+                      <input name="cep" value={companyData.cep} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="00000-000" />
                     </div>
-                    {/* 👆 FIM DOS CAMPOS DE ENDEREÇO 👆 */}
 
                   </div>
                 </div>
 
                 <div className="space-y-8">
-                   <div className="bg-zinc-900/40 border border-zinc-900 rounded-3xl p-8 space-y-6 shadow-2xl">
+                   <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
                     <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-800/50">
                       <Landmark className="w-4 h-4 text-orange-600" /> Configuração Fiscal e Tributária
                     </h3>
@@ -683,7 +692,7 @@ export default function ConfiguracoesPage() {
                       <div className="grid grid-cols-2 gap-6">
                         <div>
                           <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">I. Municipal</label>
-                          <input name="inscricao_municipal" value={companyData.inscricao_municipal} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono" />
+                          <input name="inscricao_municipal" value={companyData.inscricao_municipal} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="000000" />
                         </div>
                         <div>
                           <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Regime de Operação</label>
@@ -698,25 +707,38 @@ export default function ConfiguracoesPage() {
                       <div>
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Token de Comunicação NFSe</label>
                         <div className="relative group">
-                          <input name="token_nfse" value={companyData.token_nfse} onChange={handleCompanyChange} type="password" className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner" placeholder="TOKEN DE ACESSO SEGURO" />
-                          <ShieldCheck className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-800" />
+                          <input 
+                            name="token_nfse" 
+                            value={companyData.token_nfse} 
+                            onChange={handleCompanyChange} 
+                            type={showToken ? "text" : "password"} 
+                            className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 pr-12 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" 
+                            placeholder="TOKEN DE ACESSO SEGURO" 
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowToken(!showToken)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition"
+                          >
+                            {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-zinc-900/40 border border-zinc-900 rounded-3xl p-8 space-y-6 shadow-2xl">
+                  <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
                     <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-800/50">
                       <FileText className="w-4 h-4 text-orange-600" /> Rodapé de Documentos Oficiais
                     </h3>
                     <div>
-                      <label className="text-[10px] font-mono text-zinc-700 uppercase tracking-widest mb-3 block px-1 italic">Este texto será injetado dinamicamente em Ordem de Serviço, Orçamentos e Recibos</label>
+                      <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-3 block px-1 italic">Este texto será injetado dinamicamente em Ordem de Serviço, Orçamentos e Recibos</label>
                       <textarea 
                         name="rodape_personalizado" 
                         value={companyData.rodape_personalizado} 
                         onChange={handleCompanyChange} 
                         rows={5}
-                        className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-[11px] text-zinc-500 font-bold uppercase tracking-[0.1em] focus:border-orange-600 outline-none transition-all shadow-inner resize-none leading-relaxed italic" 
+                        className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-[11px] text-zinc-400 font-bold uppercase tracking-[0.1em] focus:border-orange-600 outline-none transition-all shadow-inner resize-none leading-relaxed italic placeholder:text-zinc-700" 
                         placeholder="EX: GARANTIA DE 90 DIAS PARA SERVIÇOS EFETUADOS..."
                       />
                     </div>
