@@ -39,7 +39,6 @@ function safeCompare(a: string, b: string): boolean {
   try {
     const aBuf = Buffer.from(a);
     const bBuf = Buffer.from(b);
-    // timingSafeEqual exige buffers do mesmo tamanho
     if (aBuf.length !== bBuf.length) return false;
     return crypto.timingSafeEqual(aBuf, bBuf);
   } catch {
@@ -78,15 +77,8 @@ export async function POST(request: Request) {
   try {
     const inviteTokenEsperado = process.env.REGISTER_INVITE_TOKEN;
 
-    // Fail-fast: se a variável não está configurada, bloqueia todo cadastro
     if (!inviteTokenEsperado) {
-      log(
-        'ERROR',
-        'REGISTER',
-        'REGISTER_INVITE_TOKEN não configurado — cadastro bloqueado',
-        {},
-        'SISTEMA'
-      );
+      log('ERROR', 'REGISTER', 'REGISTER_INVITE_TOKEN não configurado — cadastro bloqueado', {}, 'SISTEMA');
       return NextResponse.json(
         { error: 'Cadastro indisponível no momento' },
         { status: 503 }
@@ -94,48 +86,28 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0].message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
     const { empresa_nome, cnpj, nome_admin, email, senha, invite_token } = parsed.data;
 
-    // ✅ Comparação segura contra timing attack
     if (!safeCompare(invite_token, inviteTokenEsperado)) {
-      log(
-        'WARN',
-        'REGISTER',
-        'Tentativa de cadastro com token de convite inválido',
-        { email },
-        'SISTEMA'
-      );
-      return NextResponse.json(
-        { error: 'Código de convite inválido' },
-        { status: 403 }
-      );
+      log('WARN', 'REGISTER', 'Tentativa de cadastro com token de convite inválido', { email }, 'SISTEMA');
+      return NextResponse.json({ error: 'Código de convite inválido' }, { status: 403 });
     }
 
-    // A24: bloqueia e-mail duplicado globalmente.
-    // Como cada "conta" é o admin de um tenant, o e-mail do admin deve ser único
-    // em todo o SaaS (evita que a mesma pessoa crie vários tenants com o mesmo e-mail).
-    const existingUser = await prisma.user.findFirst({
-      where: { email },
-      select: { id: true },
-    });
+    // ✅ A24 (per-empresa): NÃO bloqueamos e-mail globalmente.
+    // O schema tem @@unique([email, empresa_id]). Como cada register
+    // cria uma empresa NOVA, o e-mail sempre será único por empresa.
+    // O mesmo e-mail pode ser admin de múltiplas empresas — o login
+    // tenta a senha em cada usuário com aquele e-mail até achar.
+    // (Se você quiser "1 e-mail = 1 tenant", veja a explicação no
+    // fim deste arquivo — exige reverter A24 no schema.)
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'Este e-mail já está em uso' },
-        { status: 400 }
-      );
-    }
-
-    // CNPJ duplicado (se informado) — evita criar tenants duplicados
+    // ✅ CNPJ duplicado: Empresa.cnpj tem @unique (global).
+    // Bloqueia a criação de tenants duplicados.
     if (cnpj) {
       const cnpjLimpo = cnpj.replace(/\D/g, '');
       const existingEmpresa = await prisma.empresa.findFirst({
@@ -150,7 +122,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Gera hash da senha fora da transação (operação lenta, não precisa segurar conexão)
+    // Hash da senha fora da transação (operação lenta, não segura conexão)
     const hash = await bcrypt.hash(senha, 10);
 
     const result = await prisma.$transaction(async (tx) => {
@@ -159,7 +131,7 @@ export async function POST(request: Request) {
           id: crypto.randomUUID(),
           nome: empresa_nome,
           cnpj: cnpj ? cnpj.replace(/\D/g, '') : null,
-          updated_at: new Date(),
+          // updated_at é @updatedAt no schema — Prisma cuida automaticamente
         },
       });
 
@@ -175,8 +147,9 @@ export async function POST(request: Request) {
         },
       });
 
-      // ✅ NOVO: cria ConfiguracaoEmpresa com defaults para o tenant funcionar
+      // ✅ ConfiguracaoEmpresa com defaults para o tenant funcionar
       // (alíquota de imposto, dados fiscais, etc. dependem desse registro)
+      // Passamos `id` explícito — funciona com ou sem @default(uuid()) no schema.
       await tx.configuracaoEmpresa.create({
         data: {
           id: crypto.randomUUID(),
@@ -191,7 +164,7 @@ export async function POST(request: Request) {
       return { empresa, user };
     });
 
-    // ✅ NOVO: auditoria da criação do tenant (ação crítica)
+    // Auditoria da criação do tenant (ação crítica)
     await createAuditLog({
       modulo: 'REGISTER',
       acao: 'CRIAR',
@@ -217,22 +190,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error: any) {
-    // ✅ NOVO: trata race condition (P2002) como erro de negócio, não 500
+    // P2002: race condition. Como e-mail é per-empresa (empresa sempre nova),
+    // o único caso prático de P2002 no register é CNPJ duplicado.
     if (error?.code === 'P2002') {
       const target = error?.meta?.target;
       const campo = Array.isArray(target) ? target.join(',') : target || 'desconhecido';
 
-      log(
-        'WARN',
-        'REGISTER',
-        'Violação de unicidade no cadastro (race condition)',
-        { campo },
-        'SISTEMA'
-      );
+      log('WARN', 'REGISTER', 'Violação de unicidade no cadastro (race condition)', { campo }, 'SISTEMA');
 
-      const mensagem = campo.includes('email')
-        ? 'Este e-mail já está em uso'
-        : campo.includes('cnpj')
+      const mensagem = campo.includes('cnpj')
         ? 'Já existe uma empresa cadastrada com este CNPJ'
         : 'Registro duplicado. Verifique os dados e tente novamente.';
 
@@ -246,3 +212,25 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// ============================================================
+// 📌 SE VOCÊ QUISER "1 E-MAIL = 1 TENANT" (Opção B)
+// ============================================================
+// Este arquivo NÃO garante isso sozinho — a regra global pode ser burlada
+// (usuário muda e-mail na empresa A, outro registra com ele, usuário volta).
+//
+// Para garantir de verdade, é preciso:
+// 1. Reverter A24 no schema.prisma:
+//    model User {
+//      email String @unique   // (global)
+//      // (remover @@unique([email, empresa_id]))
+//    }
+// 2. Rodar migration: npx prisma migrate dev --name revert_a24_email_global
+// 3. Adicionar de volta o check global aqui no register:
+//    const existingUser = await prisma.user.findFirst({ where: { email } });
+//    if (existingUser) return 400;
+// 4. Ajustar usuario/route.ts, usuarios/route.ts, usuarios/[id]/route.ts
+//    para checar e-mail globalmente (não por empresa).
+//
+// Isso é 5 arquivos + 1 migration. Só faça se a regra de negócio exigir.
+// ============================================================
