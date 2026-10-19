@@ -3,7 +3,17 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
 import { roundDecimal } from '@/lib/utils';
+import { z } from 'zod';
+
+// ============================================================
+// SCHEMA DE VALIDAÇÃO
+// ============================================================
+const resumoQuerySchema = z.object({
+  mes: z.coerce.number().int().min(1).max(12).optional(),
+  ano: z.coerce.number().int().min(2000).max(2100).optional(),
+});
 
 export async function GET(request: Request) {
   try {
@@ -15,65 +25,102 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const mes = searchParams.get('mes') || (new Date().getMonth() + 1).toString();
-    const ano = searchParams.get('ano') || new Date().getFullYear().toString();
+    const hoje = new Date();
+    const parsed = resumoQuerySchema.parse({
+      mes: searchParams.get('mes') || (hoje.getMonth() + 1).toString(),
+      ano: searchParams.get('ano') || hoje.getFullYear().toString(),
+    });
 
-    const start = new Date(parseInt(ano), parseInt(mes) - 1, 1);
-    const end = new Date(parseInt(ano), parseInt(mes), 0, 23, 59, 59);
+    const mesAtual = parsed.mes!;
+    const anoAtual = parsed.ano!;
 
+    const start = new Date(anoAtual, mesAtual - 1, 1);
+    const end = new Date(anoAtual, mesAtual, 0, 23, 59, 59);
+
+    // Define o início do período de 6 meses (para o gráfico)
+    const chartStart = new Date(anoAtual, mesAtual - 1, 1);
+    chartStart.setMonth(chartStart.getMonth() - 5);
+
+    // ✅ NOVO: uma única consulta para o mês atual + gráfico (em vez de 7)
     const movimentacoes = await prisma.movimentacaoFinanceira.findMany({
       where: {
         empresa_id: user.empresa_id,
-        data: {
-          gte: start,
-          lte: end
-        }
-      }
+        data: { gte: chartStart, lte: end },
+      },
+      select: {
+        tipo: true,
+        status: true,
+        valor: true,
+        data: true,
+      },
     });
 
-    const entradas = roundDecimal(movimentacoes
-      .filter(m => m.tipo === 'ENTRADA' && m.status === 'PAGO')
-      .reduce((acc, m) => acc + Number(m.valor), 0));
+    // Separa movimentações do mês atual e do período do gráfico
+    const movMesAtual = movimentacoes.filter(
+      (m) => m.data >= start && m.data <= end
+    );
 
-    const saidas = roundDecimal(movimentacoes
-      .filter(m => m.tipo === 'SAIDA' && m.status === 'PAGO')
-      .reduce((acc, m) => acc + Number(m.valor), 0));
+    // Cálculos do mês atual
+    const entradas = roundDecimal(
+      movMesAtual
+        .filter((m) => m.tipo === 'ENTRADA' && m.status === 'PAGO')
+        .reduce((acc, m) => acc + Number(m.valor), 0)
+    );
 
-    const previstoEntradas = roundDecimal(movimentacoes
-      .filter(m => m.tipo === 'ENTRADA' && m.status !== 'PAGO' && m.status !== 'CANCELADO')
-      .reduce((acc, m) => acc + Number(m.valor), 0));
+    const saidas = roundDecimal(
+      movMesAtual
+        .filter((m) => m.tipo === 'SAIDA' && m.status === 'PAGO')
+        .reduce((acc, m) => acc + Number(m.valor), 0)
+    );
 
-    const previstoSaidas = roundDecimal(movimentacoes
-      .filter(m => m.tipo === 'SAIDA' && m.status !== 'PAGO' && m.status !== 'CANCELADO')
-      .reduce((acc, m) => acc + Number(m.valor), 0));
+    const previstoEntradas = roundDecimal(
+      movMesAtual
+        .filter((m) => m.tipo === 'ENTRADA' && m.status !== 'PAGO' && m.status !== 'CANCELADO')
+        .reduce((acc, m) => acc + Number(m.valor), 0)
+    );
+
+    const previstoSaidas = roundDecimal(
+      movMesAtual
+        .filter((m) => m.tipo === 'SAIDA' && m.status !== 'PAGO' && m.status !== 'CANCELADO')
+        .reduce((acc, m) => acc + Number(m.valor), 0)
+    );
 
     const saldo = roundDecimal(entradas - saidas);
     const previsto = roundDecimal(previstoEntradas - previstoSaidas);
 
-    // Dados para gráfico (últimos 6 meses)
-    const chartData = [];
+    // ✅ NOVO: agrupa o gráfico em memória (em vez de 6 consultas)
+    const chartData: { name: string; entradas: number; saidas: number }[] = [];
+
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
+      const d = new Date(anoAtual, mesAtual - 1 - i, 1);
       const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
       const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-      const mData = await prisma.movimentacaoFinanceira.findMany({
-        where: {
-          empresa_id: user.empresa_id,
-          data: { gte: mStart, lte: mEnd },
-          status: 'PAGO'
-        }
-      });
+      const mData = movimentacoes.filter(
+        (m) => m.data >= mStart && m.data <= mEnd && m.status === 'PAGO'
+      );
 
-      const mEntradas = roundDecimal(mData.filter(m => m.tipo === 'ENTRADA').reduce((acc, m) => acc + Number(m.valor), 0));
-      const mSaidas = roundDecimal(mData.filter(m => m.tipo === 'SAIDA').reduce((acc, m) => acc + Number(m.valor), 0));
+      const mEntradas = roundDecimal(
+        mData
+          .filter((m) => m.tipo === 'ENTRADA')
+          .reduce((acc, m) => acc + Number(m.valor), 0)
+      );
 
-      const monthName = mStart.toLocaleString('pt-BR', { month: 'short' }).toUpperCase();
+      const mSaidas = roundDecimal(
+        mData
+          .filter((m) => m.tipo === 'SAIDA')
+          .reduce((acc, m) => acc + Number(m.valor), 0)
+      );
+
+      const monthName = mStart
+        .toLocaleString('pt-BR', { month: 'short' })
+        .replace('.', '')
+        .toUpperCase();
+
       chartData.push({
         name: monthName,
         entradas: mEntradas,
-        saidas: mSaidas
+        saidas: mSaidas,
       });
     }
 
@@ -82,10 +129,15 @@ export async function GET(request: Request) {
       saidas,
       saldo,
       previsto,
-      chartData
+      chartData,
     });
-  } catch (error) {
-    log('ERROR', 'FINANCEIRO', 'Erro ao buscar resumo financeiro', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao buscar resumo financeiro' }, { status: 500 });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
+    return apiError(error, 'FINANCEIRO', 'Erro ao buscar resumo financeiro');
   }
 }
