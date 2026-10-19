@@ -17,7 +17,7 @@ const checklistItemSchema = z.object({
     .string()
     .min(1, 'Descrição do item é obrigatória')
     .max(500, 'Descrição muito longa'),
-  tipo: z.string().max(50).optional().default('TEXTO'),
+  tipo: z.enum(['SIM_NAO', 'TEXTO', 'NUMERO', 'NUMERICO', 'FOTO']).optional().default('TEXTO'),
   obrigatorio: z.boolean().optional().default(true),
   ordem: z.number().int().nonnegative().optional(),
 });
@@ -60,7 +60,6 @@ export async function GET(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para visualizar
     if (!checkPermission(user, 'checklist', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -99,7 +98,6 @@ export async function PUT(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para editar
     if (!checkPermission(user, 'checklist', 'editar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -126,11 +124,7 @@ export async function PUT(
       );
     }
 
-    // ============================================================
     // A23: NÃO apaga itens existentes se o checklist já foi executado.
-    // Se houver execuções, bloqueia edição de itens (mas permite
-    // editar nome/descrição/categoria/ativo).
-    // ============================================================
     const execucoesCount = await prisma.checklistExecucao.count({
       where: { checklist_id: id, empresa_id: user.empresa_id },
     });
@@ -145,7 +139,6 @@ export async function PUT(
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      // Monta updateData apenas com campos enviados
       const updateData: any = {
         updated_at: new Date(),
       };
@@ -154,8 +147,6 @@ export async function PUT(
       if (body.categoria !== undefined) updateData.categoria = body.categoria || null;
       if (body.ativo !== undefined) updateData.ativo = body.ativo;
 
-      // A23: itens só são alterados se o checklist não tem execuções.
-      // Como bloqueamos acima, se chegou aqui é seguro apagar/recriar.
       if (body.itens !== undefined) {
         await tx.checklistItem.deleteMany({ where: { checklist_id: id } });
         updateData.ChecklistItem = {
@@ -171,7 +162,10 @@ export async function PUT(
       }
 
       return tx.checklist.update({
-        where: { id },
+        where: { 
+          id,
+          empresa_id: user.empresa_id // 👈 Redundância de segurança
+        },
         data: updateData,
         include: {
           ChecklistItem: { orderBy: { ordem: 'asc' } },
@@ -231,7 +225,6 @@ export async function DELETE(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para excluir
     if (!checkPermission(user, 'checklist', 'excluir')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -249,7 +242,6 @@ export async function DELETE(
       );
     }
 
-    // A23: bloquear exclusão se houver execuções vinculadas
     const execucoesCount = await prisma.checklistExecucao.count({
       where: { checklist_id: id, empresa_id: user.empresa_id },
     });
@@ -263,7 +255,13 @@ export async function DELETE(
       );
     }
 
-    await prisma.checklist.delete({ where: { id } });
+    // Redundância de segurança: empresa_id no where
+    await prisma.checklist.delete({ 
+      where: { 
+        id,
+        empresa_id: user.empresa_id // 👈 Redundância de segurança
+      } 
+    });
 
     await createAuditLog({
       modulo: 'CHECKLIST',
