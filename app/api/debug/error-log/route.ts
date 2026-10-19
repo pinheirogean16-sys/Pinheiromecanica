@@ -19,7 +19,25 @@ const ipHits = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 60_000; // 1 minuto
 const MAX_HITS = 20; // 20 erros por minuto por IP
 
+// ✅ NOVO: limpeza periódica para evitar memory leak
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+const lastCleanup = { value: Date.now() };
+
+function cleanupExpiredEntries() {
+  const now = Date.now();
+  if (now - lastCleanup.value < CLEANUP_INTERVAL_MS) return;
+  lastCleanup.value = now;
+
+  for (const [ip, entry] of ipHits.entries()) {
+    if (now > entry.resetAt) {
+      ipHits.delete(ip);
+    }
+  }
+}
+
 function checkRateLimit(ip: string): boolean {
+  cleanupExpiredEntries(); // 👈 limpa antes de checar
+
   const now = Date.now();
   const entry = ipHits.get(ip);
   if (!entry || now > entry.resetAt) {
