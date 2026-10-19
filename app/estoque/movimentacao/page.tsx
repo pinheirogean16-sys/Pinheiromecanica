@@ -13,7 +13,9 @@ import {
   User,
   Clock,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
 interface Peca {
@@ -160,7 +162,7 @@ export default function MovimentacaoEstoquePage() {
     <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8 overflow-hidden">
       {/* Formulário */}
       <div className="w-full lg:w-1/3">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
           <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center gap-2">
             <Plus className="w-5 h-5 text-orange-500" />
             <h2 className="font-bold text-zinc-100 uppercase tracking-wider text-sm">Nova Movimentação</h2>
@@ -168,11 +170,11 @@ export default function MovimentacaoEstoquePage() {
 
           <form onSubmit={handleSalvar} className="p-5 space-y-4">
             {/* Toggle Tipo */}
-            <div className="flex p-1 bg-zinc-950 rounded-lg border border-zinc-800">
+            <div className="flex p-1 bg-zinc-950 rounded-xl border border-zinc-800">
               <button
                 type="button"
                 onClick={() => handleTipoChange('ENTRADA')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
                   tipo === 'ENTRADA' 
                     ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
                     : 'text-zinc-500 hover:text-zinc-300'
@@ -184,7 +186,7 @@ export default function MovimentacaoEstoquePage() {
               <button
                 type="button"
                 onClick={() => handleTipoChange('SAIDA')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
                   tipo === 'SAIDA' 
                     ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' 
                     : 'text-zinc-500 hover:text-zinc-300'
@@ -207,13 +209,13 @@ export default function MovimentacaoEstoquePage() {
                   placeholder="Pesquisar peça..."
                   value={searchPeca}
                   onChange={(e) => setSearchPeca(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 pl-9 pr-4 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 pl-9 pr-4 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors placeholder:text-zinc-700"
                 />
               </div>
               <select
                 value={pecaId}
                 onChange={(e) => setPecaId(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors appearance-none cursor-pointer"
               >
                 <option value="">Selecione a peça...</option>
                 {pecasFiltradas.map(p => (
@@ -233,7 +235,7 @@ export default function MovimentacaoEstoquePage() {
                   min="1"
                   value={quantidade}
                   onChange={(e) => setQuantidade(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors placeholder:text-zinc-700"
                   placeholder="0"
                 />
               </div>
@@ -242,7 +244,7 @@ export default function MovimentacaoEstoquePage() {
                 <select
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors appearance-none cursor-pointer"
                 >
                   {(tipo === 'ENTRADA' ? MOTIVOS_ENTRADA : MOTIVOS_SAIDA).map(m => (
                     <option key={m} value={m}>{m.replace('_', ' ')}</option>
@@ -260,7 +262,7 @@ export default function MovimentacaoEstoquePage() {
                 <select
                   value={osId}
                   onChange={(e) => setOsId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors border-orange-500/30"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors appearance-none cursor-pointer border-orange-500/30"
                 >
                   <option value="">Selecione a OS...</option>
                   {ordens.map(o => (
@@ -277,7 +279,7 @@ export default function MovimentacaoEstoquePage() {
                 value={observacao}
                 onChange={(e) => setObservacao(e.target.value)}
                 rows={3}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors placeholder:text-zinc-700"
                 placeholder="Detalhes adicionais..."
               />
             </div>
@@ -285,10 +287,14 @@ export default function MovimentacaoEstoquePage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20 active:scale-[0.98]"
+              className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20 active:scale-[0.98]"
             >
-              <Plus className="w-5 h-5" />
-              {isSaving ? 'Salvando...' : 'REGISTRAR'}
+              {isSaving ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Plus className="w-5 h-5" />
+              )}
+              {isSaving ? 'SALVANDO...' : 'REGISTRAR'}
             </button>
           </form>
         </div>
@@ -296,7 +302,7 @@ export default function MovimentacaoEstoquePage() {
 
       {/* Histórico */}
       <div className="flex-1">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl h-full flex flex-col">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl h-full flex flex-col">
           <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="w-5 h-5 text-orange-500" />
@@ -304,18 +310,19 @@ export default function MovimentacaoEstoquePage() {
             </div>
             <button 
               onClick={fetchData}
-              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+              disabled={loading}
+              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-50"
               title="Recarregar"
             >
-              <Clock className="w-4 h-4 text-zinc-500" />
+              <RefreshCw className={`w-4 h-4 text-zinc-500 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
           <div className="flex-1 overflow-auto">
             {historico.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-zinc-600 gap-3">
-                <AlertCircle className="w-12 h-12 opacity-20" />
-                <p className="text-sm font-medium">Nenhuma movimentação encontrada</p>
+                <AlertCircle className="w-12 h-12 opacity-40" />
+                <p className="text-sm font-medium text-zinc-500">Nenhuma movimentação encontrada</p>
               </div>
             ) : (
               <>
@@ -387,7 +394,7 @@ export default function MovimentacaoEstoquePage() {
                 </div>
 
                 {/* HISTÓRICO MOBILE (TIMELINE COMPACTA/PREMIUM) */}
-                <div className="block md:hidden divide-y divide-zinc-805/40 w-full max-w-full overflow-hidden min-w-0">
+                <div className="block md:hidden divide-y divide-zinc-800/40 w-full max-w-full overflow-hidden min-w-0">
                   {historico.map((item) => (
                     <div key={item.id} className="p-4 space-y-3.5 hover:bg-zinc-900/10 transition-all min-w-0">
                       <div className="flex items-center justify-between gap-4">
@@ -398,7 +405,7 @@ export default function MovimentacaoEstoquePage() {
                         }`}>
                           {item.tipo}
                         </span>
-                        <div className="flex items-center gap-1.5 text-[9px] font-mono text-zinc-550 font-bold shrink-0">
+                        <div className="flex items-center gap-1.5 text-[9px] font-mono text-zinc-500 font-bold shrink-0">
                           <Clock size={10} />
                           <span>{new Date(item.created_at).toLocaleDateString('pt-BR')} {new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
@@ -415,19 +422,19 @@ export default function MovimentacaoEstoquePage() {
 
                       <div className="grid grid-cols-2 gap-4 text-xs font-mono pt-2 border-t border-zinc-900/40">
                         <div className="space-y-0.5 min-w-0">
-                          <p className="text-[8px] font-black text-zinc-550 uppercase tracking-widest">Quantidade</p>
+                          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Quantidade</p>
                           <p className={`text-sm font-black italic ${item.tipo === 'ENTRADA' ? 'text-emerald-500' : 'text-rose-500'}`}>
                             {item.tipo === 'ENTRADA' ? '+' : '-'}{item.quantidade} un
                           </p>
                         </div>
                         <div className="space-y-0.5 min-w-0">
-                          <p className="text-[8px] font-black text-zinc-550 uppercase tracking-widest">Motivação</p>
+                          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Motivação</p>
                           <p className="text-zinc-300 font-bold uppercase truncate">{item.motivo.replace('_', ' ')}</p>
                         </div>
                       </div>
 
                       {item.os && (
-                        <div className="bg-zinc-950/50 border border-zinc-850 p-2.5 rounded-lg flex items-center justify-between gap-4">
+                        <div className="bg-zinc-950/50 border border-zinc-800 p-2.5 rounded-lg flex items-center justify-between gap-4">
                           <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider">Vinculado à OS</span>
                           <span className="inline-flex items-center gap-1 text-orange-500 font-black text-[10px] bg-orange-500/5 px-2 py-0.5 rounded border border-orange-500/10">
                             <FileText size={10} />
