@@ -15,7 +15,8 @@ import { LISTA_UNIDADES } from '@/lib/unidades';
 // ============================================================
 // CONSTANTES
 // ============================================================
-const MAX_ITENS = 100;
+// ✅ CORRIGIDO: Aumentado de 100 para 1000 para aceitar o "limit=200" do Dashboard
+const MAX_ITENS = 1000; 
 const UNIDADES_VALIDAS = LISTA_UNIDADES.map((u) => u.sigla);
 
 // ============================================================
@@ -39,10 +40,24 @@ const pecaSchema = z.object({
 
 const listarPecasQuerySchema = z.object({
   q: z.string().optional().transform((v) => v?.slice(0, 100) || ''),
-  categoria: z.nativeEnum(Peca_categoria).optional(),
+  
+  // ✅ CORRIGIDO: Transforma 'TODAS' em undefined para não quebrar o enum
+  categoria: z.preprocess(
+    (val) => (val === 'TODAS' || val === '' || val === null ? undefined : val),
+    z.nativeEnum(Peca_categoria).optional()
+  ),
+  
   onlySearch: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(MAX_ITENS).default(10),
+  
+  // ✅ CORRIGIDO: Preprocess para garantir que página e limite nunca sejam 0 ou nulos
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(MAX_ITENS).default(10)
+  ),
 });
 
 // ============================================================
@@ -85,17 +100,13 @@ export async function GET(request: NextRequest) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // ✅ NOVO: exige permissão para visualizar peças
     if (!checkPermission(user, 'pecas', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
 
-    // ✅ NOVO: validação com zod
-    // O `|| undefined` é essencial. Se o parâmetro não vier na URL, 
-    // o searchParams.get retorna `null`. O Zod coerce.number() transforma `null` em `0`, 
-    // quebrando o .min(1). Usando `|| undefined`, o .default() do Zod entra em ação.
+    // ✅ CORRIGIDO: O `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarPecasQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       categoria: searchParams.get('categoria') || undefined,
@@ -171,7 +182,6 @@ export async function GET(request: NextRequest) {
       prisma.peca.count({ where }),
     ]);
 
-    // ✅ NOVO: serializa Decimal antes de retornar
     return NextResponse.json({
       items: serializeDecimals(pecas || []),
       total: total || 0,
@@ -185,7 +195,6 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
-    // ✅ NOVO: não engole o erro, retorna 500 real
     return apiError(error, 'PECA', 'Erro ao listar peças');
   }
 }
@@ -198,7 +207,6 @@ export async function POST(request: NextRequest) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // ✅ Mantida a flexibilidade: criar peça na OS exige permissão de OS
     const canCreatePeca =
       checkPermission(user, 'pecas', 'criar') ||
       checkPermission(user, 'os', 'criar') ||
@@ -211,7 +219,6 @@ export async function POST(request: NextRequest) {
     const data = pecaSchema.parse(await request.json());
     const empresa_id = user.empresa_id;
 
-    // ✅ NOVO: valida preço de venda >= custo
     if (data.preco_venda < data.preco_custo) {
       return NextResponse.json(
         {
@@ -269,7 +276,6 @@ export async function POST(request: NextRequest) {
       return createdPeca;
     });
 
-    // ✅ NOVO: serializa Decimal antes de auditar
     const pecaSerializada = serializeDecimals(peca);
 
     await createAuditLog({
@@ -286,7 +292,6 @@ export async function POST(request: NextRequest) {
 
     if (peca.quantidade <= peca.estoque_minimo) {
       try {
-        // ✅ NOVO: usa versão serializada (sem Decimal)
         await notificarEstoqueBaixo(pecaSerializada);
       } catch (err: any) {
         log(
@@ -312,7 +317,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    // ✅ NOVO: tratamento de erro padronizado
     return apiError(error, 'PECA', 'Erro ao criar peça');
   }
 }
