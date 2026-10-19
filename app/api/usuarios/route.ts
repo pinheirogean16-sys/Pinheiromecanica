@@ -27,10 +27,17 @@ const userSchema = z.object({
   comissao: z.coerce.number().nonnegative().max(100, 'Comissão não pode exceder 100%').optional().default(0),
 });
 
+// ✅ CORRIGIDO: Blindagem do Zod para nulos/zeros e limite máximo de 1000
 const listarUsuariosQuerySchema = z.object({
-  q: z.string().optional().transform((v) => v?.slice(0, 100) || ''),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  q: z.string().nullish().transform((v) => v?.slice(0, 100) || ''),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(1000).default(10) // Aumentado para aceitar limit=1000
+  ),
 });
 
 // ============================================================
@@ -46,10 +53,12 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    
+    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarUsuariosQuerySchema.parse({
       q: searchParams.get('q') || undefined,
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { q, page, limit } = parsed;
@@ -127,7 +136,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Verifica e-mail na empresa
-    // (após a migration A24, o índice será @@unique([email, empresa_id]))
     const existing = await prisma.user.findFirst({
       where: { email: body.email, empresa_id: currentUser.empresa_id },
       select: { id: true },
@@ -159,9 +167,6 @@ export async function POST(request: NextRequest) {
       });
     } catch (err: any) {
       if (err?.code === 'P2002') {
-        // ⚠️ Enquanto o schema tiver `email @unique` GLOBAL (A24 pendente),
-        // este P2002 pode indicar e-mail em OUTRA empresa. Mensagem neutra
-        // para não expor informação (segurança) e para ser precisa.
         log(
           'WARN',
           'USUARIOS',
