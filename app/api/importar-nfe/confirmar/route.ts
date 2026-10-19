@@ -6,22 +6,49 @@ import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { parseNFeXML } from '@/lib/parse-nfe';
 import { roundDecimal } from '@/lib/utils';
+import { apiError } from '@/lib/api-error';
 import { z } from 'zod';
 
 // ============================================================
-// A03: o servidor NÃO confia no `nfeData` enviado pelo cliente.
-// Recebe o XML bruto, reparseia e usa SOMENTE a saída do parser.
+// LIMITES DE SEGURANÇA
+// ============================================================
+const MAX_XML_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_ITENS_IMPORTAR = 1000;
+
+const CATEGORIAS_PECA = [
+  'MOTOR', 'INJECAO_ELETRONICA', 'TURBO', 'FREIOS', 'SUSPENSAO',
+  'TRANSMISSAO', 'FILTROS', 'OLEOS_LUBRIFICANTES', 'ARREFECIMENTO',
+  'ESCAPAMENTO', 'ELETRICA', 'OUTROS',
+] as const;
+
+const FORMAS_PAGAMENTO = [
+  'DINHEIRO', 'PIX', 'BOLETO À VISTA', 'BOLETO PARCELADO', 'PARCELADO', 'CARTAO',
+] as const;
+
+// ============================================================
+// SANITIZAÇÃO CONTRA LOG INJECTION / QUEBRA DE TEXTO
+// ============================================================
+function sanitizeText(v: string | undefined | null, maxLen = 500): string {
+  if (!v) return '';
+  return v.replace(/[\r\n\t]/g, ' ').slice(0, maxLen);
+}
+
+// ============================================================
+// SCHEMA DE VALIDAÇÃO
 // ============================================================
 const confirmSchema = z.object({
-  xml: z.string().min(20, 'XML da NF-e é obrigatório'),
+  xml: z.string().min(20, 'XML da NF-e é obrigatório').max(MAX_XML_SIZE, 'XML muito grande'),
   importFornecedor: z.boolean().optional().default(true),
-  itensParaImportar: z.array(z.number().int().nonnegative()).optional().default([]),
+  itensParaImportar: z.array(z.number().int().nonnegative()).max(MAX_ITENS_IMPORTAR).optional().default([]),
   importarFinanceiro: z.boolean().optional().default(false),
-  formaPagamento: z.string().optional().default('BOLETO À VISTA'),
+  formaPagamento: z.enum(FORMAS_PAGAMENTO).optional().default('BOLETO À VISTA'),
   numParcelas: z.number().int().positive().max(60).optional().default(1),
   diasEntreParcelas: z.number().int().positive().max(180).optional().default(28),
-  dataPrimeiraParcela: z.string().optional().nullable(),
-  categoriaPecas: z.string().optional().default('OUTROS'),
+  dataPrimeiraParcela: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data da primeira parcela inválida' }
+  ),
+  categoriaPecas: z.enum(CATEGORIAS_PECA).optional().default('OUTROS'),
 });
 
 export async function POST(req: NextRequest) {
@@ -54,14 +81,31 @@ export async function POST(req: NextRequest) {
       categoriaPecas,
     } = parsed.data;
 
-    // A03: parsear o XML no servidor. Se estiver inválido, o parser lança.
+    // A03: parsear o XML no servidor.
     let nfeData;
     try {
       nfeData = parseNFeXML(xml);
     } catch (err: any) {
+      // ✅ Não vaza a mensagem interna do parser
       log('WARN', 'NFE', 'XML rejeitado pelo parser', { error: err?.message }, user?.name);
       return NextResponse.json(
-        { error: err?.message || 'XML da NF-e inválido ou corrompido' },
+        { error: 'XML da NF-e inválido ou corrompido' },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Valida se o parser retornou uma estrutura válida
+    if (!nfeData || !Array.isArray(nfeData.itens) || nfeData.itens.length === 0) {
+      return NextResponse.json(
+        { error: 'XML da NF-e inválido ou sem itens' },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Limita o número de itens
+    if (nfeData.itens.length > MAX_ITENS_IMPORTAR) {
+      return NextResponse.json(
+        { error: `NF-e com itens demais (${nfeData.itens.length}). Máximo: ${MAX_ITENS_IMPORTAR}.` },
         { status: 400 }
       );
     }
@@ -69,7 +113,6 @@ export async function POST(req: NextRequest) {
     const empresa_id = user.empresa_id;
 
     // A03: validar duplicidade pela chave de acesso (UNIQUE lógico).
-    // Se já existe movimentação financeira com essa chave, rejeitamos.
     const jaImportada = await prisma.movimentacaoFinanceira.findFirst({
       where: {
         empresa_id,
@@ -104,7 +147,7 @@ export async function POST(req: NextRequest) {
       // 1. Fornecedor
       // ============================================================
       let actualFornecedorId: string | null = null;
-      if (importFornecedor && nfeData.fornecedor) {
+      if (importFornecedor && nfeData.fornecedor && nfeData.fornecedor.cnpj) {
         const f = nfeData.fornecedor;
         const cnpjStr = f.cnpj.replace(/\D/g, '');
         if (cnpjStr) {
@@ -176,7 +219,6 @@ export async function POST(req: NextRequest) {
         const item = nfeData.itens[index];
         if (!item) continue;
 
-        // A03: o parser já validou código, descrição, quantidade e valor unitário.
         const codigo = item.codigo;
         const descricao = item.descricao;
         const quantidade = item.quantidade;
@@ -190,7 +232,6 @@ export async function POST(req: NextRequest) {
         let pecaDb;
 
         if (existingPeca) {
-          // Atualiza estoque, custo e preço de venda proporcional ao markup anterior
           const precoCustoAntigo = Number(existingPeca.preco_custo);
           const precoVendaAntigo = Number(existingPeca.preco_venda);
           const markup = precoCustoAntigo > 0 ? precoVendaAntigo / precoCustoAntigo : 1.5;
@@ -226,7 +267,9 @@ export async function POST(req: NextRequest) {
           results.stats.criados++;
         }
 
-        // Registro de movimentação de estoque — SEMPRE (nunca apaga)
+        // ✅ Sanitiza o nome do fornecedor na observação
+        const fornecedorNome = sanitizeText(nfeData.fornecedor?.razaoSocial || 'Fornecedor não identificado', 200);
+
         await tx.movimentacaoEstoque.create({
           data: {
             id: globalThis.crypto.randomUUID(),
@@ -235,7 +278,7 @@ export async function POST(req: NextRequest) {
             tipo: 'ENTRADA',
             quantidade,
             motivo: 'COMPRA',
-            observacao: `NF-e ${nfeData.numero} série ${nfeData.serie} | chave ${nfeData.chaveAcesso} | unidade ${unidade} | fornecedor ${nfeData.fornecedor.razaoSocial}`,
+            observacao: `NF-e ${nfeData.numero} série ${nfeData.serie} | chave ${nfeData.chaveAcesso} | unidade ${unidade} | fornecedor ${fornecedorNome}`,
             usuario_id: user.id,
           },
         });
@@ -248,7 +291,8 @@ export async function POST(req: NextRequest) {
       // ============================================================
       if (importarFinanceiro) {
         const valorTotal = roundDecimal(nfeData.totais.valorNF);
-        const descricaoBase = `Compra NF-e ${nfeData.numero}/${nfeData.serie} — ${nfeData.fornecedor.razaoSocial}`;
+        const fornecedorNome = sanitizeText(nfeData.fornecedor?.razaoSocial || 'Fornecedor', 200);
+        const descricaoBase = `Compra NF-e ${nfeData.numero}/${nfeData.serie} — ${fornecedorNome}`;
         const statusInicial =
           formaPagamento === 'DINHEIRO' || formaPagamento === 'PIX' ? 'PAGO' : 'PENDENTE';
 
@@ -257,7 +301,6 @@ export async function POST(req: NextRequest) {
           numParcelas > 1;
 
         if (isParcelado) {
-          // A03: parcelas com ajuste de centavos — a última absorve o resto
           const valorParcelaBase = Math.floor((valorTotal * 100) / numParcelas) / 100;
           const somaBase = roundDecimal(valorParcelaBase * (numParcelas - 1));
           const ultimaParcela = roundDecimal(valorTotal - somaBase);
@@ -313,7 +356,7 @@ export async function POST(req: NextRequest) {
               status: statusInicial,
               categoria: 'COMPRA_MERCADORIA',
               numero_documento: nfeData.chaveAcesso,
-              forma_pagamento: formaPagamento || 'BOLETO À VISTA',
+              forma_pagamento: formaPagamento,
               cliente_id: actualFornecedorId,
               created_by: user?.name || user?.email || 'Sistema (NF-e)',
               updated_at: new Date(),
@@ -335,7 +378,7 @@ export async function POST(req: NextRequest) {
         chave: nfeData.chaveAcesso,
         numero: nfeData.numero,
         serie: nfeData.serie,
-        fornecedor: nfeData.fornecedor.razaoSocial,
+        fornecedor: nfeData.fornecedor?.razaoSocial || 'N/A',
         itensImportados: results.stats.total,
         criados: results.stats.criados,
         atualizados: results.stats.atualizados,
@@ -363,16 +406,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
-    log(
-      'ERROR',
-      'NFE',
-      'Erro ao confirmar importação',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json(
-      { error: error.message || 'Erro ao processar importação' },
-      { status: 500 }
-    );
+    // ✅ NOVO: tratamento de erro padronizado (não vaza detalhes internos)
+    return apiError(error, 'NFE', 'Erro ao processar importação');
   }
 }
