@@ -93,12 +93,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     // ✅ NOVO: validação com zod
+    // O `|| undefined` é essencial. Se o parâmetro não vier na URL, 
+    // o searchParams.get retorna `null`. O Zod coerce.number() transforma `null` em `0`, 
+    // quebrando o .min(1). Usando `|| undefined`, o .default() do Zod entra em ação.
     const parsed = listarPecasQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       categoria: searchParams.get('categoria') || undefined,
       onlySearch: searchParams.get('onlySearch') || undefined,
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { q, categoria, onlySearch, page, limit: rawLimit } = parsed;
