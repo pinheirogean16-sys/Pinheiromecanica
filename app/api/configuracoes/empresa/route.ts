@@ -5,7 +5,11 @@ import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 
+// ============================================================
+// SCHEMA DE VALIDAÇÃO
+// ============================================================
 const configEmpresaSchema = z.object({
   nome_fantasia: z.string().optional().nullable().transform((v) => v?.trim()),
   razao_social: z.string().optional().nullable().transform((v) => v?.trim()),
@@ -13,7 +17,7 @@ const configEmpresaSchema = z.object({
   inscricao_estadual: z.string().optional().nullable(),
   inscricao_municipal: z.string().optional().nullable(),
   telefone: z.string().optional().nullable(),
-  email: z.string().email().optional().nullable().or(z.literal('')),
+  email: z.string().email('E-mail inválido').optional().nullable().or(z.literal('')),
   endereco: z.string().optional().nullable(),
   numero: z.string().optional().nullable(),
   complemento: z.string().optional().nullable(),
@@ -43,23 +47,12 @@ export async function GET() {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    // C03: busca por empresa_id (não mais pelo id fixo 'config_empresa')
     const config = await prisma.configuracaoEmpresa.findFirst({
       where: { empresa_id: user.empresa_id },
     });
     return NextResponse.json(config || {});
   } catch (error: any) {
-    log(
-      'ERROR',
-      'CONFIG',
-      'Erro ao buscar configurações',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json(
-      { error: 'Erro ao buscar configurações' },
-      { status: 500 }
-    );
+    return apiError(error, 'CONFIG', 'Erro ao buscar configurações');
   }
 }
 
@@ -77,7 +70,7 @@ export async function PUT(request: Request) {
 
     const body = configEmpresaSchema.parse(await request.json());
 
-    // C03: busca o registro da empresa do usuário (não mais o id fixo)
+    // Busca o registro da empresa do usuário
     const antes = await prisma.configuracaoEmpresa.findFirst({
       where: { empresa_id: user.empresa_id },
     });
@@ -89,7 +82,10 @@ export async function PUT(request: Request) {
     if (antes) {
       // Registro já existe para esta empresa — atualiza
       config = await prisma.configuracaoEmpresa.update({
-        where: { id: antes.id },
+        where: { 
+          id: antes.id,
+          empresa_id: user.empresa_id // 👈 Redundância de segurança
+        },
         data: {
           ...(body as any),
           updated_at: agora,
@@ -97,7 +93,6 @@ export async function PUT(request: Request) {
       });
     } else {
       // Primeira vez desta empresa salvando — cria novo registro
-      // O `id` é gerado como UUID (não mais o fixo 'config_empresa')
       config = await prisma.configuracaoEmpresa.create({
         data: {
           id: globalThis.crypto.randomUUID(),
@@ -135,16 +130,6 @@ export async function PUT(request: Request) {
         { status: 400 }
       );
     }
-    log(
-      'ERROR',
-      'CONFIG',
-      'Erro ao salvar configurações',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json(
-      { error: 'Erro ao salvar configurações' },
-      { status: 500 }
-    );
+    return apiError(error, 'CONFIG', 'Erro ao salvar configurações');
   }
 }
