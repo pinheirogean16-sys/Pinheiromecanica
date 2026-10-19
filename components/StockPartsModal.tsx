@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
@@ -8,6 +9,8 @@ import {
 import { formatCurrency, roundDecimal } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 export interface StockPartItem {
   id: string;
@@ -61,6 +64,8 @@ const CATEGORIAS_PECAS = [
   { value: 'OUTROS', label: 'Outros Componentes' },
 ];
 
+const ITEMS_PER_PAGE = 14;
+
 export default function StockPartsModal({
   isOpen,
   onClose,
@@ -72,6 +77,7 @@ export default function StockPartsModal({
 }: StockPartsModalProps) {
   // Estados de Busca e Listagem
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoria, setCategoria] = useState('TODAS');
   const [items, setItems] = useState<StockPartItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -87,8 +93,10 @@ export default function StockPartsModal({
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // ✅ NOVO: AbortController para evitar race condition
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Paleta de cores dinâmica conforme o tipo de OS
+  // Paleta de cores dinâmica
   const theme = useMemo(() => {
     switch (colorScheme) {
       case 'blue':
@@ -96,9 +104,7 @@ export default function StockPartsModal({
           primary: 'bg-blue-600 hover:bg-blue-500 text-white',
           border: 'border-blue-500',
           focusBorder: 'focus:border-blue-500',
-          focusRing: 'focus:ring-blue-500/20',
           text: 'text-blue-400',
-          badge: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
           glow: 'shadow-blue-950/40',
         };
       case 'amber':
@@ -106,9 +112,7 @@ export default function StockPartsModal({
           primary: 'bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black',
           border: 'border-amber-500',
           focusBorder: 'focus:border-amber-500',
-          focusRing: 'focus:ring-amber-500/20',
           text: 'text-amber-400',
-          badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
           glow: 'shadow-amber-950/40',
         };
       case 'orange':
@@ -117,9 +121,7 @@ export default function StockPartsModal({
           primary: 'bg-orange-600 hover:bg-orange-500 text-white',
           border: 'border-orange-500',
           focusBorder: 'focus:border-orange-500',
-          focusRing: 'focus:ring-orange-500/20',
           text: 'text-orange-400',
-          badge: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
           glow: 'shadow-orange-950/40',
         };
     }
@@ -145,8 +147,23 @@ export default function StockPartsModal({
     };
   }, [isOpen, onClose]);
 
-  // Carregar catálogo de peças
+  // Debounce da busca
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // ✅ CORRIGIDO: fetchPecas com AbortController
   const fetchPecas = useCallback(async (q: string, cat: string, p: number) => {
+    // Cancela fetch anterior (evita race condition)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -154,45 +171,55 @@ export default function StockPartsModal({
       if (q.trim()) params.append('q', q.trim());
       if (cat !== 'TODAS') params.append('categoria', cat);
       params.append('page', p.toString());
-      params.append('limit', '14');
+      params.append('limit', ITEMS_PER_PAGE.toString());
 
-      const res = await fetch(`/api/pecas?${params.toString()}`);
-      if (!res.ok) {
-        throw new Error('Falha ao consultar estoque de peças');
-      }
-      const data = await res.json();
-      setItems(data.items || []);
-      setTotalPages(data.totalPages || 1);
-      setTotalCount(data.total || 0);
+      const data = await apiFetch<any>(`/api/pecas?${params.toString()}`, {
+        signal: controller.signal,
+      });
+
+      const list = Array.isArray(data) ? data : (data.items || []);
+      const total = typeof data.total === 'number' ? data.total : list.length;
+      const totalP = Math.max(1, data.totalPages || 1);
+
+      setItems(list);
+      setTotalPages(totalP);
+      setTotalCount(total);
     } catch (err: any) {
-      console.error('Erro ao buscar peças:', err);
+      if (err.name === 'AbortError') return;
       setErrorMsg(err.message || 'Erro ao consultar almoxarifado');
       setItems([]);
+      handleApiError(err, { defaultMessage: 'Erro ao consultar peças' });
     } finally {
-      setLoading(false);
+      // Só limpa loading se este for o controller ativo (evita "loading eterno" com aborts)
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
   }, []);
 
-  // Disparar busca com debounce
+  // ✅ CORRIGIDO: effect depende de debouncedSearch e categoria (não do searchTerm cru)
   useEffect(() => {
     if (!isOpen) return;
+    setPage(1);
+    fetchPecas(debouncedSearch, categoria, 1);
+    // Não cancela aqui — o fetchPecas já gerencia
+  }, [debouncedSearch, categoria, isOpen, fetchPecas]);
 
-    const timer = setTimeout(() => {
-      setPage(1);
-      fetchPecas(searchTerm, categoria, 1);
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm, categoria, isOpen, fetchPecas]);
+  // Cleanup ao fechar
+  useEffect(() => {
+    if (!isOpen && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, [isOpen]);
 
   // Troca de página
   const handlePageChange = (newPage: number) => {
-    if (newPage < 1 || newPage > totalPages) return;
+    if (newPage < 1 || newPage > totalPages || loading) return;
     setPage(newPage);
-    fetchPecas(searchTerm, categoria, newPage);
+    fetchPecas(debouncedSearch, categoria, newPage);
   };
 
-  // Ao selecionar uma peça na lista
+  // Seleção de peça
   const handleSelectPeca = (peca: StockPartItem) => {
     setSelectedPeca(peca);
     const unit = peca.unidadeMedida || 'un';
@@ -201,7 +228,7 @@ export default function StockPartsModal({
     setValidationError(null);
   };
 
-  // Unidades compatíveis com a peça selecionada
+  // Unidades compatíveis
   const compativeis = useMemo(() => {
     if (!selectedPeca) return [];
     const baseUnit = selectedPeca.unidadeMedida || 'un';
@@ -209,7 +236,7 @@ export default function StockPartsModal({
     return list.length > 0 ? list : [{ sigla: baseUnit, nome: baseUnit, grupo: 'quantidade', fatorParaPadrao: 1 }];
   }, [selectedPeca]);
 
-  // Quantidade já existente desta peça na OS atual
+  // Quantidade já na OS
   const qtdJaNaOS = useMemo(() => {
     if (!selectedPeca) return 0;
     return existingParts
@@ -217,19 +244,16 @@ export default function StockPartsModal({
       .reduce((sum, p) => sum + (Number(p.quantidade) || 0), 0);
   }, [selectedPeca, existingParts]);
 
-  // Saldo restante disponível para ser adicionado nesta operação
+  // Saldo disponível
   const saldoDisponivel = useMemo(() => {
     if (!selectedPeca) return 0;
-    // Em modo de edição, o que está na OS já foi descontado do banco, então o estoque
-    // no banco reflete o saldo remanescente disponível além do que já está na OS.
-    // Em criação de OS, o que foi selecionado localmente ainda não foi debitado do banco.
     if (isEditing) {
       return Number(selectedPeca.quantidade) || 0;
     }
     return Math.max(0, (Number(selectedPeca.quantidade) || 0) - qtdJaNaOS);
   }, [selectedPeca, qtdJaNaOS, isEditing]);
 
-  // Preço unitário ajustado pela unidade selecionada
+  // Preço unitário ajustado
   const precoUnitarioCalculado = useMemo(() => {
     if (!selectedPeca) return 0;
     const basePreco = Number(selectedPeca.preco_venda) || 0;
@@ -245,29 +269,26 @@ export default function StockPartsModal({
     return basePreco;
   }, [selectedPeca, selectedUnit]);
 
-  // Subtotal calculado
+  // Subtotal
   const subtotalCalculado = useMemo(() => {
     const qty = Number(quantidade) || 0;
     return roundDecimal(qty * precoUnitarioCalculado);
   }, [quantidade, precoUnitarioCalculado]);
 
-  // Validar quantidade antes de adicionar
+  // Validação de quantidade
   const handleValidateQuantity = (val: number) => {
     if (isNaN(val) || val <= 0) {
       setValidationError('A quantidade deve ser maior que zero.');
       return false;
     }
-
     if (selectedPeca && !selectedPeca.permiteFracionado && !Number.isInteger(val)) {
       setValidationError(`Esta peça (${selectedPeca.descricao}) não permite fracionamento.`);
       return false;
     }
-
     if (val > saldoDisponivel) {
       setValidationError(`Quantidade informada (${val}) excede o saldo disponível em estoque (${saldoDisponivel} ${selectedPeca?.unidadeMedida || 'un'}).`);
       return false;
     }
-
     setValidationError(null);
     return true;
   };
@@ -293,13 +314,10 @@ export default function StockPartsModal({
     handleValidateQuantity(novo);
   };
 
-  // Confirmar adição à OS
+  // Confirmação
   const handleConfirmAdd = () => {
     if (!selectedPeca) return;
-
-    if (!handleValidateQuantity(quantidade)) {
-      return;
-    }
+    if (!handleValidateQuantity(quantidade)) return;
 
     onAddPart({
       peca: selectedPeca,
@@ -315,7 +333,6 @@ export default function StockPartsModal({
         : `"${selectedPeca.descricao}" adicionada à OS!`
     );
 
-    // Reset para próxima inclusão ou fechar
     setSelectedPeca(null);
     setQuantidade(1);
     setValidationError(null);
@@ -330,7 +347,7 @@ export default function StockPartsModal({
         className="w-full max-w-5xl bg-[#15181B] border border-zinc-800 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* CABEÇALHO DO MODAL */}
+        {/* CABEÇALHO */}
         <div className="p-4 sm:p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/60">
           <div className="flex items-center gap-3">
             <div className={`p-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 ${theme.text}`}>
@@ -377,9 +394,8 @@ export default function StockPartsModal({
           </div>
         </div>
 
-        {/* BARRA DE FILTROS E BUSCA */}
+        {/* FILTROS */}
         <div className="p-3 sm:p-5 border-b border-zinc-800 bg-zinc-900/40 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-          {/* Campo de Busca */}
           <div className="sm:col-span-7 relative group">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-white transition-colors" size={16} />
             <input
@@ -401,7 +417,6 @@ export default function StockPartsModal({
             )}
           </div>
 
-          {/* Filtro por Categoria */}
           <div className="sm:col-span-5 relative">
             <select
               value={categoria}
@@ -418,11 +433,10 @@ export default function StockPartsModal({
           </div>
         </div>
 
-        {/* CORPO DO MODAL: MASTER / DETAIL */}
+        {/* CORPO */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
-          {/* LADO ESQUERDO: LISTA DE PEÇAS (7 ou 12 cols se nada selecionado) */}
+          {/* LISTA */}
           <div className={`${selectedPeca ? 'lg:col-span-7' : 'lg:col-span-12'} flex flex-col h-full overflow-hidden border-r border-zinc-800/80`}>
-            {/* Lista com scroll suave */}
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 custom-scrollbar">
               {loading ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3">
@@ -437,7 +451,7 @@ export default function StockPartsModal({
                   <p className="text-xs font-bold text-red-400">{errorMsg}</p>
                   <button
                     type="button"
-                    onClick={() => fetchPecas(searchTerm, categoria, page)}
+                    onClick={() => fetchPecas(debouncedSearch, categoria, page)}
                     className="mt-2 px-3 py-1.5 bg-zinc-800 text-white rounded-lg text-xs font-bold hover:bg-zinc-700 transition"
                   >
                     Tentar Novamente
@@ -525,7 +539,6 @@ export default function StockPartsModal({
                         </div>
                       </div>
 
-                      {/* LADO DIREITO: STATUS DO ESTOQUE E PREÇO */}
                       <div className="text-right flex flex-col items-end gap-1 flex-shrink-0">
                         {semEstoque ? (
                           <span className="px-2 py-1 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider bg-red-950/60 text-red-400 border border-red-800">
@@ -565,7 +578,7 @@ export default function StockPartsModal({
               )}
             </div>
 
-            {/* RODAPÉ DA LISTAGEM (PAGINAÇÃO) */}
+            {/* PAGINAÇÃO COMPACTA */}
             {totalPages > 1 && (
               <div className="p-3 border-t border-zinc-800 bg-zinc-950/50 flex items-center justify-between text-xs text-zinc-400">
                 <span className="font-mono text-[11px]">
@@ -576,7 +589,7 @@ export default function StockPartsModal({
                     type="button"
                     onClick={() => handlePageChange(page - 1)}
                     disabled={page <= 1 || loading}
-                    className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs font-bold uppercase text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs font-bold uppercase text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Anterior
                   </button>
@@ -584,7 +597,7 @@ export default function StockPartsModal({
                     type="button"
                     onClick={() => handlePageChange(page + 1)}
                     disabled={page >= totalPages || loading}
-                    className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs font-bold uppercase text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs font-bold uppercase text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Próxima
                   </button>
@@ -593,12 +606,11 @@ export default function StockPartsModal({
             )}
           </div>
 
-          {/* LADO DIREITO: DETALHES DA PEÇA SELECIONADA E DEFINIÇÃO DE QUANTIDADE */}
+          {/* DETALHES DA PEÇA */}
           {selectedPeca && (
             <div className="lg:col-span-5 bg-zinc-950/80 p-4 sm:p-6 flex flex-col justify-between overflow-y-auto custom-scrollbar border-t lg:border-t-0 border-zinc-800">
               <div className="space-y-5">
-                {/* Cabeçalho da seleção */}
-                <div className="border-b border-zinc-850 pb-3 flex items-start justify-between">
+                <div className="border-b border-zinc-800 pb-3 flex items-start justify-between">
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 font-mono">
                       Item Selecionado
@@ -613,14 +625,13 @@ export default function StockPartsModal({
                   <button
                     type="button"
                     onClick={() => setSelectedPeca(null)}
-                    className="text-zinc-500 hover:text-zinc-300 p-1"
+                    className="text-zinc-500 hover:text-zinc-300 p-1 cursor-pointer"
                     title="Desmarcar peça"
                   >
                     <X size={16} />
                   </button>
                 </div>
 
-                {/* Bloco Informativo de Saldo */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 space-y-2 font-mono text-xs">
                   <div className="flex justify-between items-center text-zinc-400">
                     <span>Estoque Cadastrado:</span>
@@ -640,7 +651,6 @@ export default function StockPartsModal({
                   </div>
                 </div>
 
-                {/* Seletor de Quantidade e Unidade */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">
@@ -680,14 +690,13 @@ export default function StockPartsModal({
                       </button>
                     </div>
 
-                    {/* Unidade */}
                     <div className="w-24">
                       <select
                         value={selectedUnit}
                         onChange={(e) => setSelectedUnit(e.target.value)}
                         className="w-full h-12 bg-zinc-900 border border-zinc-800 rounded-xl px-2 text-xs font-black uppercase text-white font-mono outline-none cursor-pointer focus:border-zinc-700"
                       >
-                        {compativeis.map((u) => (
+                        {compativeis.map((u: any) => (
                           <option key={u.sigla} value={u.sigla} className="bg-zinc-950 text-white uppercase">
                             {u.sigla}
                           </option>
@@ -704,7 +713,6 @@ export default function StockPartsModal({
                   )}
                 </div>
 
-                {/* Resumo Financeiro da Peça */}
                 <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-4 space-y-2">
                   <div className="flex justify-between items-center text-xs text-zinc-400">
                     <span>Valor Unitário ({selectedUnit}):</span>
@@ -723,7 +731,6 @@ export default function StockPartsModal({
                 </div>
               </div>
 
-              {/* Botões de Ação */}
               <div className="pt-4 space-y-2">
                 <button
                   type="button"
@@ -738,7 +745,7 @@ export default function StockPartsModal({
                 <button
                   type="button"
                   onClick={() => setSelectedPeca(null)}
-                  className="w-full py-2.5 text-zinc-400 hover:text-white text-xs font-bold uppercase transition"
+                  className="w-full py-2.5 text-zinc-400 hover:text-white text-xs font-bold uppercase transition cursor-pointer"
                 >
                   Cancelar Seleção
                 </button>
