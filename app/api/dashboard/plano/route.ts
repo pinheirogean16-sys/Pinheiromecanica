@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
+import { apiError } from '@/lib/api-error';
 
 export async function GET() {
   try {
@@ -16,7 +17,9 @@ export async function GET() {
       }
     });
 
-    if (!empresa) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
+    if (!empresa) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
+    }
 
     // Calcula dias restantes de trial (se aplicável)
     let diasRestantes = 0;
@@ -35,6 +38,7 @@ export async function GET() {
       diasRestantes,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: 'Erro ao buscar plano' }, { status: 500 });
+    // ✅ NOVO: tratamento de erro padronizado
+    return apiError(error, 'DASHBOARD', 'Erro ao buscar plano');
   }
 }
