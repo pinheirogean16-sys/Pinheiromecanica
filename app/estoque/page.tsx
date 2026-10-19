@@ -3,17 +3,16 @@
 
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Package, Search, Filter, Plus, 
-  ChevronRight, AlertTriangle,
+  Package, Search, Plus, AlertTriangle, 
   Edit, Trash2, Eye, ArrowRightLeft,
   PlusCircle, MinusCircle, LayoutGrid, List as ListIcon,
-  Warehouse, BarChart3, TrendingUp,
-  XCircle, Loader2
+  Warehouse, BarChart3, TrendingUp, X, Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
-import { normalizeText } from '@/lib/normalize-search';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 import { BRANDING } from '@/lib/branding';
 
 interface Peca {
@@ -88,7 +87,9 @@ export default function EstoquePage() {
   const [activeSection, setActiveSection] = useState<'inventario' | 'analise'>('inventario');
   const [analiseData, setAnaliseData] = useState<any>(null);
   const [analiseLoading, setAnaliseLoading] = useState(false);
-  const [data, setData] = useState<{ items: Peca[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
+  
+  // ✅ CORRIGIDO: totalPages inicia em 1
+  const [data, setData] = useState<{ items: Peca[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   
@@ -108,11 +109,8 @@ export default function EstoquePage() {
   const fetchAnalise = useCallback(async () => {
     setAnaliseLoading(true);
     try {
-      const res = await fetch('/api/estoque/analise');
-      if (res.ok) {
-        const d = await res.json();
-        setAnaliseData(d);
-      }
+      const d = await apiFetch('/api/estoque/analise');
+      setAnaliseData(d);
     } catch (e) {
       // Silencioso: o erro é tratado no estado de análise
     } finally {
@@ -126,7 +124,6 @@ export default function EstoquePage() {
     }
   }, [activeSection, fetchAnalise]);
 
-  // Custom debounced search states to prevent bank flooding and stuttering
   const [searchValue, setSearchValue] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   
@@ -135,66 +132,49 @@ export default function EstoquePage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [page, setPage] = useState(1);
 
-  // Efeito de Debounce (300ms) sem memory leaks
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchValue);
     }, 300);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    return () => clearTimeout(handler);
   }, [searchValue]);
 
-  // Função resiliente unificada com AbortController para deduplicação automática
   const fetchPecas = useCallback(async (signal?: AbortSignal) => {
-    await Promise.resolve();
-    
     setLoading(true);
     setError(false);
     try {
       const cleanSearch = encodeURIComponent(debouncedSearch.trim());
-      const res = await fetch(`/api/pecas?q=${cleanSearch}&categoria=${categoria}&page=${page}&limit=10`, { signal });
+      const result = await apiFetch(`/api/pecas?q=${cleanSearch}&categoria=${categoria}&page=${page}&limit=10`, { signal });
       
-      if (res.ok) {
-        const result = await res.json();
-        const items = Array.isArray(result) ? result : (result.items || []);
-        const total = result.total || items.length;
-        const totalPages = result.totalPages || 1;
-        setData({ items, total, totalPages });
-      } else {
-        setError(true);
-      }
+      const items = Array.isArray(result) ? result : (result.items || []);
+      const total = typeof result.total === 'number' ? result.total : items.length;
+      const totalPages = Math.max(1, result.totalPages || 1); // ✅ mínimo 1
+      
+      setData({ items, total, totalPages });
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      console.error(err);
       setError(true);
-      toast.error('Erro ao carregar almoxarifado');
+      handleApiError(err, { defaultMessage: 'Erro ao carregar almoxarifado' });
     } finally {
       setLoading(false);
     }
   }, [debouncedSearch, categoria, page]);
 
   const fetchMetrics = useCallback(async () => {
-    await Promise.resolve();
     try {
-      const res = await fetch('/api/estoque/metricas');
-      if (res.ok) {
-        const m = await res.json();
-        setMetrics({
-          totalSkus: m.totalSkus || 0,
-          valorEstoque: m.valorEstoque || 0,
-          potencialVenda: m.potencialVenda || 0,
-          estoqueBaixo: m.estoqueBaixo || 0,
-          foraEstoque: m.foraEstoque || 0,
-        });
-      }
+      const m = await apiFetch('/api/estoque/metricas');
+      setMetrics({
+        totalSkus: m.totalSkus || 0,
+        valorEstoque: m.valorEstoque || 0,
+        potencialVenda: m.potencialVenda || 0,
+        estoqueBaixo: m.estoqueBaixo || 0,
+        foraEstoque: m.foraEstoque || 0,
+      });
     } catch (e) {
       // Silencioso: as métricas são atualizadas periodicamente
     }
   }, []);
 
-  // Execução automática e limpeza de requisições anteriores para evitar race conditions
   useEffect(() => {
     const controller = new AbortController();
     
@@ -210,35 +190,40 @@ export default function EstoquePage() {
   }, [fetchPecas, fetchMetrics]);
 
   useEffect(() => {
-    fetch('/api/pecas/categorias')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setCategorias(data))
+    apiFetch('/api/pecas/categorias')
+      .then(data => setCategorias(Array.isArray(data) ? data : []))
       .catch(() => setCategorias([]));
   }, []);
 
+  // ✅ CRÍTICO: Corrigido para usar o endpoint de movimentação ao invés de PUT de peça
   const handleQuickAdjust = async (id: string, quantidade: number, operacao: 'add' | 'remove') => {
-    const novaQuantidade = operacao === 'add' ? quantidade + 1 : Math.max(0, quantidade - 1);
-    
     try {
-      const res = await fetch(`/api/pecas/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantidade: novaQuantidade })
+      await apiFetch('/api/estoque/movimentacao', {
+        method: 'POST',
+        body: {
+          peca_id: id,
+          tipo: operacao === 'add' ? 'ENTRADA' : 'SAIDA',
+          quantidade: 1,
+          motivo: 'AJUSTE',
+          observacao: 'Ajuste rápido via listagem de estoque'
+        }
       });
       
-      if (res.ok) {
-        toast.success(`Estoque ${operacao === 'add' ? 'adicionado' : 'removido'} com sucesso!`);
-        setData(prev => ({
-          ...prev,
-          items: prev.items.map(p => p.id === id ? { ...p, quantidade: novaQuantidade } : p)
-        }));
-        fetchMetrics();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || 'Erro ao ajustar estoque');
-      }
-    } catch (error) {
-      toast.error('Erro de conexão ao ajustar estoque');
+      toast.success(`Estoque ${operacao === 'add' ? 'adicionado' : 'removido'} com sucesso!`);
+      
+      // Atualiza localmente para feedback instantâneo, mas busca do banco em background para garantir sync
+      setData(prev => ({
+        ...prev,
+        items: prev.items.map(p => p.id === id ? { 
+          ...p, 
+          quantidade: operacao === 'add' ? p.quantidade + 1 : Math.max(0, p.quantidade - 1) 
+        } : p)
+      }));
+      
+      fetchPecas();
+      fetchMetrics();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao ajustar estoque' });
     }
   };
 
@@ -252,22 +237,16 @@ export default function EstoquePage() {
     setIsDeleting(true);
 
     try {
-      const res = await fetch(`/api/pecas/${deletingItem.id}`, { method: 'DELETE' });
-      const data = await res.json();
-      
-      if (res.ok) {
-        toast.success('Item removido do almoxarifado');
-        setShowDeleteModal(false);
-        fetchPecas();
-        fetchMetrics();
-      } else {
-        toast.error(data.error || 'Erro ao excluir item');
-      }
-    } catch (err) {
-      toast.error('Erro de conexão');
+      await apiFetch(`/api/pecas/${deletingItem.id}`, { method: 'DELETE' });
+      toast.success('Item removido do almoxarifado');
+      setShowDeleteModal(false);
+      setDeletingItem(null);
+      fetchPecas();
+      fetchMetrics();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao excluir item' });
     } finally {
       setIsDeleting(false);
-      setDeletingItem(null);
     }
   };
 
@@ -409,7 +388,6 @@ export default function EstoquePage() {
                   </div>
                 ) : (
                   <>
-                    {/* VISÃO DESKTOP (TABELA) */}
                     <div className="hidden lg:block w-full overflow-x-auto rounded-xl">
                       <table className="w-full min-w-[850px] text-left">
                         <thead>
@@ -437,15 +415,11 @@ export default function EstoquePage() {
                       </table>
                     </div>
 
-                    {/* VISÃO MOBILE (CARDS OPERACIONAIS) */}
                     <div className="block lg:hidden divide-y divide-zinc-800/40 w-full max-w-full overflow-hidden min-w-0">
                       {data.items.map((peca) => {
                         const status = getEstoqueStatus(peca.quantidade, peca.estoque_minimo);
                         return (
-                          <div 
-                            key={peca.id} 
-                            className="p-5 space-y-4 hover:bg-zinc-900/20 transition-all group min-w-0"
-                          >
+                          <div key={peca.id} className="p-5 space-y-4 hover:bg-zinc-900/20 transition-all group min-w-0">
                             <div className="flex justify-between items-start gap-4 flex-nowrap">
                               <div className="space-y-1 min-w-0 flex-1">
                                 <h4 className="text-sm font-black text-white uppercase italic leading-tight break-words truncate group-hover:text-orange-500 transition-colors" title={peca.descricao}>
@@ -492,7 +466,6 @@ export default function EstoquePage() {
                               </div>
                             </div>
 
-                            {/* Ações da Peça no Mobile Grid */}
                             <div className="grid grid-cols-3 gap-2 pt-1">
                               <Link href={`/estoque/${peca.id}`} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition" title="Visualizar">
                                 <Eye size={12} /> Visualizar
@@ -512,7 +485,7 @@ export default function EstoquePage() {
                     <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
                       <Pagination 
                         page={page} 
-                        totalPages={data.totalPages || 0} 
+                        totalPages={data.totalPages} 
                         onPageChange={setPage} 
                       />
                     </div>
@@ -580,7 +553,6 @@ export default function EstoquePage() {
             <div className="text-center py-32 text-zinc-600 text-xs tracking-widest uppercase bg-zinc-900/30 rounded-2xl border border-zinc-800">Falha ao processar análise técnica do almoxarifado</div>
           ) : (
             <>
-              {/* Cards Analytics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-orange-500/30 transition-all">
                   <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">VALUATION GLOBAL</p>
@@ -604,7 +576,6 @@ export default function EstoquePage() {
                 </div>
               </div>
 
-              {/* Tabela de inteligência */}
               <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
                 <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
                   <div>
@@ -711,6 +682,13 @@ export default function EstoquePage() {
                   <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
                 </div>
               </div>
+              <button 
+                type="button"
+                onClick={() => { setShowDeleteModal(false); setDeletingItem(null); }}
+                className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <div className="p-6 space-y-5">
               <p className="text-sm text-zinc-300 leading-relaxed">
@@ -720,7 +698,7 @@ export default function EstoquePage() {
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowDeleteModal(false)}
+                  onClick={() => { setShowDeleteModal(false); setDeletingItem(null); }}
                   disabled={isDeleting}
                   className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
                 >
