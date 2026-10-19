@@ -53,20 +53,22 @@ function validarCNPJ(cnpj: string): boolean {
   return true;
 }
 
-function validarCpfCnpj(valor: string, tipo?: string): boolean {
+function validarCpfCnpj(valor: string): boolean {
   const nums = valor.replace(/\D/g, '');
   if (nums.length === 11) return validarCPF(nums);
   if (nums.length === 14) return validarCNPJ(nums);
   return false;
 }
 
+// ============================================================
+// SCHEMAS DE VALIDAÇÃO
+// ============================================================
 const clienteSchema = z.object({
   tipo: z.enum(['PF', 'PJ']).default('PJ'),
-  tipo_pessoa: z.string().optional(),
+  tipo_pessoa: z.enum(['FISICA', 'JURIDICA']).optional(), // 👈 ENUM
   nome: z.string().min(3, 'Nome muito curto').trim(),
   razao_social: z.string().optional().nullable(),
   nome_fantasia: z.string().optional().nullable(),
-  // A12: aceita com ou sem máscara; validação real fica no refine abaixo
   cpf_cnpj: z
     .string()
     .min(11, 'CPF/CNPJ muito curto')
@@ -78,7 +80,7 @@ const clienteSchema = z.object({
   telefone_secundario: z.string().optional().nullable(),
   contato: z.string().optional().nullable(),
   email: z.string().email('E-mail inválido').optional().nullable().or(z.literal('')),
-  status: z.string().default('ATIVO'),
+  status: z.enum(['ATIVO', 'INATIVO']).default('ATIVO'), // 👈 ENUM
   cep: z.string().optional().nullable(),
   endereco: z.string().optional().nullable(),
   numero: z.string().optional().nullable(),
@@ -92,6 +94,15 @@ const clienteSchema = z.object({
   ativo: z.boolean().optional().default(true),
 });
 
+const listarClientesQuerySchema = z.object({
+  q: z.string().optional().transform(v => v?.slice(0, 100) || ''),
+  status: z.enum(['ATIVO', 'INATIVO']).optional(),
+  perfil: z.enum(['CLIENTE', 'FORNECEDOR', 'AMBOS']).optional(),
+  tipo: z.enum(['PF', 'PJ']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
+
 // ============================================================
 // GET — Listar clientes
 // ============================================================
@@ -100,23 +111,21 @@ export async function GET(request: NextRequest) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para listar
     if (!checkPermission(user, 'clientes', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const q = (searchParams.get('q') || '').slice(0, 100);
-    const status = searchParams.get('status') || '';
-    const perfil = searchParams.get('perfil') || '';
-    // A38: filtro por tipo (PF/PJ) aplicado no servidor
-    const tipo = searchParams.get('tipo') || '';
+    const parsed = listarClientesQuerySchema.parse({
+      q: searchParams.get('q'),
+      status: searchParams.get('status'),
+      perfil: searchParams.get('perfil'),
+      tipo: searchParams.get('tipo'),
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+    });
 
-    // M06: teto de paginação
-    const rawPage = parseInt(searchParams.get('page') || '1', 10);
-    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
-    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
+    const { q, status, perfil, tipo, page, limit } = parsed;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -124,11 +133,7 @@ export async function GET(request: NextRequest) {
     };
 
     if (status) where.status = status;
-
-    // A38: filtro PF/PJ aplicado no servidor (antes era client-side, só na página atual)
-    if (tipo === 'PF' || tipo === 'PJ') {
-      where.tipo = tipo;
-    }
+    if (tipo) where.tipo = tipo;
 
     if (perfil) {
       if (perfil === 'CLIENTE') {
@@ -198,7 +203,12 @@ export async function GET(request: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
-    // B05: erro real em vez de lista vazia silenciosa
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
     log(
       'ERROR',
       'CLIENTE',
@@ -227,7 +237,6 @@ export async function POST(request: NextRequest) {
 
     const body = clienteSchema.parse(await request.json());
 
-    // A12: normaliza CPF/CNPJ só com dígitos para comparação
     const cpfCnpjLimpo = body.cpf_cnpj.replace(/\D/g, '');
 
     const existing = await prisma.cliente.findFirst({
@@ -278,7 +287,6 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (err: any) {
-      // Constraint unique (cpf_cnpj, empresa_id) estourou
       if (err?.code === 'P2002') {
         return NextResponse.json(
           { error: 'CPF/CNPJ já cadastrado nesta empresa' },
