@@ -1,34 +1,39 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { memo, useState, useEffect, useCallback } from 'react';
 import { 
   User, Shield, Settings, Plus, Edit, Trash2, 
-  Key, Save, Check, AlertTriangle, 
+  Key, Save, AlertTriangle, 
   ShieldCheck, Wrench, Briefcase, UserCheck, Package,
   Building2, Landmark, FileText,
-  ChevronRight, History, Upload, Eye, EyeOff, Loader2
+  ChevronRight, History, Upload, Eye, EyeOff, Loader2,
+  X, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
-import { TableVirtualizer } from '@/components/TableVirtualizer';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 type Tab = 'usuarios' | 'perfil' | 'sistema' | 'empresa' | 'logs';
 
-// ... (Componente UserRow mantido igual) ...
+// ============================================================
+// COMPONENTE DE LINHA DE USUÁRIO
+// ============================================================
 const UserRow = memo(({ 
   u, 
   currentUser, 
   roleConfigs, 
   handleOpenUserModal, 
-  handleResetPassword, 
-  handleDeleteUser 
+  handleResetPasswordClick, 
+  handleDeleteUserClick 
 }: { 
   u: any, 
   currentUser: any, 
   roleConfigs: any, 
   handleOpenUserModal: any, 
-  handleResetPassword: any, 
-  handleDeleteUser: any 
+  handleResetPasswordClick: any, 
+  handleDeleteUserClick: any 
 }) => {
   const config = roleConfigs[u.role] || roleConfigs.MECANICO;
   const Icon = config.icon;
@@ -46,9 +51,9 @@ const UserRow = memo(({
       </td>
       <td className="p-6">
         <div className="flex items-center justify-center gap-2">
-          <button onClick={() => handleOpenUserModal(u)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-white transition shadow-lg"><Edit className="w-4 h-4" /></button>
-          <button onClick={() => handleResetPassword(u.id)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-orange-600 transition shadow-lg"><Key className="w-4 h-4" /></button>
-          <button onClick={() => handleDeleteUser(u.id)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-red-500 transition shadow-lg disabled:opacity-20" disabled={u.id === currentUser.id}><Trash2 className="w-4 h-4" /></button>
+          <button onClick={() => handleOpenUserModal(u)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-white transition shadow-lg cursor-pointer" title="Editar"><Edit className="w-4 h-4" /></button>
+          <button onClick={() => handleResetPasswordClick(u)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-orange-600 transition shadow-lg cursor-pointer" title="Resetar senha"><Key className="w-4 h-4" /></button>
+          <button onClick={() => handleDeleteUserClick(u)} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 hover:text-red-500 transition shadow-lg disabled:opacity-20 cursor-pointer" disabled={u.id === currentUser.id} title="Excluir"><Trash2 className="w-4 h-4" /></button>
         </div>
       </td>
     </tr>
@@ -57,13 +62,64 @@ const UserRow = memo(({
 
 UserRow.displayName = 'UserRow';
 
+// ============================================================
+// COMPONENTE DE LINHA DE LOG
+// ============================================================
+const LogRow = memo(({ log }: { log: any }) => {
+  const formatDate = (date: string) => {
+    if (!date) return '—';
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getActionColor = (acao: string) => {
+    switch (acao?.toUpperCase()) {
+      case 'CRIAR': return 'text-green-400 bg-green-500/10 border-green-500/20';
+      case 'EDITAR': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
+      case 'EXCLUIR': return 'text-red-400 bg-red-500/10 border-red-500/20';
+      default: return 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20';
+    }
+  };
+
+  return (
+    <tr className="hover:bg-zinc-800/10 transition-all border-l-4 border-l-transparent hover:border-l-orange-600">
+      <td className="p-4 min-w-0">
+        <p className="text-[10px] font-mono text-zinc-400 font-bold">{formatDate(log.created_at)}</p>
+      </td>
+      <td className="p-4">
+        <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">{log.modulo || '—'}</span>
+      </td>
+      <td className="p-4">
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${getActionColor(log.acao)}`}>
+          {log.acao || '—'}
+        </span>
+      </td>
+      <td className="p-4">
+        <p className="text-[10px] font-mono text-zinc-300 font-bold truncate max-w-[150px]" title={log.entidade}>{log.entidade || '—'}</p>
+        <p className="text-[8px] font-mono text-zinc-600 mt-0.5">#{log.entidade_id?.slice(-8) || '—'}</p>
+      </td>
+      <td className="p-4">
+        <p className="text-[10px] font-bold text-white uppercase truncate max-w-[150px]" title={log.usuario}>{log.usuario || '—'}</p>
+      </td>
+    </tr>
+  );
+});
+
+LogRow.displayName = 'LogRow';
+
+// ============================================================
+// PÁGINA
+// ============================================================
 export default function ConfiguracoesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('usuarios');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [companyLoading, setCompanyLoading] = useState(false); // ✅ NOVO: loading da empresa
+  const [companyLoading, setCompanyLoading] = useState(false);
 
-  // Estado da Empresa
+  // ============================================================
+  // ESTADO DA EMPRESA
+  // ============================================================
   const [companyData, setCompanyData] = useState<any>({
     nome_fantasia: '',
     razao_social: '',
@@ -92,25 +148,21 @@ export default function ConfiguracoesPage() {
   const [logoPreview, setLogoPreview] = useState<string>('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [savingCompany, setSavingCompany] = useState(false);
 
   const fetchCompanyData = useCallback(async () => {
     setCompanyLoading(true);
     try {
-      const res = await fetch('/api/configuracoes/empresa');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.id) {
-          setCompanyData((prev: any) => ({ ...prev, ...data })); // ✅ Mescla com defaults
-          if (data.logo_url) setLogoPreview(data.logo_url);
-        } else {
-          // Se a API retornar vazio, mantém os defaults (não quebra a tela)
-          console.warn('Configuração da empresa não encontrada. Usando valores padrão.');
-        }
-      } else {
-        toast.error('Erro ao carregar dados da empresa. Verifique suas permissões.');
+      const data = await apiFetch<any>('/api/configuracoes/empresa');
+      if (data && data.id) {
+        setCompanyData((prev: any) => ({ ...prev, ...data }));
+        if (data.logo_url) setLogoPreview(data.logo_url);
       }
-    } catch (err) {
-      toast.error('Erro de conexão ao carregar dados da empresa.');
+    } catch (err: any) {
+      // Se for 404/vazio, mantém defaults (não é erro crítico)
+      if (err?.status !== 404) {
+        handleApiError(err, { defaultMessage: 'Erro ao carregar dados da empresa.' });
+      }
     } finally {
       setCompanyLoading(false);
     }
@@ -132,7 +184,6 @@ export default function ConfiguracoesPage() {
     setCompanyData((prev: any) => ({ ...prev, [name]: value }));
   };
 
-  // Upload da Logo
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -151,7 +202,6 @@ export default function ConfiguracoesPage() {
         method: 'POST',
         body: formData,
       });
-
       const data = await res.json();
 
       if (res.ok && data.url) {
@@ -169,55 +219,105 @@ export default function ConfiguracoesPage() {
   };
 
   const handleSalvarEmpresa = async () => {
+    setSavingCompany(true);
     try {
-      const res = await fetch('/api/configuracoes/empresa', {
+      await apiFetch('/api/configuracoes/empresa', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(companyData)
+        body: companyData,
       });
-      if (res.ok) {
-        toast.success('Dados da empresa salvos com sucesso!');
-      } else {
-        const error = await res.json();
-        toast.error(error.error || 'Erro ao salvar dados da empresa');
-      }
-    } catch {
-      toast.error('Erro de conexão ao salvar');
+      toast.success('Dados da empresa salvos com sucesso!');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao salvar dados da empresa' });
+    } finally {
+      setSavingCompany(false);
     }
   };
 
-  const [usersData, setUsersData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
+  // ============================================================
+  // USUÁRIOS
+  // ============================================================
+  // ✅ CORRIGIDO: totalPages inicia em 1
+  const [usersData, setUsersData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [usersPage, setUsersPage] = useState(1);
-  
-  const [logsData, setLogsData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  const fetchUsers = useCallback(async () => {
+    if (currentUser?.role !== 'ADMIN') return;
+    setUsersLoading(true);
+    try {
+      const data = await apiFetch<any>(`/api/usuarios?page=${usersPage}&limit=10`);
+      const items = Array.isArray(data) ? data : (data.items || []);
+      const total = typeof data.total === 'number' ? data.total : items.length;
+      const totalPages = Math.max(1, data.totalPages || 1);
+      setUsersData({ items, total, totalPages });
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao carregar usuários' });
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [currentUser, usersPage]);
+
+  // ============================================================
+  // LOGS
+  // ============================================================
+  // ✅ CORRIGIDO: totalPages inicia em 1
+  const [logsData, setLogsData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [logsPage, setLogsPage] = useState(1);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsFiltroModulo, setLogsFiltroModulo] = useState('TODOS');
 
   const fetchLogs = useCallback(async () => {
     if (currentUser?.role !== 'ADMIN') return;
+    setLogsLoading(true);
     try {
-      setLogsLoading(true);
-      const res = await fetch(`/api/logs?page=${logsPage}&limit=20&modulo=${logsFiltroModulo}`);
-      if (res.ok) {
-        setLogsData(await res.json());
-      }
-    } catch {
-      // silencioso
+      const params = new URLSearchParams({
+        page: String(logsPage),
+        limit: '20',
+        modulo: logsFiltroModulo,
+      });
+      const data = await apiFetch<any>(`/api/logs?${params.toString()}`);
+      const items = Array.isArray(data) ? data : (data.items || []);
+      const total = typeof data.total === 'number' ? data.total : items.length;
+      const totalPages = Math.max(1, data.totalPages || 1);
+      setLogsData({ items, total, totalPages });
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao carregar logs de auditoria' });
     } finally {
       setLogsLoading(false);
     }
   }, [currentUser, logsPage, logsFiltroModulo]);
 
+  // Reset da página ao trocar filtro
   useEffect(() => {
-    const load = async () => {
-      if (activeTab === 'logs') {
-        await fetchLogs();
-      }
-    };
-    load();
-  }, [activeTab, fetchLogs]);
+    setLogsPage(1);
+  }, [logsFiltroModulo]);
 
+  // ============================================================
+  // PERFIL
+  // ============================================================
+  const [profileFormData, setProfileFormData] = useState({
+    name: '',
+    email: '',
+    senhaAtual: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/api/usuario');
+      setCurrentUser(data);
+      setProfileFormData(prev => ({ ...prev, name: data.name, email: data.email }));
+      if (data.role !== 'ADMIN') setActiveTab('perfil');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao carregar perfil' });
+    }
+  }, []);
+
+  // ============================================================
+  // MODAIS (usuários e reset de senha)
+  // ============================================================
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [userFormData, setUserFormData] = useState({
@@ -228,45 +328,19 @@ export default function ConfiguracoesPage() {
     especialidade: '',
     comissao: '0'
   });
+  const [savingUser, setSavingUser] = useState(false);
 
-  const [profileFormData, setProfileFormData] = useState({
-    name: '',
-    email: '',
-    senhaAtual: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
+  // ✅ NOVO: modal de exclusão (substitui confirm nativo)
+  const [deleteUserTarget, setDeleteUserTarget] = useState<any>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
-  const fetchProfile = useCallback(async () => {
-    try {
-      const res = await fetch('/api/usuario');
-      if (res.ok) {
-        const data = await res.json();
-        setCurrentUser(data);
-        setProfileFormData(prev => ({ ...prev, name: data.name, email: data.email }));
-        if (data.role !== 'ADMIN') setActiveTab('perfil');
-      } else {
-        toast.error('Erro ao carregar perfil');
-      }
-    } catch {
-      toast.error('Interrupção na rede de dados');
-    }
-  }, []);
+  // ✅ NOVO: modal de reset de senha (substitui confirm nativo)
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<any>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
-    if (currentUser?.role !== 'ADMIN') return;
-    try {
-      const res = await fetch(`/api/usuarios?page=${usersPage}&limit=10`);
-      if (res.ok) {
-        setUsersData(await res.json());
-      } else {
-        toast.error('Erro ao carregar usuários');
-      }
-    } catch {
-      toast.error('Falha de protocolo na listagem');
-    }
-  }, [currentUser, usersPage]);
-
+  // ============================================================
+  // EFFECTS DE CARREGAMENTO
+  // ============================================================
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -277,14 +351,20 @@ export default function ConfiguracoesPage() {
   }, [fetchProfile]);
 
   useEffect(() => {
-    const loadUsers = async () => {
-      if (currentUser?.role === 'ADMIN' && activeTab === 'usuarios') {
-        await fetchUsers();
-      }
-    };
-    loadUsers();
+    if (currentUser?.role === 'ADMIN' && activeTab === 'usuarios') {
+      fetchUsers();
+    }
   }, [currentUser, activeTab, fetchUsers]);
 
+  useEffect(() => {
+    if (currentUser?.role === 'ADMIN' && activeTab === 'logs') {
+      fetchLogs();
+    }
+  }, [currentUser, activeTab, fetchLogs]);
+
+  // ============================================================
+  // HANDLERS — USUÁRIOS
+  // ============================================================
   const handleOpenUserModal = (user: any = null) => {
     if (user) {
       setEditingUser(user);
@@ -301,63 +381,68 @@ export default function ConfiguracoesPage() {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    const url = editingUser ? `/api/usuarios/${editingUser.id}` : '/api/usuarios';
-    const method = editingUser ? 'PUT' : 'POST';
+    setSavingUser(true);
     try {
+      const url = editingUser ? `/api/usuarios/${editingUser.id}` : '/api/usuarios';
+      const method = editingUser ? 'PUT' : 'POST';
       const payload = {
         ...userFormData,
         comissao: parseFloat(userFormData.comissao || '0')
       };
-      const res = await fetch(url, {
-        method, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+      await apiFetch(url, { method, body: payload });
+      toast.success(editingUser ? 'Usuário atualizado!' : 'Novo usuário criado!');
+      setIsUserModalOpen(false);
+      fetchUsers();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao salvar usuário' });
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleDeleteUserClick = (user: any) => {
+    setDeleteUserTarget(user);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUserTarget) return;
+    setIsDeletingUser(true);
+    try {
+      await apiFetch(`/api/usuarios/${deleteUserTarget.id}`, { method: 'DELETE' });
+      toast.success('Usuário excluído com sucesso!');
+      setDeleteUserTarget(null);
+      fetchUsers();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao excluir usuário' });
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  const handleResetPasswordClick = (user: any) => {
+    setResetPasswordTarget(user);
+  };
+
+  const confirmResetPassword = async () => {
+    if (!resetPasswordTarget) return;
+    setIsResettingPassword(true);
+    try {
+      const data = await apiFetch<any>(`/api/usuarios/${resetPasswordTarget.id}/reset-password`, { method: 'POST' });
+      toast.success(`Senha temporária: ${data.tempPassword}`, {
+        description: 'Anote agora. Não será exibida novamente.',
+        duration: 30000,
       });
-      if (res.ok) {
-        setIsUserModalOpen(false);
-        fetchUsers();
-      } else {
-        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-        toast.error(data.error || 'Erro ao salvar usuário');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      setResetPasswordTarget(null);
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao resetar senha' });
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm('Deseja excluir permanentemente este usuário?')) return;
-    try {
-      const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchUsers();
-      } else {
-        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-        toast.error(data.error || 'Erro ao excluir usuário');
-      }
-    } catch {
-      toast.error('Erro de conexão');
-    }
-  };
-
-  const handleResetPassword = async (id: string) => {
-    if (!confirm('Deseja resetar a senha? Uma senha temporária será gerada.')) return;
-    try {
-      const res = await fetch(`/api/usuarios/${id}/reset-password`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        toast.success(`Senha temporária: ${data.tempPassword}`, {
-          description: 'Anote agora. Não será exibida novamente.',
-          duration: 30000,
-        });
-      } else {
-        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-        toast.error(data.error || 'Erro ao resetar');
-      }
-    } catch {
-      toast.error('Erro de conexão');
-    }
-  };
-
+  // ============================================================
+  // HANDLER — PERFIL
+  // ============================================================
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -376,6 +461,7 @@ export default function ConfiguracoesPage() {
       }
     }
 
+    setProfileSaving(true);
     try {
       const payload: any = {
         name: profileFormData.name,
@@ -386,30 +472,26 @@ export default function ConfiguracoesPage() {
         payload.senha_atual = profileFormData.senhaAtual;
       }
 
-      const res = await fetch('/api/usuario', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      await apiFetch('/api/usuario', { method: 'PUT', body: payload });
 
-      if (res.ok) {
-        toast.success('Perfil atualizado com sucesso');
-        setProfileFormData(prev => ({
-          ...prev,
-          senhaAtual: '',
-          newPassword: '',
-          confirmPassword: '',
-        }));
-        fetchProfile();
-      } else {
-        const data = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-        toast.error(data.error || 'Erro ao atualizar perfil');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      toast.success('Perfil atualizado com sucesso');
+      setProfileFormData(prev => ({
+        ...prev,
+        senhaAtual: '',
+        newPassword: '',
+        confirmPassword: '',
+      }));
+      fetchProfile();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao atualizar perfil' });
+    } finally {
+      setProfileSaving(false);
     }
   };
 
+  // ============================================================
+  // RENDER — LOADING INICIAL
+  // ============================================================
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh]">
       <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
@@ -427,6 +509,8 @@ export default function ConfiguracoesPage() {
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden">
       <div className="flex flex-col lg:flex-row gap-8">
+        
+        {/* SIDEBAR */}
         <aside className="lg:w-72 space-y-3">
           {currentUser?.role === 'ADMIN' && (
             <button 
@@ -504,69 +588,81 @@ export default function ConfiguracoesPage() {
         </aside>
 
         <main className="flex-1">
-          {/* ... (Aba Usuários mantida igual) ... */}
+
+          {/* ============================================================ */}
+          {/* ABA USUÁRIOS */}
+          {/* ============================================================ */}
           {activeTab === 'usuarios' && currentUser?.role === 'ADMIN' && (
-             <div className="space-y-6">
-               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                 <div>
-                   <h1 className="text-3xl font-black text-white uppercase tracking-tight italic">Gestão de Equipe</h1>
-                   <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Administração de usuários e permissões</p>
-                 </div>
-                 <button onClick={() => handleOpenUserModal()} className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 shadow-xl active:scale-95 group">
-                   <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" /> Novo Colaborador
-                 </button>
-               </div>
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-3xl font-black text-white uppercase tracking-tight italic">Gestão de Equipe</h1>
+                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Administração de usuários e permissões</p>
+                </div>
+                <button onClick={() => handleOpenUserModal()} className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 shadow-xl active:scale-95 group cursor-pointer">
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" /> Novo Colaborador
+                </button>
+              </div>
 
-               <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
-                 <div className="w-full overflow-x-auto">
-                   <table className="min-w-full text-left">
-                     <thead>
-                       <tr className="bg-zinc-900/50 text-zinc-400 text-[10px] font-mono uppercase tracking-widest">
-                         <th className="p-6 font-mono text-zinc-400 uppercase tracking-widest">Colaborador</th>
-                         <th className="p-6 font-mono text-zinc-400 uppercase tracking-widest">Função Gerencial</th>
-                         <th className="p-6 font-mono text-zinc-400 uppercase tracking-widest text-center">Gestão</th>
-                       </tr>
-                     </thead>
-                     <tbody className="divide-y divide-zinc-800/40">
-                       {usersData.items.length === 0 ? (
-                         <tr>
-                           <td colSpan={3} className="p-12 text-center">
-                             <User className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
-                             <p className="text-sm font-black text-white uppercase italic tracking-tighter">Nenhum usuário cadastrado</p>
-                             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
-                               Clique em "Novo Colaborador" para adicionar.
-                             </p>
-                           </td>
-                         </tr>
-                       ) : (
-                         usersData.items.map((u) => (
-                           <UserRow 
-                             key={u.id} 
-                             u={u} 
-                             currentUser={currentUser} 
-                             roleConfigs={roleConfigs} 
-                             handleOpenUserModal={handleOpenUserModal} 
-                             handleResetPassword={handleResetPassword} 
-                             handleDeleteUser={handleDeleteUser} 
-                           />
-                         ))
-                       )}
-                     </tbody>
-                   </table>
-                 </div>
-               </div>
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="w-full overflow-x-auto">
+                  <table className="min-w-full text-left">
+                    <thead>
+                      <tr className="bg-zinc-900/50 text-zinc-400 text-[10px] font-mono uppercase tracking-widest">
+                        <th className="p-6 font-mono text-zinc-400 uppercase tracking-widest">Colaborador</th>
+                        <th className="p-6 font-mono text-zinc-400 uppercase tracking-widest">Função Gerencial</th>
+                        <th className="p-6 font-mono text-zinc-400 uppercase tracking-widest text-center">Gestão</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/40">
+                      {usersLoading ? (
+                        <tr>
+                          <td colSpan={3} className="p-12 text-center">
+                            <Loader2 className="w-8 h-8 text-orange-500 animate-spin mx-auto mb-3" />
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Carregando usuários...</p>
+                          </td>
+                        </tr>
+                      ) : usersData.items.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="p-12 text-center">
+                            <User className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
+                            <p className="text-sm font-black text-white uppercase italic tracking-tighter">Nenhum usuário cadastrado</p>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                              Clique em "Novo Colaborador" para adicionar.
+                            </p>
+                          </td>
+                        </tr>
+                      ) : (
+                        usersData.items.map((u) => (
+                          <UserRow 
+                            key={u.id} 
+                            u={u} 
+                            currentUser={currentUser} 
+                            roleConfigs={roleConfigs} 
+                            handleOpenUserModal={handleOpenUserModal} 
+                            handleResetPasswordClick={handleResetPasswordClick} 
+                            handleDeleteUserClick={handleDeleteUserClick} 
+                          />
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-               <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
-                 <Pagination 
-                   page={usersPage} 
-                   totalPages={usersData.totalPages} 
-                   onPageChange={setUsersPage} 
-                 />
-               </div>
-             </div>
+              <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
+                <Pagination 
+                  page={usersPage} 
+                  totalPages={usersData.totalPages} 
+                  onPageChange={setUsersPage} 
+                />
+              </div>
+            </div>
           )}
 
-          {/* ABA EMPRESA (CORRIGIDA) */}
+          {/* ============================================================ */}
+          {/* ABA EMPRESA */}
+          {/* ============================================================ */}
           {activeTab === 'empresa' && currentUser?.role === 'ADMIN' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -576,9 +672,11 @@ export default function ConfiguracoesPage() {
                 </div>
                 <button 
                   onClick={handleSalvarEmpresa}
-                  className="bg-orange-600 hover:bg-orange-500 text-white px-10 py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-3 shadow-xl shadow-orange-950/40 active:scale-95 group"
+                  disabled={savingCompany}
+                  className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white px-10 py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-3 shadow-xl shadow-orange-950/40 active:scale-95 group cursor-pointer"
                 >
-                  <Save className="w-4 h-4 transition-transform group-hover:scale-110" /> Salvar Parametrização
+                  {savingCompany ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 transition-transform group-hover:scale-110" />}
+                  Salvar Parametrização
                 </button>
               </div>
 
@@ -615,7 +713,7 @@ export default function ConfiguracoesPage() {
                           }`}>
                             {uploadingLogo ? (
                               <>
-                                <div className="w-4 h-4 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+                                <Loader2 className="w-4 h-4 animate-spin" />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Enviando...</span>
                               </>
                             ) : (
@@ -633,7 +731,7 @@ export default function ConfiguracoesPage() {
                             />
                           </label>
                           <p className="text-[9px] text-zinc-600 font-mono uppercase tracking-wider text-center">
-                            PNG ou JPG • Máx 2MB • Fundo transparente recomendado
+                            PNG ou JPG • Máx 2MB
                           </p>
                         </div>
                       </div>
@@ -641,11 +739,11 @@ export default function ConfiguracoesPage() {
 
                     <div className="space-y-6">
                       <div>
-                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nome Fantasia / Display</label>
+                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nome Fantasia</label>
                         <input name="nome_fantasia" value={companyData.nome_fantasia || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="VEHLOX" />
                       </div>
                       <div>
-                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Razão Social Completa</label>
+                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Razão Social</label>
                         <input name="razao_social" value={companyData.razao_social || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="VEHLOX LTDA" />
                       </div>
                       <div className="grid grid-cols-2 gap-6">
@@ -660,22 +758,21 @@ export default function ConfiguracoesPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-6">
                         <div>
-                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Canal de Contato</label>
+                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Telefone</label>
                           <input name="telefone" value={companyData.telefone || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="(00) 00000-0000" />
                         </div>
                         <div>
-                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Endpoint de Email</label>
-                          <input name="email" value={companyData.email || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="CONTATO@VEHLOX.COM.BR" />
+                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">E-mail</label>
+                          <input name="email" value={companyData.email || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="CONTATO@EMPRESA.COM.BR" />
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Logradouro Administrativo</label>
+                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Endereço</label>
                         <input name="endereco" value={companyData.endereco || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="RUA DAS OFICINAS, 999" />
                       </div>
-
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Número</label>
+                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Nº</label>
                           <input name="numero" value={companyData.numero || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" placeholder="123" />
                         </div>
                         <div className="col-span-2">
@@ -697,14 +794,13 @@ export default function ConfiguracoesPage() {
                         <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">CEP</label>
                         <input name="cep" value={companyData.cep || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="00000-000" />
                       </div>
-
                     </div>
                   </div>
 
                   <div className="space-y-8">
-                     <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+                    <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
                       <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-800/50">
-                        <Landmark className="w-4 h-4 text-orange-600" /> Configuração Fiscal e Tributária
+                        <Landmark className="w-4 h-4 text-orange-600" /> Configuração Fiscal
                       </h3>
                       <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-6">
@@ -713,7 +809,7 @@ export default function ConfiguracoesPage() {
                             <input name="inscricao_municipal" value={companyData.inscricao_municipal || ''} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner font-mono placeholder:text-zinc-700" placeholder="000000" />
                           </div>
                           <div>
-                            <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Regime de Operação</label>
+                            <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Regime Tributário</label>
                             <select name="regime_tributario" value={companyData.regime_tributario || 'Simples Nacional'} onChange={handleCompanyChange} className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 text-xs text-white font-black uppercase tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner appearance-none cursor-pointer">
                               <option value="Simples Nacional">Simples Nacional</option>
                               <option value="MEI">MEI</option>
@@ -723,7 +819,7 @@ export default function ConfiguracoesPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Token de Comunicação NFSe</label>
+                          <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2 block px-1">Token NFSe</label>
                           <div className="relative group">
                             <input 
                               name="token_nfse" 
@@ -731,7 +827,7 @@ export default function ConfiguracoesPage() {
                               onChange={handleCompanyChange} 
                               type={showToken ? "text" : "password"} 
                               className="w-full bg-zinc-950/50 border border-zinc-900 rounded-xl p-4 pr-12 text-xs text-white font-black tracking-widest focus:border-orange-600 outline-none transition-all shadow-inner placeholder:text-zinc-700" 
-                              placeholder="TOKEN DE ACESSO SEGURO" 
+                              placeholder="TOKEN DE ACESSO" 
                             />
                             <button
                               type="button"
@@ -747,27 +843,26 @@ export default function ConfiguracoesPage() {
 
                     <div className="bg-zinc-900/40 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
                       <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-3 pb-4 border-b border-zinc-800/50">
-                        <FileText className="w-4 h-4 text-orange-600" /> Rodapé de Documentos Oficiais
+                        <FileText className="w-4 h-4 text-orange-600" /> Rodapé de Documentos
                       </h3>
-                      <div>
-                        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-3 block px-1 italic">Este texto será injetado dinamicamente em Ordem de Serviço, Orçamentos e Recibos</label>
-                        <textarea 
-                          name="rodape_personalizado" 
-                          value={companyData.rodape_personalizado || ''} 
-                          onChange={handleCompanyChange} 
-                          rows={5}
-                          className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-[11px] text-zinc-400 font-bold uppercase tracking-[0.1em] focus:border-orange-600 outline-none transition-all shadow-inner resize-none leading-relaxed italic placeholder:text-zinc-700" 
-                          placeholder="EX: GARANTIA DE 90 DIAS PARA SERVIÇOS EFETUADOS..."
-                        />
-                      </div>
+                      <textarea 
+                        name="rodape_personalizado" 
+                        value={companyData.rodape_personalizado || ''} 
+                        onChange={handleCompanyChange} 
+                        rows={5}
+                        className="w-full bg-zinc-950/50 border border-zinc-900 rounded-2xl p-5 text-[11px] text-zinc-400 font-bold uppercase tracking-[0.1em] focus:border-orange-600 outline-none transition-all shadow-inner resize-none leading-relaxed italic placeholder:text-zinc-700" 
+                        placeholder="EX: GARANTIA DE 90 DIAS PARA SERVIÇOS EFETUADOS..."
+                      />
                     </div>
                   </div>
                 </div>
               )}
             </div>
           )}
-          
-          {/* ABA PERFIL (CORRIGIDA) */}
+
+          {/* ============================================================ */}
+          {/* ABA PERFIL */}
+          {/* ============================================================ */}
           {activeTab === 'perfil' && (
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 sm:p-10 shadow-2xl relative overflow-hidden animate-in fade-in">
               <div className="absolute top-0 right-0 p-8 opacity-5">
@@ -835,7 +930,7 @@ export default function ConfiguracoesPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Confirmar Nova Senha</label>
+                        <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Confirmar</label>
                         <input
                           type="password"
                           value={profileFormData.confirmPassword}
@@ -851,18 +946,265 @@ export default function ConfiguracoesPage() {
                   <div className="flex justify-end pt-6">
                     <button
                       type="submit"
-                      className="bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-orange-950/20 active:scale-95 flex items-center gap-2"
+                      disabled={profileSaving}
+                      className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-orange-950/20 active:scale-95 flex items-center gap-2 cursor-pointer"
                     >
-                      <Save size={16} /> Salvar Alterações
+                      {profileSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                      Salvar Alterações
                     </button>
                   </div>
                 </form>
               </div>
             </div>
           )}
-          
+
+          {/* ============================================================ */}
+          {/* ✅ NOVO: ABA LOGS DE AUDITORIA (implementada) */}
+          {/* ============================================================ */}
+          {activeTab === 'logs' && currentUser?.role === 'ADMIN' && (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-3xl font-black text-white uppercase tracking-tight italic">Logs de Auditoria</h1>
+                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Rastreamento completo de ações no sistema</p>
+                </div>
+                <button 
+                  onClick={fetchLogs}
+                  disabled={logsLoading}
+                  className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 shadow-xl active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${logsLoading ? 'animate-spin' : ''}`} /> Recarregar
+                </button>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl shadow-2xl flex flex-col md:flex-row gap-3">
+                <select 
+                  value={logsFiltroModulo}
+                  onChange={(e) => setLogsFiltroModulo(e.target.value)}
+                  className="w-full md:w-auto bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[10px] font-mono uppercase tracking-widest text-zinc-300 outline-none focus:border-orange-500 cursor-pointer"
+                >
+                  <option value="TODOS">TODOS OS MÓDULOS</option>
+                  <option value="OS">ORDENS DE SERVIÇO</option>
+                  <option value="CLIENTE">CLIENTES</option>
+                  <option value="VEICULO">VEÍCULOS</option>
+                  <option value="PECA">PEÇAS</option>
+                  <option value="ESTOQUE">ESTOQUE</option>
+                  <option value="FINANCEIRO">FINANCEIRO</option>
+                  <option value="USUARIO">USUÁRIOS</option>
+                  <option value="CONFIG">CONFIGURAÇÕES</option>
+                  <option value="AUTH">AUTENTICAÇÃO</option>
+                </select>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="w-full overflow-x-auto">
+                  <table className="min-w-full text-left">
+                    <thead>
+                      <tr className="bg-zinc-900/50 text-zinc-400 text-[10px] font-mono uppercase tracking-widest">
+                        <th className="p-4 italic">Data / Hora</th>
+                        <th className="p-4 italic">Módulo</th>
+                        <th className="p-4 italic">Ação</th>
+                        <th className="p-4 italic">Entidade</th>
+                        <th className="p-4 italic">Usuário</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/40">
+                      {logsLoading ? (
+                        <tr>
+                          <td colSpan={5} className="p-12 text-center">
+                            <Loader2 className="w-8 h-8 text-orange-500 animate-spin mx-auto mb-3" />
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Carregando logs...</p>
+                          </td>
+                        </tr>
+                      ) : logsData.items.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-12 text-center">
+                            <History className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
+                            <p className="text-sm font-black text-white uppercase italic tracking-tighter">Nenhum log encontrado</p>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                              {logsFiltroModulo !== 'TODOS' ? 'Tente mudar o filtro de módulo' : 'Nenhuma atividade registrada ainda'}
+                            </p>
+                          </td>
+                        </tr>
+                      ) : (
+                        logsData.items.map((log: any) => (
+                          <LogRow key={log.id} log={log} />
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
+                    <p className="text-[10px] font-mono text-zinc-500 uppercase font-bold tracking-widest">
+                      {logsData.total > 0 ? `Mostrando ${(logsPage - 1) * 20 + 1} a ${Math.min(logsPage * 20, logsData.total)} de ${logsData.total} registros` : 'Sem registros'}
+                    </p>
+                  </div>
+                  <Pagination 
+                    page={logsPage} 
+                    totalPages={logsData.totalPages} 
+                    onPageChange={setLogsPage} 
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================ */}
+          {/* ABA SISTEMA (placeholder) */}
+          {/* ============================================================ */}
+          {activeTab === 'sistema' && currentUser?.role === 'ADMIN' && (
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-12 text-center shadow-2xl">
+              <Settings className="w-16 h-16 mx-auto mb-4 text-zinc-700" />
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tight mb-2">Configurações do Sistema</h2>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">
+                Em breve: gestão de backups, integrações e parâmetros globais.
+              </p>
+            </div>
+          )}
+
         </main>
       </div>
+
+      {/* ============================================================ */}
+      {/* MODAL: NOVO / EDITAR USUÁRIO */}
+      {/* ============================================================ */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-zinc-950/30 flex justify-between items-center">
+              <h3 className="text-lg font-black text-white uppercase tracking-tight">
+                {editingUser ? 'Editar Colaborador' : 'Novo Colaborador'}
+              </h3>
+              <button onClick={() => setIsUserModalOpen(false)} className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveUser} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Nome</label>
+                <input type="text" required value={userFormData.name} onChange={(e) => setUserFormData({...userFormData, name: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-orange-500 outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">E-mail</label>
+                <input type="email" required value={userFormData.email} onChange={(e) => setUserFormData({...userFormData, email: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-orange-500 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Função</label>
+                  <select value={userFormData.role} onChange={(e) => setUserFormData({...userFormData, role: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-orange-500 outline-none cursor-pointer">
+                    <option value="MECANICO">Mecânico</option>
+                    <option value="LIDER">Líder</option>
+                    <option value="ESTOQUISTA">Estoquista</option>
+                    <option value="FINANCEIRO">Financeiro</option>
+                    <option value="ADMIN">Administrador</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Comissão (%)</label>
+                  <input type="number" step="0.1" value={userFormData.comissao} onChange={(e) => setUserFormData({...userFormData, comissao: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-orange-500 outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">
+                  {editingUser ? 'Nova Senha (deixe vazio para não alterar)' : 'Senha'}
+                </label>
+                <input type="password" required={!editingUser} value={userFormData.password} onChange={(e) => setUserFormData({...userFormData, password: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-orange-500 outline-none font-mono" placeholder="••••••••" />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Especialidade</label>
+                <input type="text" value={userFormData.especialidade} onChange={(e) => setUserFormData({...userFormData, especialidade: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:border-orange-500 outline-none" />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition">Cancelar</button>
+                <button type="submit" disabled={savingUser} className="flex-[2] px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2 cursor-pointer">
+                  {savingUser ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL: EXCLUIR USUÁRIO */}
+      {/* ============================================================ */}
+      {deleteUserTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir Usuário</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+              <button onClick={() => setDeleteUserTarget(null)} className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir <strong className="text-white">{deleteUserTarget.name}</strong>?
+              </p>
+              <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 text-xs text-zinc-400 leading-relaxed">
+                <p className="font-bold text-red-400 uppercase text-[10px] tracking-widest mb-1">⚠️ Atenção</p>
+                <p>Se este usuário tiver <strong>OS</strong> ou <strong>eventos</strong> na agenda, a exclusão será bloqueada. Considere desativá-lo em vez de excluir.</p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setDeleteUserTarget(null)} disabled={isDeletingUser} className="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition disabled:opacity-50">Cancelar</button>
+                <button onClick={confirmDeleteUser} disabled={isDeletingUser} className="flex-[2] px-6 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition shadow-xl flex items-center justify-center gap-2 cursor-pointer">
+                  {isDeletingUser ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL: RESETAR SENHA */}
+      {/* ============================================================ */}
+      {resetPasswordTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-orange-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-orange-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-500/20 rounded-xl flex items-center justify-center">
+                  <Key className="w-5 h-5 text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Resetar Senha</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Senha temporária</p>
+                </div>
+              </div>
+              <button onClick={() => setResetPasswordTarget(null)} className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Gerar uma nova senha temporária para <strong className="text-white">{resetPasswordTarget.name}</strong>?
+              </p>
+              <div className="bg-orange-500/5 border border-orange-500/10 rounded-2xl p-4 text-xs text-zinc-400 leading-relaxed">
+                <p className="font-bold text-orange-400 uppercase text-[10px] tracking-widest mb-1">💡 Importante</p>
+                <p>A senha será exibida <strong>uma única vez</strong>. Anote e envie para o colaborador.</p>
+                <p className="mt-2">Todas as sessões ativas do colaborador serão encerradas.</p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setResetPasswordTarget(null)} disabled={isResettingPassword} className="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition disabled:opacity-50">Cancelar</button>
+                <button onClick={confirmResetPassword} disabled={isResettingPassword} className="flex-[2] px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition shadow-xl flex items-center justify-center gap-2 cursor-pointer">
+                  {isResettingPassword ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />} Resetar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
