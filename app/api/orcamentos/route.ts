@@ -5,34 +5,52 @@ import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 import { roundDecimal } from '@/lib/utils';
 
+// ============================================================
+// CONSTANTES
+// ============================================================
 const STATUS_CRIACAO_VALIDOS = ['RASCUNHO'] as const;
 
+const STATUS_FILTRO_VALIDOS = [
+  'RASCUNHO', 'ENVIADO', 'APROVADO', 'REPROVADO', 'CONVERTIDO',
+] as const;
+
+const MAX_ITENS = 100; // Limite de itens por orçamento (serviços ou peças)
+
+// ============================================================
+// SCHEMAS DE VALIDAÇÃO
+// ============================================================
 const orcamentoSchema = z.object({
   cliente_id: z.string().min(1, 'Cliente é obrigatório'),
   veiculo_id: z.string().min(1, 'Veículo é obrigatório'),
-  data_validade: z.string().optional().nullable(),
+  data_validade: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de validade inválida' }
+  ),
   status: z.enum(STATUS_CRIACAO_VALIDOS).optional().default('RASCUNHO'),
   servicos: z
     .array(
       z.object({
-        descricao: z.string().min(1, 'Descrição do serviço é obrigatória').trim(),
+        descricao: z.string().min(1, 'Descrição do serviço é obrigatória').max(500).trim(),
         horas: z.number().nonnegative().default(0),
         valor_hora: z.number().nonnegative().default(0),
       })
     )
+    .max(MAX_ITENS, `Máximo de ${MAX_ITENS} serviços por orçamento`)
     .optional()
     .default([]),
   pecas: z
     .array(
       z.object({
         peca_id: z.string().optional().nullable(),
-        descricao: z.string().min(1, 'Descrição da peça é obrigatória').trim(),
+        descricao: z.string().min(1, 'Descrição da peça é obrigatória').max(500).trim(),
         quantidade: z.number().nonnegative().default(0),
         valor_unit: z.number().nonnegative().default(0),
       })
     )
+    .max(MAX_ITENS, `Máximo de ${MAX_ITENS} peças por orçamento`)
     .optional()
     .default([]),
   desconto: z.number().nonnegative().default(0),
@@ -40,6 +58,17 @@ const orcamentoSchema = z.object({
   termos_condicoes: z.string().max(2000).optional().nullable(),
 });
 
+const listarOrcamentosQuerySchema = z.object({
+  q: z.string().optional().transform(v => v?.slice(0, 100) || ''),
+  status: z.enum(STATUS_FILTRO_VALIDOS).optional(),
+  cliente_id: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+// ============================================================
+// HELPER: próximo número de orçamento
+// ============================================================
 async function obterProximoNumeroOrcamento(tx: any, empresaId: string): Promise<string> {
   const year = new Date().getFullYear();
   const prefixo = `ORC-${year}-`;
@@ -57,6 +86,9 @@ async function obterProximoNumeroOrcamento(tx: any, empresaId: string): Promise<
   return `${prefixo}${proximoSeq.toString().padStart(4, '0')}`;
 }
 
+// ============================================================
+// GET — Listar orçamentos
+// ============================================================
 export async function GET(request: NextRequest) {
   try {
     const { error, user } = await requireAuth();
@@ -67,14 +99,15 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const q = (searchParams.get('q') || '').slice(0, 100);
-    const status = searchParams.get('status');
-    const cliente_id = searchParams.get('cliente_id');
+    const parsed = listarOrcamentosQuerySchema.parse({
+      q: searchParams.get('q'),
+      status: searchParams.get('status') || undefined,
+      cliente_id: searchParams.get('cliente_id') || undefined,
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+    });
 
-    const rawPage = parseInt(searchParams.get('page') || '1', 10);
-    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
-    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
+    const { q, status, cliente_id, page, limit } = parsed;
 
     const where: any = { empresa_id: user.empresa_id };
     if (q) {
@@ -93,25 +126,14 @@ export async function GET(request: NextRequest) {
         include: {
           Cliente: {
             select: {
-              id: true,
-              nome: true,
-              cpf_cnpj: true,
-              endereco: true,
-              cidade: true,
-              estado: true,
-              uf: true,
-              telefone: true,
-              email: true,
+              id: true, nome: true, cpf_cnpj: true, endereco: true,
+              cidade: true, estado: true, uf: true, telefone: true, email: true,
             },
           },
           Veiculo: {
             select: {
-              id: true,
-              placa: true,
-              modelo: true,
-              marca: true,
-              horimetro_atual: true,
-              quilometragem: true,
+              id: true, placa: true, modelo: true, marca: true,
+              horimetro_atual: true, quilometragem: true,
             },
           },
         },
@@ -134,11 +156,19 @@ export async function GET(request: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
-    log('ERROR', 'ORCAMENTO', 'Erro ao listar orçamentos', { error: error?.message }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao listar orçamentos' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
+    return apiError(error, 'ORCAMENTO', 'Erro ao listar orçamentos');
   }
 }
 
+// ============================================================
+// POST — Criar orçamento
+// ============================================================
 export async function POST(request: NextRequest) {
   try {
     const { error, user } = await requireAuth();
@@ -151,6 +181,7 @@ export async function POST(request: NextRequest) {
     const body = orcamentoSchema.parse(await request.json());
     const empresa_id = user.empresa_id;
 
+    // Valida cliente
     const clienteExistente = await prisma.cliente.findFirst({
       where: { id: body.cliente_id, empresa_id },
       select: { id: true },
@@ -159,12 +190,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
     }
 
+    // Valida veículo
     const veiculoExistente = await prisma.veiculo.findFirst({
       where: { id: body.veiculo_id, empresa_id },
       select: { id: true },
     });
     if (!veiculoExistente) {
       return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
+    }
+
+    // ✅ NOVO: valida que todas as peças (se informadas) pertencem à empresa
+    const pecaIds = body.pecas
+      .map((p) => p.peca_id)
+      .filter((id): id is string => !!id);
+
+    if (pecaIds.length > 0) {
+      const pecasValidas = await prisma.peca.findMany({
+        where: { id: { in: pecaIds }, empresa_id },
+        select: { id: true },
+      });
+
+      if (pecasValidas.length !== pecaIds.length) {
+        return NextResponse.json(
+          { error: 'Uma ou mais peças informadas não pertencem a esta empresa' },
+          { status: 400 }
+        );
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -245,9 +296,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
     }
-    log('ERROR', 'ORCAMENTO', 'Erro ao criar orçamento', { error: error?.message }, 'sistema');
-    return NextResponse.json({ error: error.message || 'Erro ao criar orçamento' }, { status: 500 });
+    // ✅ NÃO vaza error.message (evita expor detalhes do Prisma)
+    return apiError(error, 'ORCAMENTO', 'Erro ao criar orçamento');
   }
 }
