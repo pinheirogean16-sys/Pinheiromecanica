@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import { 
   Search, Plus, Car, Truck, User, 
-  Eye, Pencil, Trash2, Activity, PenTool as Tool, Loader2, AlertTriangle
+  Eye, Pencil, Trash2, Activity, PenTool as Tool, Loader2, AlertTriangle, X
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -33,7 +33,7 @@ const TIPO_VEICULO_LABELS: Record<string, string> = {
   VIBROACABADORA: 'Vibroacabadora',
   FRESADORA: 'Fresadora',
   USINA_ASFALTO: 'Usina de Asfalto',
-  EMPILHADEIRA: 'Empilhedeira',
+  EMPILHADEIRA: 'Empilheira',
   GUINDASTE: 'Guindaste',
   PERFURATRIZ: 'Perfuratriz',
   TRATOR_AGRICOLA: 'Trator Agrícola',
@@ -62,13 +62,12 @@ const EQUIPAMENTOS = [
   'EQUIPAMENTO_ASFALTO'
 ];
 
+// ✅ CORRIGIDO: trata Invalid Date corretamente
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '---';
-  try {
-    return new Date(dateStr).toLocaleDateString('pt-BR');
-  } catch {
-    return '---';
-  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '---';
+  return d.toLocaleDateString('pt-BR');
 }
 
 const VeiculoRow = memo(({ 
@@ -82,7 +81,6 @@ const VeiculoRow = memo(({
 }) => {
   const tipoLabel = TIPO_VEICULO_LABELS[veiculo.tipo] || veiculo.tipo || '---';
   const isEquipamento = EQUIPAMENTOS.includes(veiculo.tipo);
-  // A40: usa `created_at` (campo real do Prisma). Antes usava `updatedAt` (não existe) → sempre "---"
   const dataRef = formatDate(veiculo.created_at || veiculo.updated_at);
 
   return (
@@ -144,15 +142,16 @@ const VeiculoRow = memo(({
       </td>
       <td className="p-4 text-sm">
          <div className="flex items-center justify-center gap-2">
-            <Link href={`/veiculos/${veiculo.id}`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition shadow-lg">
+            <Link href={`/veiculos/${veiculo.id}`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition shadow-lg" title="Visualizar">
               <Eye className="w-4 h-4" />
             </Link>
-            <Link href={`/veiculos/${veiculo.id}/editar`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition shadow-lg">
+            <Link href={`/veiculos/${veiculo.id}/editar`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition shadow-lg" title="Editar">
                <Pencil className="w-4 h-4" />
             </Link>
             <button 
               onClick={() => onDelete(veiculo.id, veiculo.modelo)}
-              className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition shadow-lg"
+              className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition shadow-lg"
+              title="Excluir"
             >
                <Trash2 className="w-4 h-4" />
             </button>
@@ -170,11 +169,18 @@ export default function VeiculosListingPage() {
   const [statsError, setStatsError] = useState(false);
   const [veiculosError, setVeiculosError] = useState(false);
   const [stats, setStats] = useState<any>(null);
-  const [veiculosData, setVeiculosData] = useState<any>({ items: [], total: 0, totalPages: 0 });
+  
+  // ✅ CORRIGIDO: totalPages inicia em 1 (não 0) para não quebrar <Pagination>
+  const [veiculosData, setVeiculosData] = useState<any>({ items: [], total: 0, totalPages: 1 });
+  
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
+
+  // ✅ NOVO: modal de exclusão (substitui confirm() nativo)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; modelo: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -215,9 +221,12 @@ export default function VeiculosListingPage() {
       if (tipoFilter !== 'all') query.append('tipo', tipoFilter);
       
       const data = await apiFetch(`/api/veiculos?${query.toString()}`, { signal });
+      
+      // ✅ CORRIGIDO: trata array (legado) ou { items } (paginado)
       const items = Array.isArray(data) ? data : (data.items || []);
-      const total = data.total || items.length;
-      const totalPages = data.totalPages || 1;
+      const total = typeof data.total === 'number' ? data.total : items.length;
+      const totalPages = Math.max(1, data.totalPages || 1); // ✅ mínimo 1
+      
       setVeiculosData({ items, total, totalPages });
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -241,16 +250,25 @@ export default function VeiculosListingPage() {
     return () => controller.abort();
   }, [fetchVeiculos]);
 
-  const handleDelete = async (id: string, modelo: string) => {
-    if (!confirm(`Tem certeza que deseja excluir o veículo "${modelo}"?`)) return;
-    
+  // ✅ NOVO: abre o modal de exclusão
+  const handleDeleteClick = (id: string, modelo: string) => {
+    setDeleteTarget({ id, modelo });
+  };
+
+  // ✅ NOVO: executa a exclusão após confirmação
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      await apiFetch(`/api/veiculos/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/veiculos/${deleteTarget.id}`, { method: 'DELETE' });
       toast.success('Veículo removido da frota');
+      setDeleteTarget(null);
       fetchVeiculos();
       fetchStats();
     } catch (err: any) {
-      handleApiError(err, { defaultMessage: 'Erro de conexão ao excluir veículo' });
+      handleApiError(err, { defaultMessage: 'Erro ao excluir veículo. Verifique se há OS ou preventivas vinculadas.' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -345,7 +363,7 @@ export default function VeiculosListingPage() {
             <input 
               type="text" 
               placeholder="BUSCAR POR PLACA, MODELO OU CLIENTE..." 
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-14 text-sm text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-800 shadow-inner"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-14 text-sm text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700 shadow-inner"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             />
@@ -418,7 +436,7 @@ export default function VeiculosListingPage() {
                     <VeiculoRow 
                       key={veiculo.id} 
                       veiculo={veiculo} 
-                      onDelete={handleDelete}
+                      onDelete={handleDeleteClick}
                       EQUIPAMENTOS={EQUIPAMENTOS}
                     />
                   ))}
@@ -498,7 +516,7 @@ export default function VeiculosListingPage() {
                         <Pencil size={15} />
                       </Link>
                       <button 
-                        onClick={() => handleDelete(veiculo.id, veiculo.modelo)}
+                        onClick={() => handleDeleteClick(veiculo.id, veiculo.modelo)}
                         className="p-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-red-500 border border-zinc-800 rounded-xl transition shadow-sm min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
                       >
                         <Trash2 size={15} />
@@ -528,11 +546,77 @@ export default function VeiculosListingPage() {
           </div>
           <Pagination 
             page={page} 
-            totalPages={veiculosData.totalPages || 0} 
+            totalPages={veiculosData.totalPages} 
             onPageChange={setPage} 
           />
         </div>
       </section>
+
+      {/* ============================================================ */}
+      {/* MODAL DE EXCLUSÃO (substitui confirm() nativo) */}
+      {/* ============================================================ */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir Veículo</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente o veículo <strong className="text-white">{deleteTarget.modelo}</strong>?
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 text-xs text-zinc-400 leading-relaxed">
+                <p className="font-bold text-red-400 uppercase text-[10px] tracking-widest mb-1">⚠️ Atenção</p>
+                <p>Se este veículo já tiver <strong>OS</strong> ou <strong>preventivas</strong> vinculadas, a exclusão será bloqueada por política de integridade.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmar Exclusão
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
