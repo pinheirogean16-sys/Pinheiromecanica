@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
+import { createAuditLog } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 import { converterUnidade } from '@/lib/unidades';
 
 export async function POST(
@@ -51,7 +53,6 @@ export async function POST(
       );
     }
 
-    // A02: só aceita converter orçamento APROVADO
     if (orcamento.status === 'CONVERTIDO') {
       return NextResponse.json(
         { error: 'Orçamento já foi convertido em OS' },
@@ -77,26 +78,18 @@ export async function POST(
     }
 
     async function obterProximoNumeroOS(tx: any, empresaId: string): Promise<number> {
-      const ordens = await tx.ordemServico.findMany({
+      // ✅ OTIMIZADO: usa _max para achar o maior número em vez de carregar todas as OS
+      const maxResult = await tx.ordemServico.aggregate({
+        _max: { numero: true },
         where: { empresa_id: empresaId },
-        select: { numero: true },
-        orderBy: { numero: 'asc' },
       });
 
-      let nextNumber = 1;
-      for (const o of ordens) {
-        if (o.numero === nextNumber) {
-          nextNumber++;
-        } else if (o.numero > nextNumber) {
-          break;
-        }
-      }
-      return nextNumber;
+      return (maxResult._max.numero || 0) + 1;
     }
 
     let attempts = 0;
     const maxAttempts = 3;
-    let result: any;
+    let result: any = null;
 
     while (attempts < maxAttempts) {
       try {
@@ -144,10 +137,9 @@ export async function POST(
           // 3. Criar peças aplicadas E baixar do estoque corretamente (A02)
           if (orcamento.pecas.length > 0) {
             for (const p of orcamento.pecas) {
-              // Peças sem vínculo com estoque (só descritas no orçamento) não geram aplicação
               if (!p.peca_id) continue;
 
-              // M09: busca a peça filtrando por empresa (não aceita ID de outra oficina)
+              // M09: busca a peça filtrando por empresa
               const pecaExistente = await tx.peca.findFirst({
                 where: { id: p.peca_id, empresa_id: empresaId },
               });
@@ -158,7 +150,6 @@ export async function POST(
                 );
               }
 
-              // Determina a unidade solicitada e converte se necessário
               const reqUnidade = p.unidade || 'un';
               let convertedQty = p.quantidade;
               if (
@@ -178,14 +169,12 @@ export async function POST(
                 }
               }
 
-              // A06: respeita permiteFracionado
               if (!pecaExistente.permiteFracionado && !Number.isInteger(convertedQty)) {
                 throw new Error(
                   `A peça ${pecaExistente.descricao} não permite fracionamento. Conversão de ${p.quantidade} ${reqUnidade} resultou em ${convertedQty} ${pecaExistente.unidadeMedida}.`
                 );
               }
 
-              // A02: exige estoque suficiente — se não tiver, rejeita a conversão inteira
               if (pecaExistente.quantidade < convertedQty) {
                 const dispUnStr = pecaExistente.unidadeMedida || 'un';
                 throw new Error(
@@ -193,7 +182,6 @@ export async function POST(
                 );
               }
 
-              // Cria a peça aplicada na OS
               await tx.pecaAplicada.create({
                 data: {
                   id: globalThis.crypto.randomUUID(),
@@ -206,13 +194,15 @@ export async function POST(
                 },
               });
 
-              // Baixa o estoque
+              // ✅ Redundância de segurança: empresa_id no where
               await tx.peca.update({
-                where: { id: p.peca_id },
+                where: {
+                  id: p.peca_id,
+                  empresa_id: empresaId,
+                },
                 data: { quantidade: { decrement: convertedQty } },
               });
 
-              // A02: SEMPRE grava MovimentacaoEstoque (antes nunca gravava)
               await tx.movimentacaoEstoque.create({
                 data: {
                   id: globalThis.crypto.randomUUID(),
@@ -229,8 +219,12 @@ export async function POST(
           }
 
           // 4. Atualizar status do Orçamento
+          // ✅ Redundância de segurança: empresa_id no where
           await tx.orcamento.update({
-            where: { id: orcamento.id },
+            where: {
+              id: orcamento.id,
+              empresa_id: empresaId,
+            },
             data: { status: 'CONVERTIDO' },
           });
 
@@ -262,7 +256,6 @@ export async function POST(
           err.code === 'P2002' ||
           (err.message && err.message.includes('Unique constraint'));
 
-        // Se for erro de negócio (estoque insuficiente etc), não tenta de novo
         if (
           !isUniqueConstraint ||
           err.message?.includes('Estoque insuficiente') ||
@@ -290,6 +283,25 @@ export async function POST(
       }
     }
 
+    if (!result) {
+      return NextResponse.json(
+        { error: 'Não foi possível gerar a OS. Tente novamente.' },
+        { status: 500 }
+      );
+    }
+
+    // ✅ NOVO: auditoria da conversão
+    await createAuditLog({
+      modulo: 'ORCAMENTO',
+      acao: 'CONVERTER',
+      entidade: 'Orcamento',
+      entidade_id: id,
+      usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
+      dados_antes: { status: orcamento.status },
+      dados_depois: { status: 'CONVERTIDO', os_id: result.id, os_numero: result.numero },
+    });
+
     log(
       'INFO',
       'ORCAMENTOS',
@@ -308,22 +320,17 @@ export async function POST(
       'sistema'
     );
 
-    if (error?.message?.includes('Estoque insuficiente')) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    if (error?.message?.includes('Conversão incompatível')) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    if (error?.message?.includes('não permite fracionamento')) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    if (error?.message?.includes('não encontrada no estoque')) {
+    // Erros de negócio específicos retornam 400 com mensagem amigável
+    if (
+      error?.message?.includes('Estoque insuficiente') ||
+      error?.message?.includes('Conversão incompatível') ||
+      error?.message?.includes('não permite fracionamento') ||
+      error?.message?.includes('não encontrada no estoque')
+    ) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json(
-      { error: error.message || 'Erro ao converter orçamento' },
-      { status: 500 }
-    );
+    // ✅ Erros internos usam apiError (não vazam stack trace)
+    return apiError(error, 'ORCAMENTOS', 'Erro ao converter orçamento');
   }
 }
