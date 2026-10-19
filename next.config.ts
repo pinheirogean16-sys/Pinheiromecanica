@@ -1,23 +1,11 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // ============================================================
-  // CONFIGURAÇÕES GERAIS
-  // ============================================================
   reactStrictMode: true,
   productionBrowserSourceMaps: false,
-
-  // ============================================================
-  // ESLINT (temporariamente desligado durante build)
-  // O TypeScript continua sendo verificado
-  // ============================================================
   eslint: {
     ignoreDuringBuilds: true,
   },
-
-  // ============================================================
-  // IMAGENS REMOTAS
-  // ============================================================
   images: {
     remotePatterns: [
       {
@@ -27,18 +15,14 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // ============================================================
-  // ✅ CORREÇÃO: Limita threads para não exceder o limite da Hostinger
-  // (evita o erro "OS can't spawn worker thread: Resource temporarily unavailable")
-  // ============================================================
+  // ✅ Correção 1: Limita threads (evita o erro "OS can't spawn worker thread")
   experimental: {
-    cpus: 1,              // Usa apenas 1 núcleo de CPU durante o build
-    workerThreads: false, // Desabilita worker threads na geração de páginas
+    cpus: 1,
+    workerThreads: false,
+    // ✅ Correção 2: Reduz o pico de memória do Webpack durante o build
+    webpackMemoryOptimizations: true,
   },
 
-  // ============================================================
-  // HEADERS DE SEGURANÇA
-  // ============================================================
   async headers() {
     return [
       {
