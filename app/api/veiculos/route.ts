@@ -5,22 +5,56 @@ import { requireAuth } from '@/lib/api-auth';
 import { z } from 'zod';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
-import { createAuditLog } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
+import { createAuditLog } from '@/lib/audit';
 
-const veiculoSchema = z.object({
-  placa: z.string()
-    .min(3, 'Placa ou identificador deve ter no mínimo 3 caracteres')
-    .max(20, 'Placa ou identificador deve ter no máximo 20 caracteres')
-    .trim()
-    .transform(v => v.toUpperCase()),
-  modelo: z.string().min(2, 'Modelo obrigatório').trim(),
-  marca: z.string().min(2, 'Marca obrigatória').trim(),
-  ano: z.coerce.number().int().min(1900, 'Ano inválido').max(2035, 'Ano inválido'),
-  tipo: z.nativeEnum(Veiculo_tipo),
-  quilometragem: z.coerce.number().nonnegative().optional().nullable(),
-  horimetro_atual: z.coerce.number().nonnegative().optional().nullable(),
-  cliente_id: z.string().min(1, 'Cliente obrigatório'),
+// ============================================================
+// CONSTANTES
+// ============================================================
+const ANO_MIN = 1900;
+const ANO_MAX = new Date().getFullYear() + 1; // 2027 no máximo (veículos "do futuro" são raros)
+
+// ============================================================
+// SCHEMA DE CRIAÇÃO
+// ============================================================
+const veiculoSchema = z
+  .object({
+    placa: z
+      .string()
+      .min(3, 'Placa ou identificador deve ter no mínimo 3 caracteres')
+      .max(20, 'Placa ou identificador deve ter no máximo 20 caracteres')
+      .trim()
+      .transform((v) => v.toUpperCase()),
+    modelo: z.string().min(2, 'Modelo obrigatório').max(200, 'Modelo muito longo').trim(),
+    marca: z.string().min(2, 'Marca obrigatória').max(100, 'Marca muito longa').trim(),
+    ano: z.coerce
+      .number()
+      .int()
+      .min(ANO_MIN, `Ano inválido (mínimo ${ANO_MIN})`)
+      .max(ANO_MAX, `Ano inválido (máximo ${ANO_MAX})`),
+    tipo: z.nativeEnum(Veiculo_tipo),
+    quilometragem: z.coerce.number().nonnegative().optional().nullable(),
+    horimetro_atual: z.coerce.number().nonnegative().optional().nullable(),
+    cliente_id: z.string().min(1, 'Cliente obrigatório'),
+  })
+  .refine(
+    (data) => (data.quilometragem ?? 0) > 0 || (data.horimetro_atual ?? 0) > 0,
+    {
+      message:
+        'Informe ao menos uma métrica do veículo: quilometragem (KM) ou horímetro (h). Sem isso, não é possível acompanhar preventivas.',
+      path: ['quilometragem'],
+    }
+  );
+
+// ============================================================
+// SCHEMA DE FILTRO (GET)
+// ============================================================
+const listarVeiculosQuerySchema = z.object({
+  q: z.string().optional().transform((v) => v?.slice(0, 100).trim() || ''),
+  tipo: z.nativeEnum(Veiculo_tipo).optional(),
+  cliente_id: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
 // ============================================================
@@ -31,26 +65,23 @@ export async function GET(request: NextRequest) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para listar
     if (!checkPermission(user, 'veiculos', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const q = (searchParams.get('q') || '').slice(0, 100);
-    const tipo = searchParams.get('tipo') as Veiculo_tipo | null;
-    const cliente_id = searchParams.get('cliente_id');
+    const parsed = listarVeiculosQuerySchema.parse({
+      q: searchParams.get('q') || undefined,
+      tipo: searchParams.get('tipo') || undefined,
+      cliente_id: searchParams.get('cliente_id') || undefined,
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+    });
 
-    // M06: teto de paginação
-    const rawPage = parseInt(searchParams.get('page') || '1', 10);
-    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
-    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
+    const { q, tipo, cliente_id, page, limit } = parsed;
     const skip = (page - 1) * limit;
 
-    const where: any = {
-      empresa_id: user.empresa_id,
-    };
+    const where: any = { empresa_id: user.empresa_id };
 
     if (q) {
       where.OR = [
@@ -61,11 +92,20 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    if (tipo) {
-      where.tipo = tipo;
-    }
+    if (tipo) where.tipo = tipo;
 
     if (cliente_id) {
+      // ✅ NOVO: valida que o cliente pertence à empresa (evita 200 vazio enganoso)
+      const clienteOk = await prisma.cliente.findFirst({
+        where: { id: cliente_id, empresa_id: user.empresa_id },
+        select: { id: true },
+      });
+      if (!clienteOk) {
+        return NextResponse.json(
+          { error: 'Cliente não encontrado nesta empresa' },
+          { status: 404 }
+        );
+      }
       where.cliente_id = cliente_id;
     }
 
@@ -73,9 +113,7 @@ export async function GET(request: NextRequest) {
       prisma.veiculo.findMany({
         where,
         include: {
-          Cliente: {
-            select: { nome: true, id: true },
-          },
+          Cliente: { select: { nome: true, id: true } },
         },
         orderBy: { modelo: 'asc' },
         skip,
@@ -86,10 +124,7 @@ export async function GET(request: NextRequest) {
 
     const items = rawItems.map((item) => {
       const { Cliente, ...rest } = item;
-      return {
-        ...rest,
-        cliente: Cliente,
-      };
+      return { ...rest, cliente: Cliente };
     });
 
     return NextResponse.json({
@@ -99,18 +134,10 @@ export async function GET(request: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
-    // B05: erro real em vez de lista vazia silenciosa
-    log(
-      'ERROR',
-      'VEICULO',
-      'Erro ao listar veículos',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json(
-      { error: 'Erro ao listar veículos' },
-      { status: 500 }
-    );
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+    }
+    return apiError(error, 'VEICULO', 'Erro ao listar veículos');
   }
 }
 
@@ -128,6 +155,7 @@ export async function POST(request: NextRequest) {
 
     const body = veiculoSchema.parse(await request.json());
 
+    // Valida cliente
     const clienteExistente = await prisma.cliente.findFirst({
       where: { id: body.cliente_id, empresa_id: user.empresa_id },
       select: { id: true },
@@ -139,14 +167,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Verifica duplicidade de placa (UX: evita tentar INSERT que vai falhar)
     const existing = await prisma.veiculo.findFirst({
-      where: {
-        placa: body.placa,
-        empresa_id: user.empresa_id,
-      },
+      where: { placa: body.placa, empresa_id: user.empresa_id },
       select: { id: true },
     });
-
     if (existing) {
       return NextResponse.json(
         { error: 'Placa já cadastrada nesta empresa' },
@@ -161,15 +186,17 @@ export async function POST(request: NextRequest) {
           ...body,
           id: globalThis.crypto.randomUUID(),
           empresa_id: user.empresa_id,
-          created_by: user?.name || user?.email || 'Sistema',
+          // ✅ Padronizado com o resto do sistema (email primeiro)
+          created_by: user.email || user.name || 'Sistema',
           updated_at: new Date(),
         },
         include: {
-          Cliente: true,
+          Cliente: { select: { nome: true, id: true } },
         },
       });
     } catch (err: any) {
-      // Constraint unique (placa, empresa_id) estourou
+      // Race condition: se outro processo criou com a mesma placa entre o
+      // findFirst acima e o create, o unique constraint dispara P2002.
       if (err?.code === 'P2002') {
         return NextResponse.json(
           { error: 'Placa já cadastrada nesta empresa' },
@@ -179,10 +206,9 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    const mappedVeiculo = {
-      ...veiculo,
-      cliente: (veiculo as any).Cliente || (veiculo as any).cliente,
-    };
+    // ✅ Mapping garantido: include garante `Cliente`, não precisa de fallback
+    const { Cliente, ...veiculoRest } = veiculo;
+    const mappedVeiculo = { ...veiculoRest, cliente: Cliente };
 
     await createAuditLog({
       modulo: 'VEICULO',
@@ -197,6 +223,9 @@ export async function POST(request: NextRequest) {
         modelo: veiculo.modelo,
         marca: veiculo.marca,
         tipo: veiculo.tipo,
+        ano: veiculo.ano,
+        quilometragem: veiculo.quilometragem,
+        horimetro_atual: veiculo.horimetro_atual,
       },
     });
 
@@ -211,10 +240,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(mappedVeiculo, { status: 201 });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues[0].message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
     return apiError(error, 'VEICULO', 'Erro ao criar veículo');
   }
