@@ -37,6 +37,8 @@ model Checklist {
   empresa_id        String
   ChecklistExecucao ChecklistExecucao[]
   ChecklistItem     ChecklistItem[]
+
+  @@index([empresa_id])
 }
 
 model ChecklistExecucao {
@@ -58,6 +60,7 @@ model ChecklistExecucao {
   @@index([checklist_id], map: "ChecklistExecucao_checklist_id_fkey")
   @@index([os_id], map: "ChecklistExecucao_os_id_fkey")
   @@index([veiculo_id], map: "ChecklistExecucao_veiculo_id_fkey")
+  @@index([empresa_id])
 }
 
 model ChecklistFoto {
@@ -125,9 +128,12 @@ model Cliente {
   @@index([empresa_id])
 }
 
+// ============================================================
+// ✅ CORRIGIDO: id com UUID + empresa_id UNIQUE (1 config por empresa)
+// ============================================================
 model ConfiguracaoEmpresa {
-  id                   String   @id @default("config_empresa")
-  empresa_id           String?
+  id                   String   @id @default(uuid())
+  empresa_id           String   @unique
   nome_fantasia        String?
   razao_social         String?
   cnpj                 String?
@@ -154,15 +160,15 @@ model ConfiguracaoEmpresa {
 }
 
 model Empresa {
-  id             String    @id
-  nome           String
-  cnpj           String?   @unique
-  status         String    @default("ATIVO") // ATIVO, BLOQUEADO, CANCELADO
-  plano          String    @default("TRIAL") // TRIAL, BASICO, PRO
-  trial_ends_at  DateTime? // Data de expiração do teste grátis
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt // Corrigido aqui!
-  User           User[]
+  id            String    @id
+  nome          String
+  cnpj          String?   @unique
+  status        String    @default("ATIVO") // ATIVO, BLOQUEADO, CANCELADO
+  plano         String    @default("TRIAL") // TRIAL, BASICO, PRO
+  trial_ends_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  User          User[]
 }
 
 model EventoAgenda {
@@ -256,6 +262,8 @@ model MovimentacaoFinanceira {
   @@index([cliente_id], map: "MovimentacaoFinanceira_cliente_id_fkey")
   @@index([os_id], map: "MovimentacaoFinanceira_os_id_fkey")
   @@index([empresa_id])
+  @@index([status])
+  @@index([data_vencimento])
 }
 
 model Notificacao {
@@ -423,6 +431,8 @@ model OrdemServico {
   @@index([mecanico_id], map: "OrdemServico_mecanico_id_fkey")
   @@index([veiculo_id], map: "OrdemServico_veiculo_id_fkey")
   @@index([empresa_id])
+  @@index([data_finalizada])
+  @@index([status])
 }
 
 model Peca {
@@ -450,6 +460,7 @@ model Peca {
 
   @@unique([codigo, empresa_id])
   @@index([empresa_id])
+  @@index([categoria])
 }
 
 model PecaAplicada {
@@ -572,12 +583,8 @@ model User {
   empresa_id                                  String
   ativo                                       Boolean        @default(true)
   token_version                               Int            @default(0)
-  
-  // 👇 ADICIONADO PARA RECUPERAÇÃO DE SENHA
-  reset_token                                String?
-  reset_token_expires                        DateTime?
-  // 👆
-
+  reset_token                                 String?
+  reset_token_expires                         DateTime?
   EventoAgenda_EventoAgenda_mecanico_idToUser EventoAgenda[] @relation("EventoAgenda_mecanico_idToUser")
   EventoAgenda_EventoAgenda_usuario_idToUser  EventoAgenda[] @relation("EventoAgenda_usuario_idToUser")
   Notificacao                                 Notificacao[]
