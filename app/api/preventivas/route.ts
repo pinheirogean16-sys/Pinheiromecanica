@@ -1,39 +1,105 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
 import { createAuditLog } from '@/lib/audit';
-import { avaliarStatusPreventiva, notificarPreventivasPendentes } from '@/lib/preventivas';
+import { avaliarStatusPreventiva } from '@/lib/preventivas';
 
+// ============================================================
+// CONSTANTES
+// ============================================================
+const MAX_ITENS_GET = 1000;
+
+const TIPOS_CONTROLE = ['KM', 'DIAS', 'HORAS', 'MISTO'] as const;
+
+// ============================================================
+// HELPER: parse de data seguro
+// ============================================================
+function parseDate(val: string | null | undefined): Date | null {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// ============================================================
+// SCHEMAS
+// ============================================================
 const preventivaSchema = z.object({
   veiculo_id: z.string().min(1, 'Veículo é obrigatório'),
-  nome: z.string().optional().nullable(),
-  servico: z.string().optional().nullable(),
-  componente: z.string().optional().nullable().default('REVISAO'),
-  descricao: z.string().optional().nullable().default(''),
-  observacoes: z.string().optional().nullable().default(''),
-  tipo_controle: z.string().optional().default('KM'),
-  intervalo_dias: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().positive().optional().nullable()),
-  intervalo_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().positive().optional().nullable()),
-  intervalo_horas: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().positive().optional().nullable()),
+  nome: z.string().max(200).optional().nullable(),
+  servico: z.string().max(200).optional().nullable(),
+  componente: z.string().max(100).optional().nullable().default('REVISAO'),
+  descricao: z.string().max(1000).optional().nullable().default(''),
+  observacoes: z.string().max(2000).optional().nullable().default(''),
+  tipo_controle: z.enum(TIPOS_CONTROLE).optional().default('KM'),
+  intervalo_dias: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().int().positive().optional().nullable()
+  ),
+  intervalo_km: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().int().positive().optional().nullable()
+  ),
+  intervalo_horas: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().positive().optional().nullable()
+  ),
   ultima_data: z.string().optional().nullable(),
-  ultimo_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().nonnegative().optional().nullable()),
-  ultimo_horimetro: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().nonnegative().optional().nullable()),
+  ultimo_km: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().int().nonnegative().optional().nullable()
+  ),
+  ultimo_horimetro: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().nonnegative().optional().nullable()
+  ),
   proxima_data: z.string().optional().nullable(),
-  proximo_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().positive().optional().nullable()),
-  proximo_horimetro: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().positive().optional().nullable()),
-  antecedencia_dias: z.preprocess((val) => (val === '' || val === null || val === undefined ? 15 : Number(val)), z.number().int().optional().nullable().default(15)),
-  antecedencia_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? 1500 : Number(val)), z.number().int().optional().nullable().default(1500)),
-  antecedencia_horas: z.preprocess((val) => (val === '' || val === null || val === undefined ? 50 : Number(val)), z.number().optional().nullable().default(50)),
+  proximo_km: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().int().positive().optional().nullable()
+  ),
+  proximo_horimetro: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().positive().optional().nullable()
+  ),
+  antecedencia_dias: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? 15 : Number(val)),
+    z.number().int().optional().nullable().default(15)
+  ),
+  antecedencia_km: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? 1500 : Number(val)),
+    z.number().int().optional().nullable().default(1500)
+  ),
+  antecedencia_horas: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? 50 : Number(val)),
+    z.number().optional().nullable().default(50)
+  ),
   ativo: z.boolean().optional().default(true),
-  // Campos retrocompatíveis
-  km_limite: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().optional().nullable()),
-  data_limite: z.string().optional().nullable()
+  km_limite: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
+    z.number().int().optional().nullable()
+  ),
+  data_limite: z.string().optional().nullable(),
 });
 
-export async function GET(request: Request) {
+const listarPreventivasQuerySchema = z.object({
+  veiculo_id: z.string().optional(),
+  cliente_id: z.string().optional(),
+  status: z.string().max(50).optional(),
+  q: z.string().max(100).optional().transform((v) => v?.trim().toLowerCase() || ''),
+});
+
+// ============================================================
+// GET — Listar preventivas
+//
+// IMPORTANTE: o GET NÃO dispara mais notificações (isso é feito por cron
+// em POST /api/preventivas/notificar). O status é recalculado e atualizado
+// em BATCH (uma query por status distinto), não mais N+1 updates.
+// ============================================================
+export async function GET(request: NextRequest) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
@@ -43,59 +109,47 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const veiculoId = searchParams.get('veiculo_id');
-    const clienteId = searchParams.get('cliente_id');
-    const statusParam = searchParams.get('status');
-    const query = searchParams.get('q')?.trim().toLowerCase() || '';
+    const parsed = listarPreventivasQuerySchema.parse({
+      veiculo_id: searchParams.get('veiculo_id') || undefined,
+      cliente_id: searchParams.get('cliente_id') || undefined,
+      status: searchParams.get('status') || undefined,
+      q: searchParams.get('q') || undefined,
+    });
+
+    const { veiculo_id, cliente_id, status: statusParam, q: query } = parsed;
 
     const where: any = {
-      empresa_id: user.empresa_id
+      empresa_id: user.empresa_id,
     };
 
-    if (veiculoId) {
-      where.veiculo_id = veiculoId;
-    }
-
-    if (clienteId) {
-      where.Veiculo = {
-        cliente_id: clienteId
-      };
-    }
+    if (veiculo_id) where.veiculo_id = veiculo_id;
+    if (cliente_id) where.Veiculo = { cliente_id };
 
     const preventivas = await prisma.preventiva.findMany({
       where,
       include: {
-        Veiculo: {
-          include: {
-            Cliente: true
-          }
-        }
+        Veiculo: { include: { Cliente: true } },
       },
-      orderBy: {
-        created_at: 'desc'
-      }
+      orderBy: { created_at: 'desc' },
+      take: MAX_ITENS_GET,
     });
 
-    const evaluatedPreventivas = [];
+    const evaluatedPreventivas: any[] = [];
+    // ✅ NOVO: agrupa IDs por status divergente para updateMany em batch
+    const statusUpdates: Record<string, string[]> = {};
 
     for (const p of preventivas) {
       const avaliacao = avaliarStatusPreventiva(p);
 
-      // Se o status calculado diferir do gravado no banco, atualiza para consistência
+      // Recalcula status em memória (não faz update individual)
       if (avaliacao.status !== p.status) {
-        await prisma.preventiva.update({
-          where: { id: p.id },
-          data: { status: avaliacao.status }
-        });
+        if (!statusUpdates[avaliacao.status]) statusUpdates[avaliacao.status] = [];
+        statusUpdates[avaliacao.status].push(p.id);
         p.status = avaliacao.status;
       }
 
-      // Filtro por status
-      if (statusParam && avaliacao.status !== statusParam) {
-        continue;
-      }
+      if (statusParam && avaliacao.status !== statusParam) continue;
 
-      // Filtro de busca textual geral
       if (query) {
         const matchPlaca = p.Veiculo?.placa?.toLowerCase().includes(query);
         const matchModelo = p.Veiculo?.modelo?.toLowerCase().includes(query);
@@ -120,23 +174,39 @@ export async function GET(request: Request) {
         dias_restantes: avaliacao.dias_restantes,
         isVencido: avaliacao.isVencido,
         isProximo: avaliacao.isProximo,
-        veiculo: p.Veiculo
+        veiculo: p.Veiculo,
       });
     }
 
-    // Disparar checagem assíncrona de notificações em background sem bloquear a resposta
-    notificarPreventivasPendentes(user.empresa_id).catch(err => {
-      console.error('Falha ao rodar notificarPreventivasPendentes:', err);
-    });
+    // ✅ NOVO: atualiza status em batch (uma query por status distinto)
+    // Isso reduz N+1 para no máximo 3-4 queries (quantos status existirem).
+    for (const [novoStatus, ids] of Object.entries(statusUpdates)) {
+      try {
+        await prisma.preventiva.updateMany({
+          where: {
+            id: { in: ids },
+            empresa_id: user.empresa_id, // redundância de segurança
+          },
+          data: { status: novoStatus },
+        });
+      } catch (err: any) {
+        log('WARN', 'PREVENTIVAS', 'Falha ao sincronizar status em batch', { error: err?.message, count: ids.length }, 'sistema');
+      }
+    }
 
     return NextResponse.json(evaluatedPreventivas);
   } catch (error: any) {
-    log('ERROR', 'PREVENTIVAS', 'Erro ao obter preventivas', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao obter preventivas' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+    }
+    return apiError(error, 'PREVENTIVAS', 'Erro ao obter preventivas');
   }
 }
 
-export async function POST(request: Request) {
+// ============================================================
+// POST — Criar preventiva
+// ============================================================
+export async function POST(request: NextRequest) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
@@ -147,15 +217,12 @@ export async function POST(request: Request) {
 
     const body = preventivaSchema.parse(await request.json());
 
-    // Validar se veículo pertence à empresa autenticada
     const veiculo = await prisma.veiculo.findFirst({
-      where: { 
+      where: {
         id: body.veiculo_id,
-        empresa_id: user.empresa_id
+        empresa_id: user.empresa_id,
       },
-      include: {
-        Cliente: true
-      }
+      include: { Cliente: true },
     });
 
     if (!veiculo) {
@@ -165,14 +232,14 @@ export async function POST(request: Request) {
     const kmAtual = veiculo.quilometragem || 0;
     const horimetroAtual = veiculo.horimetro_atual || 0;
 
-    // Calcular limites previstos se não informados explicitamente, utilizando os intervalos
+    // ✅ NOVO: parse seguro de datas
     let proximaData: Date | null = null;
     if (body.proxima_data) {
-      proximaData = new Date(body.proxima_data);
+      proximaData = parseDate(body.proxima_data);
     } else if (body.data_limite) {
-      proximaData = new Date(body.data_limite);
+      proximaData = parseDate(body.data_limite);
     } else if (body.intervalo_dias) {
-      const baseDate = body.ultima_data ? new Date(body.ultima_data) : new Date();
+      const baseDate = body.ultima_data ? parseDate(body.ultima_data) || new Date() : new Date();
       baseDate.setDate(baseDate.getDate() + body.intervalo_dias);
       proximaData = baseDate;
     }
@@ -203,7 +270,7 @@ export async function POST(request: Request) {
       antecedencia_dias: body.antecedencia_dias,
       antecedencia_km: body.antecedencia_km,
       antecedencia_horas: body.antecedencia_horas,
-      ativo: body.ativo !== undefined ? body.ativo : true
+      ativo: body.ativo !== undefined ? body.ativo : true,
     };
 
     const avaliacao = avaliarStatusPreventiva(tempObj, veiculo);
@@ -222,7 +289,7 @@ export async function POST(request: Request) {
         intervalo_dias: body.intervalo_dias ?? null,
         intervalo_km: body.intervalo_km ?? null,
         intervalo_horas: body.intervalo_horas ?? null,
-        ultima_data: body.ultima_data ? new Date(body.ultima_data) : null,
+        ultima_data: parseDate(body.ultima_data),
         ultimo_km: body.ultimo_km ?? null,
         ultimo_horimetro: body.ultimo_horimetro ?? null,
         proxima_data: proximaData,
@@ -233,21 +300,16 @@ export async function POST(request: Request) {
         antecedencia_horas: body.antecedencia_horas ?? 50,
         ativo: body.ativo !== undefined ? body.ativo : true,
         created_by: user.name || user.email || 'Usuário',
-        // Campos retrocompatíveis mantidos sincronizados
         km_limite: proximoKm,
         km_atual: kmAtual,
         horimetro_atual: horimetroAtual,
         data_limite: proximaData,
-        status: (body.ativo === false) ? 'DESATIVADO' : avaliacao.status,
-        updated_at: new Date()
+        status: body.ativo === false ? 'DESATIVADO' : avaliacao.status,
+        updated_at: new Date(),
       },
       include: {
-        Veiculo: {
-          include: {
-            Cliente: true
-          }
-        }
-      }
+        Veiculo: { include: { Cliente: true } },
+      },
     });
 
     await createAuditLog({
@@ -257,7 +319,7 @@ export async function POST(request: Request) {
       entidade_id: novaPreventiva.id,
       usuario: user?.name || user?.email || 'Sistema',
       empresa_id: user.empresa_id,
-      dados_depois: novaPreventiva
+      dados_depois: novaPreventiva,
     });
 
     log('INFO', 'PREVENTIVAS', 'Plano de manutenção preventiva criado', { id: novaPreventiva.id }, user?.name);
@@ -267,7 +329,6 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
-    log('ERROR', 'PREVENTIVAS', 'Erro ao criar preventiva', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao criar preventiva' }, { status: 500 });
+    return apiError(error, 'PREVENTIVAS', 'Erro ao criar preventiva');
   }
 }
