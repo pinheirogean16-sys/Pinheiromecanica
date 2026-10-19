@@ -3,10 +3,28 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { apiError } from '@/lib/api-error';
+import { log } from '@/lib/logger';
+import { z } from 'zod';
+
+// Schema de validação para filtros e paginação
+const execucoesQuerySchema = z.object({
+  osId: z.string().optional().nullable(),
+  checklistId: z.string().optional().nullable(),
+  veiculoId: z.string().optional().nullable(),
+  data_inicio: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de início inválida' }
+  ),
+  data_fim: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de fim inválida' }
+  ),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 // ============================================================
 // GET — Listar execuções de checklist (paginado)
-// Rota /execucoes NÃO tem [id] — sem segundo parâmetro.
 // ============================================================
 export async function GET(req: NextRequest) {
   try {
@@ -18,19 +36,37 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const osId = searchParams.get('osId');
-    const checklistId = searchParams.get('checklistId');
-    const veiculoId = searchParams.get('veiculoId');
+    
+    // Validação com zod
+    const parsed = execucoesQuerySchema.parse({
+      osId: searchParams.get('osId'),
+      checklistId: searchParams.get('checklistId'),
+      veiculoId: searchParams.get('veiculoId'),
+      data_inicio: searchParams.get('data_inicio'),
+      data_fim: searchParams.get('data_fim'),
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+    });
 
-    const rawPage = parseInt(searchParams.get('page') || '1', 10);
-    const rawLimit = parseInt(searchParams.get('limit') || '20', 10);
-    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-    const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 100);
+    const { osId, checklistId, veiculoId, data_inicio, data_fim, page, limit } = parsed;
 
     const where: any = { empresa_id: user.empresa_id };
     if (osId) where.os_id = osId;
     if (checklistId) where.checklist_id = checklistId;
     if (veiculoId) where.veiculo_id = veiculoId;
+
+    // Filtro de período (data_inicio e data_fim)
+    if (data_inicio || data_fim) {
+      where.created_at = {};
+      if (data_inicio) {
+        where.created_at.gte = new Date(data_inicio);
+      }
+      if (data_fim) {
+        const fim = new Date(data_fim);
+        fim.setUTCHours(23, 59, 59, 999);
+        where.created_at.lte = fim;
+      }
+    }
 
     const [items, total] = await Promise.all([
       prisma.checklistExecucao.findMany({
@@ -76,13 +112,19 @@ export async function GET(req: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
+    log('ERROR', 'CHECKLIST_EXECUCOES', 'Erro ao buscar execuções de checklist', { error: error?.message });
     return apiError(error, 'CHECKLIST_EXECUCOES', 'Erro ao buscar execuções de checklist');
   }
 }
 
 // ============================================================
 // POST — descontinuado. Use POST /api/checklist/executar.
-// A rota /execucoes NÃO tem [id], então não recebe `params`.
 // ============================================================
 export async function POST() {
   return NextResponse.json(
