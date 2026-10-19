@@ -1,30 +1,56 @@
 'use client';
 
-import { useState, useEffect, useCallback, use } from 'react';
+import { useState, useEffect, useCallback, use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, Printer, Edit, User, Truck, 
   Calendar, FileText, Wrench, Package, DollarSign,
   Terminal, ShieldCheck, ChevronRight, ClipboardCheck, Plus, Eye,
   MapPin, Navigation, Milestone, Receipt, Users, Clock, AlertTriangle, Loader2,
-  XCircle, Trash2
+  XCircle, Trash2, X, RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { FluxoOficinaTracker } from '@/components/FluxoOficinaTracker';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
+
+// ============================================================
+// HELPERS (fora do componente — evita recriação)
+// ============================================================
+function formatCurrency(val: number | null | undefined): string {
+  return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '---';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '---';
+  return d.toLocaleDateString('pt-BR');
+}
+
+function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '---';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '---';
+  return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+}
 
 export default function OSDetalhesPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
   const [ordem, setOrdem] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [checklistsExecutados, setChecklistsExecutados] = useState<any[]>([]);
   
+  // Assinaturas
   const [sigCliente, setSigCliente] = useState('');
   const [sigMecanico, setSigMecanico] = useState('');
   const [sigSupervisor, setSigSupervisor] = useState('');
   const [isSigning, setIsSigning] = useState(false);
   
+  // Modais
   const [showFinalizarModal, setShowFinalizarModal] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
   const [numParcelas, setNumParcelas] = useState(1);
@@ -35,30 +61,31 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const [motivoCancelamento, setMotivoCancelamento] = useState('');
   const [isCanceling, setIsCanceling] = useState(false);
 
-  const fetchOrdem = useCallback(async () => {
+  // ✅ NOVO: Modal de exclusão de checklist (substitui confirm nativo)
+  const [deleteChecklistTarget, setDeleteChecklistTarget] = useState<string | null>(null);
+  const [isDeletingChecklist, setIsDeletingChecklist] = useState(false);
+
+  // ============================================================
+  // FETCH DE DADOS
+  // ============================================================
+  const fetchOrdem = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(false);
     try {
-      const res = await fetch(`/api/ordens/${resolvedParams.id}`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setOrdem(data);
-      }
-    } catch {
-      // silencioso
+      const data = await apiFetch<any>(`/api/ordens/${resolvedParams.id}`, { signal });
+      setOrdem(data);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setError(true);
+      handleApiError(err, { defaultMessage: 'Erro ao carregar OS' });
     } finally {
       setLoading(false);
     }
   }, [resolvedParams.id]);
 
-  const carregarChecklists = useCallback(async () => {
+  const carregarChecklists = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`/api/checklist/execucoes?osId=${resolvedParams.id}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        setChecklistsExecutados([]);
-        return;
-      }
-      const data = await res.json();
+      const data = await apiFetch<any>(`/api/checklist/execucoes?osId=${resolvedParams.id}`, { signal });
       const list = Array.isArray(data) ? data : (data?.items || []);
       const mapped = list.map((e: any) => ({
         ...e,
@@ -67,11 +94,22 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         veiculo: e.Veiculo || e.veiculo,
       }));
       setChecklistsExecutados(mapped);
-    } catch {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setChecklistsExecutados([]);
     }
   }, [resolvedParams.id]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchOrdem(controller.signal);
+    carregarChecklists(controller.signal);
+    return () => controller.abort();
+  }, [fetchOrdem, carregarChecklists]);
+
+  // ============================================================
+  // AÇÕES
+  // ============================================================
   const handleSaveSignatures = async () => {
     if (!sigCliente && !sigMecanico && !sigSupervisor) {
       toast.warning('Insira pelo menos uma assinatura para homologar');
@@ -85,100 +123,39 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
+      await apiFetch(`/api/ordens/${resolvedParams.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           assinatura_cliente: sigCliente || null,
           assinatura_mecanico: sigMecanico || null,
           assinatura_supervisor: sigSupervisor || null,
           assinatura_hash: hashHex,
           assinatura_timestamp: new Date().toISOString()
-        })
+        }
       });
 
-      if (res.ok) {
-        toast.success('Documento formalizado via hash SHA-256!');
-        fetchOrdem();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || 'Erro ao registrar homologação digital');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      toast.success('Documento formalizado via hash SHA-256!');
+      fetchOrdem();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao registrar homologação digital' });
     } finally {
       setIsSigning(false);
     }
   };
 
-  useEffect(() => {
-    fetchOrdem();
-  }, [fetchOrdem]);
-
-  useEffect(() => {
-    carregarChecklists();
-  }, [carregarChecklists]);
-
-  const handleDeleteChecklist = async (execId: string) => {
-    if (!confirm('Deseja realmente excluir este checklist?')) return;
-
+  const confirmDeleteChecklist = async () => {
+    if (!deleteChecklistTarget) return;
+    setIsDeletingChecklist(true);
     try {
-      const res = await fetch(`/api/checklist/execucao/${execId}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        toast.success(data.message || 'Checklist removido!');
-        carregarChecklists();
-      } else {
-        toast.error(data.error || 'Erro ao remover checklist');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      await apiFetch(`/api/checklist/execucao/${deleteChecklistTarget}`, { method: 'DELETE' });
+      toast.success('Checklist removido com sucesso!');
+      setDeleteChecklistTarget(null);
+      carregarChecklists();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao remover checklist' });
+    } finally {
+      setIsDeletingChecklist(false);
     }
-  };
-
-  const extrairPreventivasVinculadas = (): string[] => {
-    if (!ordem) return [];
-
-    const ids: string[] = [];
-
-    if (Array.isArray(ordem.preventivas_ids)) {
-      ids.push(...ordem.preventivas_ids.filter(Boolean));
-    }
-
-    if (ordem.preventiva_id && !ids.includes(ordem.preventiva_id)) {
-      ids.push(ordem.preventiva_id);
-    }
-
-    if (Array.isArray(ordem.preventivas_execucoes)) {
-      ordem.preventivas_execucoes.forEach((pe: any) => {
-        if (pe.preventiva_id && !ids.includes(pe.preventiva_id)) {
-          ids.push(pe.preventiva_id);
-        }
-      });
-    }
-
-    if (ids.length === 0 && ordem.observacoes) {
-      try {
-        const meta = typeof ordem.observacoes === 'string'
-          ? JSON.parse(ordem.observacoes)
-          : ordem.observacoes;
-        if (Array.isArray(meta?.preventivas_ids)) {
-          meta.preventivas_ids.forEach((id: string) => {
-            if (id && !ids.includes(id)) ids.push(id);
-          });
-        }
-        if (meta?.preventiva_id && !ids.includes(meta.preventiva_id)) {
-          ids.push(meta.preventiva_id);
-        }
-      } catch {}
-    }
-
-    return ids;
   };
 
   const handleStatusChange = async (novoStatus: string) => {
@@ -188,21 +165,14 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
     }
 
     try {
-      const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
+      await apiFetch(`/api/ordens/${resolvedParams.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: novoStatus })
+        body: { status: novoStatus }
       });
-      if (res.ok) {
-        toast.success(`Status atualizado para ${novoStatus.replace(/_/g, ' ')}`);
-        fetchOrdem();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || 'Erro ao atualizar status');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      toast.success(`Status atualizado para ${novoStatus.replace(/_/g, ' ')}`);
+      fetchOrdem();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao atualizar status' });
     }
   };
 
@@ -214,28 +184,20 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
 
     setIsCanceling(true);
     try {
-      const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
+      await apiFetch(`/api/ordens/${resolvedParams.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           status: 'CANCELADA',
           motivo_cancelamento: motivoCancelamento.trim(),
-        }),
+        },
       });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        toast.success('OS cancelada com sucesso');
-        setShowCancelarModal(false);
-        setMotivoCancelamento('');
-        fetchOrdem();
-      } else {
-        toast.error(data.error || 'Erro ao cancelar OS');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      toast.success('OS cancelada com sucesso');
+      setShowCancelarModal(false);
+      setMotivoCancelamento('');
+      fetchOrdem();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao cancelar OS' });
     } finally {
       setIsCanceling(false);
     }
@@ -244,59 +206,100 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   const confirmFinalizar = async () => {
     setIsFinalizing(true);
     try {
-      const preventivasVinculadas = extrairPreventivasVinculadas();
+      // Extrai preventivas vinculadas para enviar no PATCH
+      const ids: string[] = [];
+      if (Array.isArray(ordem?.preventivas_ids)) ids.push(...ordem.preventivas_ids.filter(Boolean));
+      if (ordem?.preventiva_id && !ids.includes(ordem.preventiva_id)) ids.push(ordem.preventiva_id);
+      
+      if (ids.length === 0 && ordem?.observacoes) {
+        try {
+          const meta = typeof ordem.observacoes === 'string' ? JSON.parse(ordem.observacoes) : ordem.observacoes;
+          if (Array.isArray(meta?.preventivas_ids)) meta.preventivas_ids.forEach((id: string) => { if (id && !ids.includes(id)) ids.push(id); });
+        } catch {}
+      }
 
-      const res = await fetch(`/api/ordens/${resolvedParams.id}`, {
+      await apiFetch(`/api/ordens/${resolvedParams.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           status: 'FINALIZADA',
           forma_pagamento: formaPagamento,
           numero_parcelas: numParcelas,
           dias_entre_parcelas: diasIntervalo,
-          preventivas_ids: preventivasVinculadas,
+          preventivas_ids: ids,
           km_veiculo: ordem?.veiculo?.quilometragem,
           horimetro_veiculo: ordem?.veiculo?.horimetro_atual
-        })
+        }
       });
-      if (res.ok) {
-        toast.success('OS Finalizada com sucesso!');
-        setShowFinalizarModal(false);
-        fetchOrdem();
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.error || 'Erro ao finalizar OS');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+
+      toast.success('OS Finalizada com sucesso!');
+      setShowFinalizarModal(false);
+      fetchOrdem();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao finalizar OS' });
     } finally {
       setIsFinalizing(false);
     }
   };
 
+  // ============================================================
+  // MEMOIZAÇÕES E CÁLCULOS
+  // ============================================================
+  const uiData = useMemo(() => {
+    if (!ordem) return null;
+
+    let timeline: any[] = [];
+    try { timeline = typeof ordem.timeline_viagem === 'string' ? JSON.parse(ordem.timeline_viagem || '[]') : (ordem.timeline_viagem || []); } catch {}
+    
+    let equipe: any[] = [];
+    try { equipe = typeof ordem.mao_obra_equipe === 'string' ? JSON.parse(ordem.mao_obra_equipe || '[]') : (ordem.mao_obra_equipe || []); } catch {}
+
+    const totalDespesas = (
+      (ordem.despesa_pedagio || 0) + (ordem.despesa_combustivel || 0) +
+      (ordem.despesa_hospedagem || 0) + (ordem.despesa_alimentacao || 0) +
+      (ordem.despesa_diaria_tecnica || 0) + (ordem.despesa_guincho || 0) +
+      (ordem.despesa_outros || 0)
+    );
+
+    const totalExtras = (
+      (ordem.total_deslocamento || 0) + totalDespesas + (ordem.mao_obra_externa_total || 0)
+    );
+
+    return { timeline, equipe, totalDespesas, totalExtras };
+  }, [ordem]);
+
+  // ============================================================
+  // RENDER — LOADING / ERRO
+  // ============================================================
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-4">
         <div className="w-10 h-10 border-2 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
-        <p className="text-zinc-600 font-mono text-[10px] uppercase tracking-[0.3em]">Resgatando Protocolo...</p>
+        <p className="text-zinc-500 font-mono text-[10px] uppercase tracking-[0.3em]">Resgatando Protocolo...</p>
       </div>
     );
   }
 
-  if (!ordem) {
+  if (error || !ordem) {
     return (
-      <div className="text-center py-32 space-y-4">
-        <Terminal className="w-12 h-12 text-zinc-800 mx-auto" />
+      <div className="text-center py-32 space-y-4 max-w-md mx-auto">
+        <AlertTriangle className="w-12 h-12 text-red-500 mx-auto" />
         <h2 className="text-xl font-bold text-white">Protocolo Inexistente</h2>
-        <p className="text-zinc-500">A ordem de serviço solicitada não consta em nossa base de dados ativa.</p>
-        <Link href="/os" className="inline-block text-orange-500 font-bold uppercase text-xs tracking-widest mt-4">
-          Voltar para listagem
-        </Link>
+        <p className="text-zinc-500 text-sm">A ordem de serviço solicitada não consta em nossa base de dados ou você não tem permissão para acessá-la.</p>
+        <div className="flex justify-center gap-3 mt-4">
+          <button onClick={() => fetchOrdem()} className="flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-zinc-800 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-zinc-800 transition">
+            <RefreshCw size={14} /> Tentar Novamente
+          </button>
+          <Link href="/os" className="flex items-center gap-2 px-6 py-3 bg-orange-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-orange-500 transition">
+            Voltar para Listagem
+          </Link>
+        </div>
       </div>
     );
   }
 
+  // ============================================================
+  // VARIÁVEIS DE APOIO (após validar que a ordem existe)
+  // ============================================================
   const statusColors: Record<string, string> = {
     ABERTA: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     EM_DIAGNOSTICO: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
@@ -318,9 +321,11 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
   };
 
   const podeCancelar = ordem.status !== 'CANCELADA' && ordem.status !== 'ENTREGUE';
+  const isCampo = ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA';
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 px-4 py-8 pb-20">
+      {/* HEADER DA OS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="flex items-center gap-5">
           <Link href="/os">
@@ -347,13 +352,13 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               )}
             </div>
             <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-[0.2em] mt-1">
-              Registro: {new Date(ordem.created_at).toLocaleDateString('pt-BR')} às {new Date(ordem.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              Registro: {formatDateTime(ordem.created_at)}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (
+          {isCampo && (
             <Link href={`/os/viagem-print?id=${ordem.id}`}>
               <button className="px-5 h-12 bg-orange-600 border border-orange-500 rounded-2xl flex items-center gap-3 hover:bg-orange-500 transition-all text-white font-black text-[10px] uppercase tracking-widest shadow-lg">
                 <Printer className="w-5 h-5 text-white" />
@@ -409,6 +414,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {/* CARDS DE IDENTIFICAÇÃO */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center gap-3 text-zinc-500 border-b border-zinc-800/50 pb-4">
@@ -475,6 +481,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
+      {/* DIAGNÓSTICO */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-8 shadow-xl space-y-4">
         <div className="flex items-center gap-3 text-zinc-500 border-b border-zinc-800/50 pb-4">
           <FileText className="w-4 h-4" />
@@ -485,222 +492,161 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </p>
       </div>
 
-      {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (() => {
-        let timeline: any[] = [];
-        try {
-          timeline = typeof ordem.timeline_viagem === 'string' ? JSON.parse(ordem.timeline_viagem || '[]') : (ordem.timeline_viagem || []);
-        } catch {
-          timeline = [];
-        }
-
-        let equipe: any[] = [];
-        try {
-          equipe = typeof ordem.mao_obra_equipe === 'string' ? JSON.parse(ordem.mao_obra_equipe || '[]') : (ordem.mao_obra_equipe || []);
-        } catch {
-          equipe = [];
-        }
-
-        const totalDespesas = (
-          (ordem.despesa_pedagio || 0) +
-          (ordem.despesa_combustivel || 0) +
-          (ordem.despesa_hospedagem || 0) +
-          (ordem.despesa_alimentacao || 0) +
-          (ordem.despesa_diaria_tecnica || 0) +
-          (ordem.despesa_guincho || 0) +
-          (ordem.despesa_outros || 0)
-        );
-
-        return (
-          <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-8 shadow-xl space-y-8 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-              <div className="flex items-center gap-3 text-zinc-500">
-                <Navigation className="w-5 h-5 text-orange-500" />
-                <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-wider">Atendimento Externo & Logística de Campo</h3>
-                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mt-0.5">Gestão de KM, Custos Extras e Viagem</p>
-                </div>
-              </div>
-              <span className="text-[10px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg px-2.5 py-1 uppercase tracking-widest">
-                Ativo Externo
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <MapPin className="w-4 h-4 text-orange-500" />
-                    <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Local do Destino</span>
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    <p className="text-sm font-bold text-white uppercase line-clamp-2">
-                      {ordem.local_atendimento || 'Endereço não informado'}
-                    </p>
-                    <p className="text-xs text-zinc-500 font-mono">
-                      {ordem.local_cidade ? `${ordem.local_cidade} - ${ordem.local_estado || ''}` : 'Cidade não identificada'}
-                    </p>
-                  </div>
-                </div>
-                {ordem.local_gps ? (
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ordem.local_gps)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full text-center bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 py-2.5 px-4 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all block mt-4"
-                  >
-                    📍 Abrir GPS ({ordem.local_gps})
-                  </a>
-                ) : (
-                  <span className="text-[9px] text-zinc-600 font-mono mt-4 italic block">Coordenadas GPS ausentes</span>
-                )}
-              </div>
-
-              <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <Milestone className="w-4 h-4 text-orange-500" />
-                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Controle e Cálculo de KM</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40">
-                    <p className="text-[9px] text-zinc-500 font-mono uppercase">KM Ida</p>
-                    <p className="text-sm font-black text-white mt-0.5">{ordem.km_saida || 0} km</p>
-                  </div>
-                  <div className="bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40">
-                    <p className="text-[9px] text-zinc-500 font-mono uppercase">KM Volta</p>
-                    <p className="text-sm font-black text-white mt-0.5">{ordem.km_retorno || 0} km</p>
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-zinc-800 mt-2 flex items-center justify-between">
-                  <div>
-                    <p className="text-[9px] text-zinc-500 font-mono uppercase">KM Rodados (x R$ {(ordem.valor_km || 0).toFixed(2)})</p>
-                    <p className="text-xs text-zinc-400 font-mono mt-0.5">{ordem.km_total || 0} km total</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-zinc-500 font-mono uppercase">Total Deslocamento</p>
-                    <p className="text-sm font-black text-orange-500 mt-0.5">R$ {(ordem.total_deslocamento || 0).toFixed(2)}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <Receipt className="w-4 h-4 text-orange-500" />
-                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Despesas Reembolsáveis</span>
-                </div>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 mt-3">
-                  {ordem.despesa_pedagio > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Pedágio</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_pedagio.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {ordem.despesa_combustivel > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Combustível</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_combustivel.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {ordem.despesa_hospedagem > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Hospedagem</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_hospedagem.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {ordem.despesa_alimentacao > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Alimentação</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_alimentacao.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {ordem.despesa_diaria_tecnica > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Diária Técnica</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_diaria_tecnica.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {ordem.despesa_guincho > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Guincho</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_guincho.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {ordem.despesa_outros > 0 && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">Outros Custos</span>
-                      <span className="font-mono text-zinc-300">R$ {ordem.despesa_outros.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {totalDespesas === 0 && (
-                    <p className="text-[10px] text-zinc-600 font-mono italic">Nenhuma despesa extra informada</p>
-                  )}
-                </div>
-                <div className="pt-2 border-t border-zinc-800 mt-2 flex justify-between items-center">
-                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Subtotal Despesas</span>
-                  <span className="text-sm font-black text-white">R$ {totalDespesas.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <Users className="w-4 h-4 text-orange-500" />
-                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Mão de Obra Externa</span>
-                </div>
-                <div className="mt-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-800/40">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-zinc-500 font-mono">Horas:</span>
-                    <span className="text-white font-bold">{ordem.mao_obra_externa_horas || 0}h</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs mt-1">
-                    <span className="text-zinc-500 font-mono">Valor Hora:</span>
-                    <span className="text-white font-bold">R$ {(ordem.mao_obra_externa_valor || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs mt-1 pt-1.5 border-t border-zinc-800/40">
-                    <span className="text-orange-500 font-bold font-mono">Total Extra:</span>
-                    <span className="text-orange-500 font-black">R$ {(ordem.mao_obra_externa_total || 0).toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {equipe.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-[9px] text-zinc-500 font-mono uppercase">Equipe de Campo:</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {equipe.map((p: any, idx: number) => (
-                        <span key={idx} className="text-[9px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-md px-1.5 py-0.5">
-                          {p.nome || p.role || p}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+      {/* ATENDIMENTO EXTERNO (Se for OS de Campo) */}
+      {isCampo && uiData && (
+        <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-8 shadow-xl space-y-8 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+            <div className="flex items-center gap-3 text-zinc-500">
+              <Navigation className="w-5 h-5 text-orange-500" />
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Atendimento Externo & Logística de Campo</h3>
+                <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mt-0.5">Gestão de KM, Custos Extras e Viagem</p>
               </div>
             </div>
-
-            {timeline.length > 0 && (
-              <div className="border-t border-zinc-800/80 pt-6">
-                <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-orange-500" />
-                  Registro de Atividades da Viagem (Timeline)
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  {timeline.map((item: any, idx: number) => (
-                    <div key={idx} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 space-y-1 relative">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase text-white font-mono">{item.status || 'PARADA'}</span>
-                        <span className="text-[9px] text-orange-500 font-mono">#{idx+1}</span>
-                      </div>
-                      <p className="text-xs text-zinc-400 mt-1">{item.descricao || item.obs || 'Nenhuma observação'}</p>
-                      <p className="text-[9px] text-zinc-500 font-mono mt-1 italic uppercase">
-                        {item.timestamp ? new Date(item.timestamp).toLocaleDateString('pt-BR') : ''} {item.timestamp ? new Date(item.timestamp).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}) : ''}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <span className="text-[10px] font-mono bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-lg px-2.5 py-1 uppercase tracking-widest">
+              Ativo Externo
+            </span>
           </div>
-        );
-      })()}
 
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <MapPin className="w-4 h-4 text-orange-500" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Local do Destino</span>
+                </div>
+                <div className="mt-3 space-y-1">
+                  <p className="text-sm font-bold text-white uppercase line-clamp-2">
+                    {ordem.local_atendimento || 'Endereço não informado'}
+                  </p>
+                  <p className="text-xs text-zinc-500 font-mono">
+                    {ordem.local_cidade ? `${ordem.local_cidade} - ${ordem.local_estado || ''}` : 'Cidade não identificada'}
+                  </p>
+                </div>
+              </div>
+              {ordem.local_gps ? (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ordem.local_gps)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full text-center bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 py-2.5 px-4 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all block mt-4"
+                >
+                  📍 Abrir GPS ({ordem.local_gps})
+                </a>
+              ) : (
+                <span className="text-[9px] text-zinc-600 font-mono mt-4 italic block">Coordenadas GPS ausentes</span>
+              )}
+            </div>
+
+            <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 text-zinc-500">
+                <Milestone className="w-4 h-4 text-orange-500" />
+                <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Controle e Cálculo de KM</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40">
+                  <p className="text-[9px] text-zinc-500 font-mono uppercase">KM Ida</p>
+                  <p className="text-sm font-black text-white mt-0.5">{ordem.km_saida || 0} km</p>
+                </div>
+                <div className="bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40">
+                  <p className="text-[9px] text-zinc-500 font-mono uppercase">KM Volta</p>
+                  <p className="text-sm font-black text-white mt-0.5">{ordem.km_retorno || 0} km</p>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-zinc-800 mt-2 flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] text-zinc-500 font-mono uppercase">KM Rodados (x {formatCurrency(ordem.valor_km)})</p>
+                  <p className="text-xs text-zinc-400 font-mono mt-0.5">{ordem.km_total || 0} km total</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] text-zinc-500 font-mono uppercase">Total Deslocamento</p>
+                  <p className="text-sm font-black text-orange-500 mt-0.5">{formatCurrency(ordem.total_deslocamento)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 text-zinc-500">
+                <Receipt className="w-4 h-4 text-orange-500" />
+                <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Despesas Reembolsáveis</span>
+              </div>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 mt-3">
+                {ordem.despesa_pedagio > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Pedágio</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_pedagio)}</span></div>}
+                {ordem.despesa_combustivel > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Combustível</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_combustivel)}</span></div>}
+                {ordem.despesa_hospedagem > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Hospedagem</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_hospedagem)}</span></div>}
+                {ordem.despesa_alimentacao > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Alimentação</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_alimentacao)}</span></div>}
+                {ordem.despesa_diaria_tecnica > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Diária Técnica</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_diaria_tecnica)}</span></div>}
+                {ordem.despesa_guincho > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Guincho</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_guincho)}</span></div>}
+                {ordem.despesa_outros > 0 && <div className="flex justify-between items-center text-xs"><span className="text-zinc-500">Outros Custos</span><span className="font-mono text-zinc-300">{formatCurrency(ordem.despesa_outros)}</span></div>}
+                {uiData.totalDespesas === 0 && <p className="text-[10px] text-zinc-600 font-mono italic">Nenhuma despesa extra informada</p>}
+              </div>
+              <div className="pt-2 border-t border-zinc-800 mt-2 flex justify-between items-center">
+                <span className="text-[10px] font-mono text-zinc-500 uppercase">Subtotal Despesas</span>
+                <span className="text-sm font-black text-white">{formatCurrency(uiData.totalDespesas)}</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 text-zinc-500">
+                <Users className="w-4 h-4 text-orange-500" />
+                <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Mão de Obra Externa</span>
+              </div>
+              <div className="mt-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-800/40">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-zinc-500 font-mono">Horas:</span>
+                  <span className="text-white font-bold">{ordem.mao_obra_externa_horas || 0}h</span>
+                </div>
+                <div className="flex justify-between items-center text-xs mt-1">
+                  <span className="text-zinc-500 font-mono">Valor Hora:</span>
+                  <span className="text-white font-bold">{formatCurrency(ordem.mao_obra_externa_valor)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs mt-1 pt-1.5 border-t border-zinc-800/40">
+                  <span className="text-orange-500 font-bold font-mono">Total Extra:</span>
+                  <span className="text-orange-500 font-black">{formatCurrency(ordem.mao_obra_externa_total)}</span>
+                </div>
+              </div>
+
+              {uiData.equipe.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[9px] text-zinc-500 font-mono uppercase">Equipe de Campo:</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {uiData.equipe.map((p: any, idx: number) => (
+                      <span key={idx} className="text-[9px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-md px-1.5 py-0.5">
+                        {p.nome || p.role || p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {uiData.timeline.length > 0 && (
+            <div className="border-t border-zinc-800/80 pt-6">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-4 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-orange-500" />
+                Registro de Atividades da Viagem (Timeline)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                {uiData.timeline.map((item: any, idx: number) => (
+                  <div key={idx} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 space-y-1 relative">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-white font-mono">{item.status || 'PARADA'}</span>
+                      <span className="text-[9px] text-orange-500 font-mono">#{idx+1}</span>
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1">{item.descricao || item.obs || 'Nenhuma observação'}</p>
+                    <p className="text-[9px] text-zinc-500 font-mono mt-1 italic uppercase">
+                      {formatDateTime(item.timestamp)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SERVIÇOS E PEÇAS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="p-6 bg-zinc-800/20 border-b border-zinc-800">
@@ -715,9 +661,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 <div key={i} className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
                   <div className="max-w-[60%]">
                     <p className="text-sm font-bold text-white uppercase truncate">{s.descricao}</p>
-                    <p className="text-[10px] text-zinc-500 font-mono mt-1">Fator: {s.horas}h @ R${(s.valor_hora || 0).toFixed(2)}/h</p>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-1">Fator: {s.horas}h @ {formatCurrency(s.valor_hora)}/h</p>
                   </div>
-                  <p className="text-sm font-black text-green-500">R$ {(s.valor_total || 0).toFixed(2)}</p>
+                  <p className="text-sm font-black text-green-500">{formatCurrency(s.valor_total)}</p>
                 </div>
               ))}
             </div>
@@ -739,9 +685,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 <div key={i} className="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
                   <div className="max-w-[60%]">
                     <p className="text-sm font-bold text-white uppercase truncate">{p.peca?.descricao}</p>
-                    <p className="text-[10px] text-zinc-500 font-mono mt-1">Vol: {p.quantidade} {p.unidade || p.peca?.unidadeMedida || 'un'} @ R${(p.valor_unit || 0).toFixed(2)}</p>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-1">Vol: {p.quantidade} {p.unidade || p.peca?.unidadeMedida || 'un'} @ {formatCurrency(p.valor_unit)}</p>
                   </div>
-                  <p className="text-sm font-black text-green-500">R$ {(p.valor_total || 0).toFixed(2)}</p>
+                  <p className="text-sm font-black text-green-500">{formatCurrency(p.valor_total)}</p>
                 </div>
               ))}
             </div>
@@ -751,6 +697,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
+      {/* CHECKLISTS */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="p-6 bg-zinc-800/20 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-sm font-black text-white tracking-widest uppercase flex items-center gap-3">
@@ -775,7 +722,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                   <div>
                     <p className="text-xs font-black text-white uppercase italic tracking-tight">{exec?.checklist?.nome || 'Checklist sem nome'}</p>
                     <p className="text-[9px] text-zinc-500 font-mono mt-1">
-                      Executado em: {exec?.data ? (isNaN(new Date(exec.data).getTime()) ? 'Data inválida' : new Date(exec.data).toLocaleDateString('pt-BR')) : 'Data não registrada'}
+                      Executado em: {formatDate(exec?.data || exec?.created_at)}
                     </p>
                   </div>
                 </div>
@@ -786,8 +733,8 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                     </button>
                   </Link>
                   <button
-                    onClick={() => exec?.id && handleDeleteChecklist(exec.id)}
-                    className="p-2 bg-zinc-800 hover:bg-red-600/20 rounded-lg text-zinc-400 hover:text-red-500 transition"
+                    onClick={() => setDeleteChecklistTarget(exec.id)}
+                    className="p-2 bg-zinc-800 hover:bg-red-600/20 rounded-lg text-zinc-400 hover:text-red-500 transition cursor-pointer"
                     title="Excluir"
                   >
                     <Trash2 size={16} />
@@ -801,6 +748,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
+      {/* RESUMO FINANCEIRO */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-8 shadow-2xl">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-8">
           <div className="flex flex-col sm:flex-row gap-6 sm:gap-12 w-full sm:w-auto">
@@ -817,36 +765,22 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
             )}
             <div className="space-y-1">
               <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Subtotal Serviços</p>
-              <p className="text-lg font-bold text-white">R$ {(ordem.valor_servicos || 0).toFixed(2)}</p>
+              <p className="text-lg font-bold text-white">{formatCurrency(ordem.valor_servicos)}</p>
             </div>
             <div className="space-y-1">
               <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Subtotal Peças</p>
-              <p className="text-lg font-bold text-white">R$ {(ordem.valor_pecas || 0).toFixed(2)}</p>
+              <p className="text-lg font-bold text-white">{formatCurrency(ordem.valor_pecas)}</p>
             </div>
-            {ordem.tipo_atendimento && ordem.tipo_atendimento !== 'OFICINA' && (() => {
-              const totalExtras = (
-                (ordem.total_deslocamento || 0) +
-                (ordem.despesa_pedagio || 0) +
-                (ordem.despesa_combustivel || 0) +
-                (ordem.despesa_hospedagem || 0) +
-                (ordem.despesa_alimentacao || 0) +
-                (ordem.despesa_diaria_tecnica || 0) +
-                (ordem.despesa_guincho || 0) +
-                (ordem.despesa_outros || 0) +
-                (ordem.mao_obra_externa_total || 0)
-              );
-              if (totalExtras <= 0) return null;
-              return (
-                <div className="space-y-1">
-                  <p className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">Custos Extras de Campo</p>
-                  <p className="text-lg font-bold text-orange-500">R$ {totalExtras.toFixed(2)}</p>
-                </div>
-              );
-            })()}
+            {isCampo && uiData && uiData.totalExtras > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-mono text-orange-500 uppercase tracking-widest">Custos Extras de Campo</p>
+                <p className="text-lg font-bold text-orange-500">{formatCurrency(uiData.totalExtras)}</p>
+              </div>
+            )}
             {(ordem.desconto || 0) > 0 && (
               <div className="space-y-1">
                 <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Abono / Desconto</p>
-                <p className="text-lg font-bold text-red-500">R$ -{(ordem.desconto || 0).toFixed(2)}</p>
+                <p className="text-lg font-bold text-red-500">- {formatCurrency(ordem.desconto)}</p>
               </div>
             )}
           </div>
@@ -857,12 +791,13 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               <p className="text-[10px] font-mono uppercase tracking-[0.2em] font-black">Consolidado Total</p>
             </div>
             <p className="text-4xl font-black text-white tracking-tight">
-              R$ {(ordem.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {formatCurrency(ordem.valor_total)}
             </p>
           </div>
         </div>
       </div>
 
+      {/* ASSINATURAS */}
       <div className="bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-6">
         <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
           <ShieldCheck className="text-emerald-400 w-5 h-5" />
@@ -884,7 +819,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                 Documento Certificado
               </span>
               <span className="text-[10px] font-mono text-zinc-500 font-bold uppercase">
-                Timestamp: {new Date(ordem.assinatura_timestamp).toLocaleString('pt-BR')}
+                Timestamp: {formatDateTime(ordem.assinatura_timestamp)}
               </span>
             </div>
 
@@ -991,7 +926,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
+      {/* ============================================================ */}
       {/* MODAL: Finalizar */}
+      {/* ============================================================ */}
       {showFinalizarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl">
@@ -1018,7 +955,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                       setFormaPagamento(e.target.value);
                       if (e.target.value !== 'PARCELADO') setNumParcelas(1);
                     }}
-                    className="w-full bg-zinc-950 border border-zinc-800 py-3 px-4 rounded-xl text-white font-bold text-sm focus:border-orange-500 outline-none transition-all selection:bg-orange-500 appearance-none"
+                    className="w-full bg-zinc-950 border border-zinc-800 py-3 px-4 rounded-xl text-white font-bold text-sm focus:border-orange-500 outline-none transition-all appearance-none"
                   >
                     <option value="DINHEIRO">💰 DINHEIRO / VISTA</option>
                     <option value="PIX">⚡ PIX</option>
@@ -1062,7 +999,7 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
               <div className="bg-orange-600/5 p-6 rounded-2xl border border-orange-500/10 flex items-center justify-between group overflow-hidden relative">
                 <div className="relative z-10">
                   <p className="text-[10px] font-mono uppercase tracking-widest text-orange-500 font-extrabold mb-1">Total a Consolidar</p>
-                  <p className="text-3xl font-black text-white">R$ {(ordem.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  <p className="text-3xl font-black text-white">{formatCurrency(ordem.valor_total)}</p>
                 </div>
                 <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform">
                   <DollarSign className="w-32 h-32 text-orange-500" />
@@ -1096,7 +1033,9 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* MODAL: Cancelar */}
+      {/* ============================================================ */}
+      {/* MODAL: Cancelar OS */}
+      {/* ============================================================ */}
       {showCancelarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
@@ -1170,6 +1109,67 @@ export default function OSDetalhesPage({ params }: { params: Promise<{ id: strin
                     <>
                       <XCircle className="w-4 h-4" />
                       Confirmar Cancelamento
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL: Excluir Checklist (NOVO) */}
+      {/* ============================================================ */}
+      {deleteChecklistTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir Checklist</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setDeleteChecklistTarget(null)}
+                className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente este checklist desta OS? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteChecklistTarget(null)}
+                  disabled={isDeletingChecklist}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteChecklist}
+                  disabled={isDeletingChecklist}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3"
+                >
+                  {isDeletingChecklist ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmar Exclusão
                     </>
                   )}
                 </button>
