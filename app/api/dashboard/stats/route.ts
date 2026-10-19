@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
 import { getCachedStats } from '@/lib/dashboard-cache';
 
 export async function GET() {
@@ -17,9 +18,8 @@ export async function GET() {
     const stats = await getCachedStats(empresa_id);
 
     return NextResponse.json(stats);
-  } catch (error) {
-    log('ERROR', 'DASHBOARD', 'Erro ao buscar estatísticas', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao buscar estatísticas' }, { status: 500 });
+  } catch (error: any) {
+    // ✅ NOVO: tratamento de erro padronizado com apiError
+    return apiError(error, 'DASHBOARD', 'Erro ao buscar estatísticas');
   }
 }
-
