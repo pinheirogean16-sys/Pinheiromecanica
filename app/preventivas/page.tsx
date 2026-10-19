@@ -1,20 +1,61 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect, useCallback } from 'react';
 import { 
   AlertTriangle, CheckCircle2, AlertCircle, Plus, Sparkles, 
-  Search, Sliders, ChevronRight, Wrench, RefreshCw, Calendar, 
-  Loader2, Gauge, Trash2, Edit, Clock, ShieldCheck, Car, User
+  Search, ChevronRight, Wrench, RefreshCw, Clock, Loader2, 
+  Trash2, Edit, ShieldCheck, X, History
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import PreventivaModal from '@/components/PreventivaModal';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
+
+// ============================================================
+// HELPERS (fora do componente — evita recriação a cada render)
+// ============================================================
+function getStatusBadge(status: string, ativo = true) {
+  if (!ativo || status === 'DESATIVADO') {
+    return {
+      banner: 'bg-zinc-900/60 border-zinc-800 text-zinc-400',
+      badge: 'bg-zinc-800/80 border-zinc-700 text-zinc-400',
+      dot: 'bg-zinc-600',
+      label: 'DESATIVADO'
+    };
+  }
+  switch (status) {
+    case 'VENCIDO':
+      return {
+        banner: 'bg-red-950/20 border-red-900/60 text-red-400',
+        badge: 'bg-red-500/10 border-red-500/30 text-red-400',
+        dot: 'bg-red-500 animate-ping',
+        label: 'VENCIDO'
+      };
+    case 'PROXIMO':
+      return {
+        banner: 'bg-amber-950/20 border-amber-900/60 text-amber-400',
+        badge: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+        dot: 'bg-amber-500 animate-pulse',
+        label: 'PRÓXIMO'
+      };
+    default:
+      return {
+        banner: 'bg-zinc-950/80 border-zinc-800 text-zinc-300',
+        badge: 'bg-green-500/10 border-green-500/30 text-green-400',
+        dot: 'bg-green-500',
+        label: 'EM DIA'
+      };
+  }
+}
 
 export default function PreventivasPage() {
   const [preventivas, setPreventivas] = useState<any[]>([]);
   const [veiculos, setVeiculos] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   // Filtros
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -26,54 +67,57 @@ export default function PreventivasPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPreventiva, setEditingPreventiva] = useState<any | null>(null);
 
-  const fetchData = useCallback(async () => {
+  // Modal de Exclusão
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
+    setError(false);
     try {
-      // 1. Fetch Preventivas com filtros de URL se existirem
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
       if (veiculoFilter) params.append('veiculo_id', veiculoFilter);
       if (clienteFilter) params.append('cliente_id', clienteFilter);
 
       const url = `/api/preventivas${params.toString() ? `?${params.toString()}` : ''}`;
-      const resPrev = await fetch(url);
-      if (!resPrev.ok) throw new Error('Erro ao carregar preventivas');
-      const dataPrev = await resPrev.json();
-      setPreventivas(dataPrev);
+      
+      const [dataPrev, dataVeic, dataCli] = await Promise.all([
+        apiFetch<any>(url, { signal }),
+        apiFetch<any>('/api/veiculos?limit=1000', { signal }).catch(() => ({ items: [] })),
+        apiFetch<any>('/api/clientes?limit=1000', { signal }).catch(() => ({ items: [] })),
+      ]);
 
-      // 2. Fetch Veículos para os seletores
-      const resVeic = await fetch('/api/veiculos?limit=1000');
-      if (resVeic.ok) {
-        const dataVeic = await resVeic.json();
-        setVeiculos(dataVeic.items || []);
-      }
-
-      // 3. Fetch Clientes para o filtro
-      const resCli = await fetch('/api/clientes?limit=1000');
-      if (resCli.ok) {
-        const dataCli = await resCli.json();
-        setClientes(dataCli.items || []);
-      }
+      setPreventivas(Array.isArray(dataPrev) ? dataPrev : (dataPrev.items || []));
+      setVeiculos(Array.isArray(dataVeic) ? dataVeic : (dataVeic.items || []));
+      setClientes(Array.isArray(dataCli) ? dataCli : (dataCli.items || []));
     } catch (e: any) {
-      toast.error('Erro ao conectar com o serviço de manutenção preventiva');
+      if (e.name === 'AbortError') return;
+      setError(true);
+      handleApiError(e, { defaultMessage: 'Erro ao conectar com o serviço de manutenção preventiva' });
     } finally {
       setLoading(false);
     }
   }, [statusFilter, veiculoFilter, clienteFilter]);
 
   useEffect(() => {
-    fetchData();
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    return () => controller.abort();
   }, [fetchData]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Deseja realmente excluir este plano de manutenção preventiva?')) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/preventivas/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
+      await apiFetch(`/api/preventivas/${deleteTarget.id}`, { method: 'DELETE' });
       toast.success('Plano preventivo removido com sucesso!');
+      setDeleteTarget(null);
       fetchData();
-    } catch (e) {
-      toast.error('Erro ao remover preventiva');
+    } catch (e: any) {
+      handleApiError(e, { defaultMessage: 'Erro ao remover preventiva' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -98,13 +142,8 @@ export default function PreventivasPage() {
     setHistoricoModalOpen(true);
     setHistoricoLoading(true);
     try {
-      const res = await fetch(`/api/preventivas/${p.id}/historico`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedPreventivaHistory(data.historico || []);
-      } else {
-        setSelectedPreventivaHistory([]);
-      }
+      const data = await apiFetch<any>(`/api/preventivas/${p.id}/historico`);
+      setSelectedPreventivaHistory(data?.historico || []);
     } catch (e) {
       setSelectedPreventivaHistory([]);
     } finally {
@@ -135,42 +174,8 @@ export default function PreventivasPage() {
     return matchesPlate || matchesModel || matchesClient || matchesNome || matchesServico || matchesComponente || matchesDesc;
   });
 
-  const getStatusBadge = (status: string, ativo = true) => {
-    if (!ativo || status === 'DESATIVADO') {
-      return {
-        banner: 'bg-zinc-900/60 border-zinc-800 text-zinc-400',
-        badge: 'bg-zinc-800/80 border-zinc-700 text-zinc-400',
-        dot: 'bg-zinc-600',
-        label: 'DESATIVADO'
-      };
-    }
-    switch (status) {
-      case 'VENCIDO':
-        return {
-          banner: 'bg-red-950/20 border-red-900/60 text-red-400',
-          badge: 'bg-red-500/10 border-red-500/30 text-red-400',
-          dot: 'bg-red-500 animate-ping',
-          label: 'VENCIDO'
-        };
-      case 'PROXIMO':
-        return {
-          banner: 'bg-amber-950/20 border-amber-900/60 text-amber-400',
-          badge: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
-          dot: 'bg-amber-500 animate-pulse',
-          label: 'PRÓXIMO'
-        };
-      default:
-        return {
-          banner: 'bg-zinc-950/80 border-zinc-800 text-zinc-300',
-          badge: 'bg-green-500/10 border-green-500/30 text-green-400',
-          dot: 'bg-green-500',
-          label: 'EM DIA'
-        };
-    }
-  };
-
   return (
-    <main className="min-h-screen bg-black text-white p-4 md:p-8 space-y-8" id="preventivas-dashboard">
+    <main className="min-h-screen bg-zinc-950 text-white p-4 md:p-8 space-y-8" id="preventivas-dashboard">
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div className="space-y-1">
@@ -188,7 +193,7 @@ export default function PreventivasPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             className="p-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition cursor-pointer"
             title="Atualizar dados"
           >
@@ -207,7 +212,7 @@ export default function PreventivasPage() {
       {/* METRIC CARDS DE TELEMETRIA */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Cadastradas */}
-        <div className="bg-zinc-950 border border-zinc-850 p-5 rounded-2xl space-y-2">
+        <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Planos Ativos</span>
             <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
@@ -223,7 +228,7 @@ export default function PreventivasPage() {
         {/* Vencidas */}
         <div 
           onClick={() => setStatusFilter(statusFilter === 'VENCIDO' ? '' : 'VENCIDO')}
-          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'VENCIDO' ? 'border-red-500 ring-1 ring-red-500/30' : 'border-zinc-850 hover:border-red-900/50'}`}
+          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'VENCIDO' ? 'border-red-500 ring-1 ring-red-500/30' : 'border-zinc-800 hover:border-red-900/50'}`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Vencidas</span>
@@ -240,7 +245,7 @@ export default function PreventivasPage() {
         {/* Próximas */}
         <div 
           onClick={() => setStatusFilter(statusFilter === 'PROXIMO' ? '' : 'PROXIMO')}
-          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'PROXIMO' ? 'border-amber-500 ring-1 ring-amber-500/30' : 'border-zinc-850 hover:border-amber-900/50'}`}
+          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'PROXIMO' ? 'border-amber-500 ring-1 ring-amber-500/30' : 'border-zinc-800 hover:border-amber-900/50'}`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">Próximas do Vencimento</span>
@@ -257,7 +262,7 @@ export default function PreventivasPage() {
         {/* Em Dia */}
         <div 
           onClick={() => setStatusFilter(statusFilter === 'SAUDAVEL' ? '' : 'SAUDAVEL')}
-          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'SAUDAVEL' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-zinc-850 hover:border-green-900/50'}`}
+          className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'SAUDAVEL' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-zinc-800 hover:border-green-900/50'}`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-green-500">Em Dia</span>
@@ -273,7 +278,7 @@ export default function PreventivasPage() {
       </div>
 
       {/* PAINEL DE BUSCA E FILTROS */}
-      <div className="bg-zinc-950 border border-zinc-850 p-4 md:p-5 rounded-2xl space-y-4">
+      <div className="bg-zinc-950 border border-zinc-800 p-4 md:p-5 rounded-2xl space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {/* Busca textual */}
           <div className="relative md:col-span-2">
@@ -283,7 +288,7 @@ export default function PreventivasPage() {
               placeholder="PESQUISAR CLIENTE, VEÍCULO, PLACA OU SERVIÇO..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-xs font-mono font-bold text-white uppercase focus:outline-none focus:border-orange-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 pl-10 pr-4 text-xs font-mono font-bold text-white uppercase focus:outline-none focus:border-orange-500 placeholder:text-zinc-700"
             />
           </div>
 
@@ -292,7 +297,7 @@ export default function PreventivasPage() {
             <select
               value={clienteFilter}
               onChange={(e) => setClienteFilter(e.target.value)}
-              className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-3 text-xs font-mono font-bold text-zinc-300 uppercase focus:outline-none focus:border-orange-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 px-3 text-xs font-mono font-bold text-zinc-300 uppercase focus:outline-none focus:border-orange-500 cursor-pointer"
             >
               <option value="">TODOS OS CLIENTES</option>
               {clientes.map(c => (
@@ -306,7 +311,7 @@ export default function PreventivasPage() {
             <select
               value={veiculoFilter}
               onChange={(e) => setVeiculoFilter(e.target.value)}
-              className="w-full bg-black border border-zinc-800 rounded-xl py-2.5 px-3 text-xs font-mono font-bold text-zinc-300 uppercase focus:outline-none focus:border-orange-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 px-3 text-xs font-mono font-bold text-zinc-300 uppercase focus:outline-none focus:border-orange-500 cursor-pointer"
             >
               <option value="">TODOS OS VEÍCULOS</option>
               {veiculos.map(v => (
@@ -353,8 +358,14 @@ export default function PreventivasPage() {
           <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto" />
           <p className="text-xs font-mono text-zinc-500 uppercase tracking-wider">Carregando planos de preventiva...</p>
         </div>
+      ) : error ? (
+        <div className="py-20 text-center space-y-3 bg-zinc-950 border border-red-500/20 rounded-3xl">
+          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto" />
+          <p className="text-sm font-black uppercase text-white">Falha na Sincronização</p>
+          <button onClick={() => fetchData()} className="mt-2 px-6 py-2 bg-zinc-900 border border-zinc-800 text-white text-xs font-black uppercase rounded-xl hover:bg-zinc-800 transition">Tentar novamente</button>
+        </div>
       ) : filteredPreventivas.length === 0 ? (
-        <div className="py-16 text-center border-2 border-dashed border-zinc-900 rounded-3xl space-y-3 bg-zinc-950/40">
+        <div className="py-16 text-center border-2 border-dashed border-zinc-800 rounded-3xl space-y-3 bg-zinc-950/40">
           <AlertCircle className="w-12 h-12 text-zinc-700 mx-auto" />
           <h4 className="text-zinc-400 font-extrabold uppercase font-mono text-sm">Nenhum plano de manutenção encontrado</h4>
           <p className="text-xs text-zinc-600 font-mono">
@@ -362,7 +373,7 @@ export default function PreventivasPage() {
           </p>
           <button
             onClick={handleNew}
-            className="mt-3 inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer"
+            className="mt-3 inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest cursor-pointer transition"
           >
             <Plus size={14} /> Cadastrar Primeiro Plano
           </button>
@@ -409,7 +420,7 @@ export default function PreventivasPage() {
                   </div>
 
                   {/* Nome e Serviço */}
-                  <div className="bg-black/50 border border-zinc-900 p-3.5 rounded-xl space-y-1">
+                  <div className="bg-zinc-950/50 border border-zinc-900 p-3.5 rounded-xl space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-white uppercase tracking-tight">
                         {p.nome || p.servico || p.componente}
@@ -427,7 +438,7 @@ export default function PreventivasPage() {
                 </div>
 
                 {/* Métricas e Telemetria de Previsão */}
-                <div className="space-y-3 border-t border-zinc-900/80 pt-3 text-xs font-mono">
+                <div className="space-y-3 border-t border-zinc-800/80 pt-3 text-xs font-mono">
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
                     {/* KM */}
                     <div className="bg-zinc-900/40 p-2 rounded-lg">
@@ -472,7 +483,7 @@ export default function PreventivasPage() {
                   </div>
 
                   {/* Ações do Card */}
-                  <div className="flex items-center justify-between border-t border-zinc-900/60 pt-3">
+                  <div className="flex items-center justify-between border-t border-zinc-800/60 pt-3">
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleEdit(p)}
@@ -482,7 +493,7 @@ export default function PreventivasPage() {
                         <Edit size={14} />
                       </button>
                       <button
-                        onClick={() => handleDelete(p.id)}
+                        onClick={() => setDeleteTarget(p)}
                         className="p-2 text-zinc-400 hover:text-red-500 hover:bg-zinc-800 rounded-lg transition cursor-pointer"
                         title="Excluir Plano"
                       >
@@ -500,13 +511,13 @@ export default function PreventivasPage() {
                       </button>
                       <Link
                         href={`/veiculos/${p.veiculo_id}/historico`}
-                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1"
+                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 transition"
                       >
                         Veículo
                       </Link>
                       <Link
                         href={`/os/nova?veiculo_id=${p.veiculo_id}&preventiva_id=${p.id}&diagnostico=MANUTENCAO+PREVENTIVA:+${encodeURIComponent(p.nome || p.servico || p.componente)}`}
-                        className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-orange-950/20"
+                        className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-orange-950/20 transition"
                       >
                         <Wrench size={12} />
                         Gerar OS
@@ -540,13 +551,13 @@ export default function PreventivasPage() {
               </div>
               <button
                 onClick={() => setHistoricoModalOpen(false)}
-                className="p-2 text-zinc-500 hover:text-white rounded-lg cursor-pointer"
+                className="p-2 text-zinc-500 hover:text-white rounded-lg cursor-pointer transition"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4">
+            <div className="p-5 overflow-y-auto space-y-4 custom-scrollbar">
               {historicoLoading ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 text-xs font-mono">
                   <Loader2 size={24} className="animate-spin text-orange-500" />
@@ -595,6 +606,61 @@ export default function PreventivasPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EXCLUSÃO */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir Preventiva</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+              <button onClick={() => setDeleteTarget(null)} className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente o plano de manutenção <strong className="text-white">{deleteTarget.nome || deleteTarget.componente}</strong> do veículo <strong className="text-white">{deleteTarget.Veiculo?.placa || deleteTarget.veiculo?.placa || 'S/N'}</strong>?
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3 cursor-pointer"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmar Exclusão
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
