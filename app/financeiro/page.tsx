@@ -1,40 +1,93 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   DollarSign, TrendingUp, TrendingDown, Clock, Plus, 
-  Search, Filter, ArrowUpRight, ArrowDownLeft, Calendar,
+  Search, ArrowUpRight, ArrowDownLeft, Calendar,
   FileText, Wallet, CreditCard, PieChart, BarChart3,
-  ChevronRight, ArrowRight, Download, MoreHorizontal,
-  CheckCircle, AlertTriangle, XCircle, Loader2, Circle,
-  RefreshCw, Check, Upload, User, ShieldAlert, Sparkles, Printer, X
+  Download, CheckCircle, AlertTriangle, XCircle, Loader2,
+  RefreshCw, Check, Upload, Printer, X, LineChart
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, Legend, Cell,
-  AreaChart, Area
+  Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 type TabType = 'resumo' | 'pagar_receber' | 'dre' | 'previsao' | 'conciliacao';
 
-// Row Component
+// ============================================================
+// HELPERS (fora do componente — evita recriação)
+// ============================================================
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+};
+
+const getStatusBadge = (status: string) => {
+  const s = (status || 'PENDENTE').toUpperCase();
+  switch (s) {
+    case 'PAGO':
+      return {
+        label: 'PAGO',
+        className: 'bg-green-500/20 text-green-400 border border-green-500/20',
+        icon: <CheckCircle className="w-3 h-3" />
+      };
+    case 'ATRASADO':
+      return {
+        label: 'ATRASADO',
+        className: 'bg-red-500/20 text-red-400 border border-red-500/20',
+        icon: <AlertTriangle className="w-3 h-3 animate-pulse" />
+      };
+    case 'CANCELADO':
+      return {
+        label: 'CANCELADO',
+        className: 'bg-zinc-500/20 text-zinc-400 border border-zinc-500/20',
+        icon: <XCircle className="w-3 h-3" />
+      };
+    default:
+      return {
+        label: 'PENDENTE',
+        className: 'bg-amber-500/20 text-amber-400 border border-amber-500/20',
+        icon: <Clock className="w-3 h-3" />
+      };
+  }
+};
+
+const isParcelado = (desc: string) => /Parcela\s+\d+\/\d+/i.test(desc || '');
+
+// ============================================================
+// COMPONENTE: Destaque da parcela
+// ============================================================
+function ParcelaHighlight({ desc }: { desc: string }) {
+  if (!desc) return <>---</>;
+  const match = desc.match(/Parcela\s+\d+\/\d+/i);
+  if (match) {
+    const parts = desc.split(match[0]);
+    return (
+      <>
+        {parts[0]}
+        <span className="text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded border border-blue-400/20 mx-1">{match[0]}</span>
+        {parts[1]}
+      </>
+    );
+  }
+  return <>{desc}</>;
+}
+
+// ============================================================
+// COMPONENTE DE LINHA (DESKTOP)
+// ============================================================
 const MovimentoRow = memo(({ 
   item, 
-  getStatusBadge, 
-  isParcelado, 
-  highlightParcela, 
-  formatCurrency, 
   onReconcile 
 }: { 
   item: any, 
-  getStatusBadge: any, 
-  isParcelado: any, 
-  highlightParcela: any, 
-  formatCurrency: any,
   onReconcile: (item: any) => void
 }) => {
   const router = useRouter();
@@ -60,7 +113,7 @@ const MovimentoRow = memo(({
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-black text-white uppercase italic tracking-tight group-hover:text-orange-500 transition-colors truncate">
-              {highlightParcela(item.descricao)}
+              <ParcelaHighlight desc={item.descricao} />
             </span>
             {parcelado && (
               <span className="px-2 py-0.5 bg-blue-600 text-white text-[8px] font-black rounded uppercase tracking-widest shadow-lg shadow-blue-900/20 flex-shrink-0">
@@ -98,7 +151,7 @@ const MovimentoRow = memo(({
         </span>
       </td>
       <td className="p-4 text-sm text-center" onClick={(e) => { e.stopPropagation(); onReconcile(item); }}>
-        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-2xl text-[10px] font-black uppercase tracking-widest ${badge.className} hover:scale-105 transition-transform`}>
+        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-2xl text-[10px] font-black uppercase tracking-widest ${badge.className} hover:scale-105 transition-transform cursor-pointer`}>
           {badge.icon}
           {badge.label}
         </div>
@@ -109,6 +162,9 @@ const MovimentoRow = memo(({
 
 MovimentoRow.displayName = 'MovimentoRow';
 
+// ============================================================
+// PÁGINA
+// ============================================================
 export default function FinanceiroDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('resumo');
@@ -116,7 +172,9 @@ export default function FinanceiroDashboard() {
   const [summary, setSummary] = useState<any>(null);
   const [analise, setAnalise] = useState<any>(null);
   const [analiseLoading, setAnaliseLoading] = useState(false);
-  const [data, setData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
+  
+  // ✅ CORRIGIDO: totalPages inicia em 1
+  const [data, setData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -134,16 +192,12 @@ export default function FinanceiroDashboard() {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm);
     }, 300);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    return () => clearTimeout(handler);
   }, [searchTerm]);
 
   const fetchDashboardData = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      // M33: encodeURIComponent nos parâmetros
       const params = new URLSearchParams({
         q: debouncedSearch,
         tipo: filterTipo,
@@ -151,37 +205,33 @@ export default function FinanceiroDashboard() {
         page: String(page),
         limit: '10',
       });
-      const [summaryRes, listRes] = await Promise.all([
-        fetch('/api/financeiro/resumo', { credentials: 'include', signal }),
-        fetch(`/api/financeiro?${params.toString()}`, { credentials: 'include', signal })
+      const [summaryData, listData] = await Promise.all([
+        apiFetch<any>('/api/financeiro/resumo', { signal }),
+        apiFetch<any>(`/api/financeiro?${params.toString()}`, { signal })
       ]);
 
-      if (summaryRes.ok && listRes.ok) {
-        setSummary(await summaryRes.json());
-        const result = await listRes.json();
-        const items = Array.isArray(result) ? result : (result.items || []);
-        const total = result.total || items.length;
-        const totalPages = result.totalPages || 1;
-        setData({ items, total, totalPages });
-      }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        toast.error('Erro ao carregar dados financeiros');
-      }
+      setSummary(summaryData);
+      
+      const items = Array.isArray(listData) ? listData : (listData.items || []);
+      const total = typeof listData.total === 'number' ? listData.total : items.length;
+      const totalPages = Math.max(1, listData.totalPages || 1);
+      setData({ items, total, totalPages });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      handleApiError(err, { defaultMessage: 'Erro ao carregar dados financeiros' });
     } finally {
       setLoading(false);
     }
   }, [debouncedSearch, filterTipo, filterStatus, page]);
 
-  const fetchAnaliseData = useCallback(async () => {
+  const fetchAnaliseData = useCallback(async (signal?: AbortSignal) => {
+    setAnaliseLoading(true);
     try {
-      setAnaliseLoading(true);
-      const res = await fetch('/api/financeiro/analise', { credentials: 'include' });
-      if (res.ok) {
-        setAnalise(await res.json());
-      }
-    } catch {
-      // silencioso
+      const result = await apiFetch<any>('/api/financeiro/analise', { signal });
+      setAnalise(result);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      // silencioso — análise é opcional
     } finally {
       setAnaliseLoading(false);
     }
@@ -190,14 +240,14 @@ export default function FinanceiroDashboard() {
   useEffect(() => {
     const controller = new AbortController();
     fetchDashboardData(controller.signal);
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [fetchDashboardData]);
 
   useEffect(() => {
     if (activeTab === 'dre' || activeTab === 'previsao' || activeTab === 'conciliacao') {
-      fetchAnaliseData();
+      const controller = new AbortController();
+      fetchAnaliseData(controller.signal);
+      return () => controller.abort();
     }
   }, [activeTab, fetchAnaliseData]);
 
@@ -205,6 +255,7 @@ export default function FinanceiroDashboard() {
     if (filterQuick === 'TODOS') {
       setFilterTipo('TODOS');
       setFilterStatus('TODOS');
+      setDebouncedSearch(searchTerm);
     } else if (filterQuick === 'PENDENTES') {
       setFilterTipo('TODOS');
       setFilterStatus('PENDENTE');
@@ -217,58 +268,37 @@ export default function FinanceiroDashboard() {
     } else if (filterQuick === 'PARCELADOS') {
       setFilterTipo('TODOS');
       setFilterStatus('TODOS');
+      // ✅ Filtro "PARCELADOS" força busca por "Parcela"
+      setDebouncedSearch('Parcela');
     }
     setPage(1);
-  }, [filterQuick]);
+  }, [filterQuick, searchTerm]);
 
-  /**
-   * A27: baixa de pagamento usa rota específica (/pagar).
-   * O PUT /api/financeiro/[id] bloqueia mudança para PAGO para evitar
-   * desvincular OS/cliente e não limpar notificações.
-   */
   const handleStatusReconcile = async (id: string, newStatus: string, receipt?: string) => {
     try {
-      let res: Response;
-
       if (newStatus === 'PAGO') {
-        // Rota específica de baixa
-        res = await fetch(`/api/financeiro/${id}/pagar`, {
+        await apiFetch(`/api/financeiro/${id}/pagar`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            comprovante_url: receipt || undefined,
-          }),
-          credentials: 'include',
+          body: { comprovante_url: receipt || undefined },
         });
       } else {
-        // Outros status (PENDENTE, CANCELADO) via PUT
-        res = await fetch(`/api/financeiro/${id}`, {
+        await apiFetch(`/api/financeiro/${id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: newStatus,
-            comprovante_url: receipt || undefined,
-          }),
-          credentials: 'include',
+          body: { status: newStatus, comprovante_url: receipt || undefined },
         });
       }
 
-      if (res.ok) {
-        toast.success(
-          newStatus === 'PAGO'
-            ? 'Pagamento conciliado com sucesso'
-            : `Lançamento marcado como ${newStatus}`
-        );
-        setReconcilingItem(null);
-        setReceiptUrl('');
-        fetchDashboardData();
-        fetchAnaliseData();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || `Erro ao atualizar lançamento`);
-      }
-    } catch {
-      toast.error('Erro de conexão ao conciliar');
+      toast.success(
+        newStatus === 'PAGO'
+          ? 'Pagamento conciliado com sucesso'
+          : `Lançamento marcado como ${newStatus}`
+      );
+      setReconcilingItem(null);
+      setReceiptUrl('');
+      fetchDashboardData();
+      fetchAnaliseData();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao atualizar lançamento' });
     }
   };
 
@@ -281,6 +311,7 @@ export default function FinanceiroDashboard() {
       const formData = new FormData();
       formData.append('file', file);
 
+      // ✅ Upload usa fetch direto (apiFetch não suporta FormData nativamente)
       const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
@@ -299,60 +330,6 @@ export default function FinanceiroDashboard() {
     } finally {
       setUploadingReceipt(false);
     }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const s = (status || 'PENDENTE').toUpperCase();
-    switch (s) {
-      case 'PAGO':
-        return {
-          label: 'PAGO',
-          className: 'bg-green-500/20 text-green-400 border border-green-500/20',
-          icon: <CheckCircle className="w-3 h-3" />
-        };
-      case 'ATRASADO':
-        return {
-          label: 'ATRASADO',
-          className: 'bg-red-500/20 text-red-400 border border-red-500/20',
-          icon: <AlertTriangle className="w-3 h-3 animate-pulse" />
-        };
-      case 'CANCELADO':
-        return {
-          label: 'CANCELADO',
-          className: 'bg-zinc-500/20 text-zinc-400 border border-zinc-500/20',
-          icon: <XCircle className="w-3 h-3" />
-        };
-      default:
-        return {
-          label: 'PENDENTE',
-          className: 'bg-amber-500/20 text-amber-400 border border-amber-500/20',
-          icon: <Clock className="w-3 h-3" />
-        };
-    }
-  };
-
-  const isParcelado = (desc: string) => {
-    return /Parcela\s+\d+\/\d+/i.test(desc || '');
-  };
-
-  const highlightParcela = (desc: string) => {
-    if (!desc) return '---';
-    const match = desc.match(/Parcela\s+\d+\/\d+/i);
-    if (match) {
-      const parts = desc.split(match[0]);
-      return (
-        <>
-          {parts[0]}
-          <span className="text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded border border-blue-400/20 mx-1">{match[0]}</span>
-          {parts[1]}
-        </>
-      );
-    }
-    return desc;
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
   const printReport = (reportType: string) => {
@@ -433,7 +410,7 @@ export default function FinanceiroDashboard() {
             activeTab === 'previsao' ? 'bg-zinc-900 text-orange-500 italic border border-zinc-800 shadow-xl' : 'text-zinc-500 hover:text-white'
           }`}
         >
-          <LineChartIcon className="inline w-4 h-4 mr-2" />
+          <LineChart className="inline w-4 h-4 mr-2" />
           Previsão & Custos
         </button>
         <button
@@ -464,9 +441,9 @@ export default function FinanceiroDashboard() {
               <Wallet className="absolute -right-4 -bottom-4 w-32 h-32 text-zinc-800/10 group-hover:scale-110 transition-transform" />
             </div>
 
-            <div className="bg-zinc-900/40 border border-zinc-800 p-6 sm:p-8 rounded-3xl relative overflow-hidden group hover:border-green-500/20 transition shadow-2xl font-black">
+            <div className="bg-zinc-900/40 border border-zinc-800 p-6 sm:p-8 rounded-3xl relative overflow-hidden group hover:border-green-500/20 transition shadow-2xl">
               <div className="relative z-10">
-                <p className="text-[10px] font-mono font-black uppercase tracking-widest text-zinc-500 mb-2 font-medium">Entradas Realizadas</p>
+                <p className="text-[10px] font-mono font-black uppercase tracking-widest text-zinc-500 mb-2">Entradas Realizadas</p>
                 <h3 className="text-3xl sm:text-4xl font-black italic tracking-tight text-green-500">
                   {formatCurrency(summary?.entradas || 0)}
                 </h3>
@@ -477,7 +454,7 @@ export default function FinanceiroDashboard() {
             <div className="bg-zinc-900/40 border border-zinc-800 p-6 sm:p-8 rounded-3xl relative overflow-hidden group hover:border-red-500/20 transition shadow-2xl">
               <div className="relative z-10">
                 <p className="text-[10px] font-mono font-black uppercase tracking-widest text-zinc-500 mb-2">Saídas Realizadas</p>
-                <h3 className="text-3xl sm:text-4xl font-black italic tracking-tight text-red-500 font-bold">
+                <h3 className="text-3xl sm:text-4xl font-black italic tracking-tight text-red-500">
                   {formatCurrency(summary?.saidas || 0)}
                 </h3>
               </div>
@@ -487,7 +464,7 @@ export default function FinanceiroDashboard() {
             <div className="bg-zinc-900/40 border border-zinc-800 p-6 sm:p-8 rounded-3xl relative overflow-hidden group hover:border-orange-500/20 transition shadow-2xl">
               <div className="relative z-10">
                 <p className="text-[10px] font-mono font-black uppercase tracking-widest text-zinc-500 mb-2">Pendente (À Liquidar)</p>
-                <h3 className={`text-3xl sm:text-4xl font-black italic tracking-tight ${summary?.previsto >= 0 ? 'text-orange-500 font-bold' : 'text-red-400 font-bold'}`}>
+                <h3 className={`text-3xl sm:text-4xl font-black italic tracking-tight ${summary?.previsto >= 0 ? 'text-orange-500' : 'text-red-400'}`}>
                   {formatCurrency(summary?.previsto || 0)}
                 </h3>
               </div>
@@ -511,7 +488,7 @@ export default function FinanceiroDashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={summary?.chartData || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
-                    <XAxis dataKey="name" stroke="#4b5563" fontSize={10} tickLine={false} className="font-mono uppercase tracking-widest" />
+                    <XAxis dataKey="name" stroke="#4b5563" fontSize={10} tickLine={false} />
                     <YAxis stroke="#4b5563" fontSize={10} tickLine={false} tickFormatter={(value) => `R$${(value/1000).toFixed(0)}k`} />
                     <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid #1f2937', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: '900' }} />
                     <Bar dataKey="entradas" fill="#22c55e" radius={[4, 4, 0, 0]} />
@@ -531,7 +508,7 @@ export default function FinanceiroDashboard() {
                 <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-2xl flex items-center justify-between">
                   <div>
                     <p className="text-[9px] text-zinc-500 font-bold uppercase">Previsões Pendentes</p>
-                    <p className="text-lg font-black text-orange-500 italic mt-1">{summary?.previsto ? formatCurrency(summary.previsto) : '0,00'}</p>
+                    <p className="text-lg font-black text-orange-500 italic mt-1">{formatCurrency(summary?.previsto || 0)}</p>
                   </div>
                   <Clock className="text-zinc-600" size={20} />
                 </div>
@@ -565,7 +542,7 @@ export default function FinanceiroDashboard() {
               <input 
                 type="text" 
                 placeholder="PROCURAR POR LANÇAMENTO, DOCUMENTO, CLIENTE OU OS..." 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-14 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-800" 
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-14 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700" 
                 value={searchTerm} 
                 onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} 
               />
@@ -599,7 +576,7 @@ export default function FinanceiroDashboard() {
               </div>
               
               <div className="flex bg-zinc-950 border border-zinc-800 rounded-2xl p-1 shadow-inner items-center justify-center shrink-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap min-h-[44px]">
-                 {['TODOS', 'PENDENTES', 'PAGOS', 'ATRASADOS'].map((f) => (
+                 {['TODOS', 'PENDENTES', 'PAGOS', 'ATRASADOS', 'PARCELADOS'].map((f) => (
                    <button 
                      key={f}
                      onClick={() => setFilterQuick(f)} 
@@ -639,10 +616,6 @@ export default function FinanceiroDashboard() {
                         <MovimentoRow 
                           key={item.id} 
                           item={item} 
-                          getStatusBadge={getStatusBadge} 
-                          isParcelado={isParcelado} 
-                          highlightParcela={highlightParcela} 
-                          formatCurrency={formatCurrency} 
                           onReconcile={(it) => setReconcilingItem(it)}
                         />
                       ))
@@ -667,7 +640,7 @@ export default function FinanceiroDashboard() {
             <div className="p-6 border-t border-zinc-900 bg-zinc-950/20">
               <Pagination 
                 page={page} 
-                totalPages={data.totalPages || 0} 
+                totalPages={data.totalPages} 
                 onPageChange={setPage} 
               />
             </div>
@@ -715,7 +688,7 @@ export default function FinanceiroDashboard() {
                     <p className="text-[9px] text-zinc-500 font-black uppercase">Margem Operacional:</p>
                     <p className="text-2xl font-black text-white italic mt-1">{analise.dre.margemOperacional}%</p>
                   </div>
-                  <Sparkles className="text-orange-500" size={24} />
+                  <PieChart className="text-orange-500" size={24} />
                 </div>
               </div>
 
@@ -794,7 +767,7 @@ export default function FinanceiroDashboard() {
                 <div className="pt-6 border-t border-zinc-900">
                   <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4">Investimentos / Rateio por Centro de Custos</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {analise.centroCustos.map((cc: any, idx: number) => (
+                    {analise.centroCustos?.map((cc: any, idx: number) => (
                       <div key={idx} className="bg-zinc-950/60 p-4 rounded-xl border border-zinc-900 flex justify-between items-center font-mono">
                         <div>
                           <p className="text-[9px] font-black text-zinc-400 uppercase tracking-tight">{cc.centro_custo}</p>
@@ -813,20 +786,20 @@ export default function FinanceiroDashboard() {
                     <h3 className="text-sm font-black uppercase text-red-500">Inadimplência</h3>
                     <p className="text-[9px] text-zinc-600 font-bold uppercase">Contas a receber expiradas</p>
                   </div>
-                  <ShieldAlert className="text-red-500 animate-pulse" size={20} />
+                  <AlertTriangle className="text-red-500 animate-pulse" size={20} />
                 </div>
 
                 <div className="p-5 bg-red-950/20 border border-red-500/10 rounded-2xl">
                   <p className="text-[9px] text-red-400 font-black uppercase tracking-widest mb-1">Total Negativado/Atrasado</p>
-                  <p className="text-3xl font-black text-red-500 font-mono italic tracking-tighter">{formatCurrency(analise.inadimplencia.total)}</p>
+                  <p className="text-3xl font-black text-red-500 font-mono italic tracking-tighter">{formatCurrency(analise.inadimplencia?.total || 0)}</p>
                 </div>
 
                 <div className="space-y-3 custom-scrollbar max-h-[220px] overflow-y-auto">
                   <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest px-1">Sacados em Atraso</p>
-                  {analise.inadimplencia.lista.length === 0 ? (
+                  {analise.inadimplencia?.lista?.length === 0 ? (
                     <p className="text-[10px] text-zinc-500 italic uppercase">Sem dívidas atrasadas! Fluxo saudável.</p>
                   ) : (
-                    analise.inadimplencia.lista.slice(0, 5).map((ln: any, idx: number) => (
+                    analise.inadimplencia?.lista?.slice(0, 5).map((ln: any, idx: number) => (
                       <div key={idx} className="bg-zinc-950 border border-zinc-900 p-3 rounded-xl flex items-center justify-between font-mono text-[10px] hover:border-zinc-800 transition">
                         <div className="min-w-0">
                           <p className="text-white font-black uppercase truncate italic">{ln.cliente?.nome || 'Cliente não identificado'}</p>
@@ -1011,15 +984,5 @@ export default function FinanceiroDashboard() {
       )}
 
     </div>
-  );
-}
-
-function LineChartIcon({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m19 8-4 4-4-3-7 7" />
-      <path d="M17 14h.01" />
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-    </svg>
   );
 }
