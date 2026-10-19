@@ -1,15 +1,33 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { 
-  ClipboardCheck, Search, Eye, Filter, Loader2, AlertCircle, 
-  ChevronRight, Calendar, User, Truck, FileText, ArrowLeft,
-  ChevronLeft
+  ClipboardCheck, Search, Eye, Loader2, AlertCircle, 
+  ChevronRight, Calendar, Truck, FileText, ArrowLeft
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
+
+// ============================================================
+// HELPERS DE FORMATAÇÃO (fora do componente — evita recriação)
+// ============================================================
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'N/A';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('pt-BR');
+}
+
+function formatTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
 
 function ResultadoContent() {
   const searchParams = useSearchParams();
@@ -23,7 +41,7 @@ function ResultadoContent() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const fetchExecucoes = useCallback(async () => {
+  const fetchExecucoes = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(false);
     try {
@@ -32,87 +50,71 @@ function ResultadoContent() {
       params.set('limit', '20');
       if (checklistIdFilter) params.set('checklistId', checklistIdFilter);
 
-      const res = await fetch(`/api/checklist/execucoes?${params.toString()}`, {
-        credentials: 'include',
+      const data = await apiFetch<any>(`/api/checklist/execucoes?${params.toString()}`, { signal });
+
+      let list: any[] = [];
+      if (Array.isArray(data)) {
+        list = data;
+        setTotal(data.length);
+        setTotalPages(1);
+      } else if (data && Array.isArray(data.items)) {
+        list = data.items;
+        setTotal(data.total ?? list.length);
+        setTotalPages(Math.max(1, data.totalPages ?? 1));
+      }
+
+      const mapped = list.map((e: any) => {
+        const checklistObj = e.Checklist || e.checklist;
+        const osObj = e.OrdemServico || e.os;
+        return {
+          ...e,
+          checklist: checklistObj
+            ? { ...checklistObj, nome: checklistObj.nome || 'Checklist sem nome' }
+            : null,
+          os: osObj ? { ...osObj, numero: osObj.numero || '—' } : null,
+          veiculo:
+            e.Veiculo ||
+            e.veiculo ||
+            (osObj ? osObj.Veiculo || osObj.veiculo : null),
+        };
       });
 
-      if (res.ok) {
-        const data = await res.json();
-
-        let list: any[] = [];
-        if (Array.isArray(data)) {
-          list = data;
-          setTotal(data.length);
-          setTotalPages(1);
-        } else if (data && Array.isArray(data.items)) {
-          list = data.items;
-          setTotal(data.total ?? list.length);
-          setTotalPages(data.totalPages ?? 1);
-        }
-
-        const mapped = list.map((e: any) => {
-          const checklistObj = e.Checklist || e.checklist;
-          const osObj = e.OrdemServico || e.os;
-          return {
-            ...e,
-            checklist: checklistObj
-              ? { ...checklistObj, nome: checklistObj.nome || 'Checklist sem nome' }
-              : null,
-            os: osObj ? { ...osObj, numero: osObj.numero || '—' } : null,
-            veiculo:
-              e.Veiculo ||
-              e.veiculo ||
-              (osObj ? osObj.Veiculo || osObj.veiculo : null),
-          };
-        });
-
-        setExecucoes(mapped);
-      } else {
-        setError(true);
-        setExecucoes([]);
-      }
-    } catch {
+      setExecucoes(mapped);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(true);
       setExecucoes([]);
-      toast.error('Erro ao buscar histórico de execuções.');
+      handleApiError(err, { defaultMessage: 'Erro ao buscar histórico de execuções.' });
     } finally {
       setLoading(false);
     }
   }, [page, checklistIdFilter]);
 
   useEffect(() => {
-    fetchExecucoes();
+    const controller = new AbortController();
+    fetchExecucoes(controller.signal);
+    return () => controller.abort();
   }, [fetchExecucoes]);
 
+  // Reset de página quando o filtro de checklist muda
+  useEffect(() => {
+    setPage(1);
+  }, [checklistIdFilter]);
+
+  // ✅ Busca local — aviso: filtra apenas a página atual
   const filteredExecucoes = useMemo(() => {
     const termo = search.trim().toLowerCase();
     if (!termo) return execucoes;
     return execucoes.filter(
       (e) =>
         e.checklist?.nome?.toLowerCase().includes(termo) ||
-        e.os?.numero?.toString().includes(termo) ||
+        String(e.os?.numero || '').includes(termo) ||
         e.veiculo?.placa?.toLowerCase().includes(termo) ||
         e.veiculo?.modelo?.toLowerCase().includes(termo)
     );
   }, [execucoes, search]);
 
-  const formatDate = (date: string) => {
-    if (!date) return 'N/A';
-    try {
-      return new Date(date).toLocaleDateString('pt-BR');
-    } catch {
-      return 'N/A';
-    }
-  };
-
-  const formatTime = (date: string) => {
-    if (!date) return '—';
-    try {
-      return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '—';
-    }
-  };
+  const hasSearch = search.trim().length > 0;
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 pb-10 overflow-hidden">
@@ -140,13 +142,27 @@ function ResultadoContent() {
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors" size={18} />
           <input 
             type="text" 
-            placeholder="BUSCAR POR CHECKLIST, OS OU PLACA..."
+            placeholder="BUSCAR POR CHECKLIST, OS OU PLACA (FILTRA ESTA PÁGINA)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-16 pr-6 text-xs text-white outline-none focus:border-blue-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-700"
           />
         </div>
       </div>
+
+      {hasSearch && (
+        <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 flex items-center justify-between gap-4">
+          <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+            ⚠️ Busca filtrada apenas nesta página ({filteredExecucoes.length} de {execucoes.length} resultados)
+          </p>
+          <button 
+            onClick={() => setSearch('')}
+            className="text-[10px] font-black text-white hover:text-blue-400 uppercase tracking-widest transition"
+          >
+            Limpar busca
+          </button>
+        </div>
+      )}
 
       {/* TABELA DESKTOP */}
       <div className="hidden md:block bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
@@ -173,13 +189,21 @@ function ResultadoContent() {
                   <td colSpan={4} className="p-20 text-center">
                     <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
                     <p className="text-sm font-black text-white uppercase italic tracking-tighter">Falha na Sincronização</p>
+                    <button 
+                      onClick={() => fetchExecucoes()}
+                      className="mt-4 px-6 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-[10px] font-black text-zinc-400 hover:text-white uppercase tracking-widest transition"
+                    >
+                      Tentar novamente
+                    </button>
                   </td>
                 </tr>
               ) : filteredExecucoes.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-20 text-center opacity-60">
                     <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
-                    <p className="font-black uppercase tracking-widest text-xs italic text-zinc-500">Nenhuma execução encontrada</p>
+                    <p className="font-black uppercase tracking-widest text-xs italic text-zinc-500">
+                      {hasSearch ? 'Nenhum resultado nesta página' : 'Nenhuma execução encontrada'}
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -236,6 +260,11 @@ function ResultadoContent() {
 
         {!loading && !error && totalPages > 1 && (
           <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
+              <p className="text-[10px] font-mono text-zinc-500 uppercase font-bold tracking-widest">
+                Mostrando {execucoes.length > 0 ? (page - 1) * 20 + 1 : 0} a {Math.min(page * 20, total)} de {total} registros
+              </p>
+            </div>
             <Pagination 
               page={page} 
               totalPages={totalPages} 
@@ -256,11 +285,19 @@ function ResultadoContent() {
           <div className="p-20 text-center bg-zinc-900 border border-zinc-800 rounded-2xl">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <p className="text-sm font-black text-white uppercase italic tracking-tighter">Falha na Sincronização</p>
+            <button 
+              onClick={() => fetchExecucoes()}
+              className="mt-4 px-6 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-[10px] font-black text-zinc-400 hover:text-white uppercase tracking-widest transition"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : filteredExecucoes.length === 0 ? (
           <div className="p-20 text-center bg-zinc-900 border border-zinc-800 rounded-2xl opacity-60">
             <FileText className="w-12 h-12 mx-auto mb-4 text-zinc-600" />
-            <p className="font-black uppercase tracking-widest text-xs italic text-zinc-500">Nenhuma execução encontrada</p>
+            <p className="font-black uppercase tracking-widest text-xs italic text-zinc-500">
+              {hasSearch ? 'Nenhum resultado nesta página' : 'Nenhuma execução encontrada'}
+            </p>
           </div>
         ) : (
           filteredExecucoes.map((exec) => (
@@ -310,6 +347,11 @@ function ResultadoContent() {
 
         {!loading && !error && totalPages > 1 && (
           <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl">
+            <div className="flex flex-col items-center justify-between gap-3 mb-2">
+              <p className="text-[9px] font-mono text-zinc-500 uppercase font-bold tracking-widest">
+                {execucoes.length > 0 ? (page - 1) * 20 + 1 : 0} — {Math.min(page * 20, total)} de {total}
+              </p>
+            </div>
             <Pagination 
               page={page} 
               totalPages={totalPages} 
