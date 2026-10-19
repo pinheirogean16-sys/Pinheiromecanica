@@ -50,11 +50,19 @@ const veiculoSchema = z
 // SCHEMA DE FILTRO (GET)
 // ============================================================
 const listarVeiculosQuerySchema = z.object({
-  q: z.string().optional().transform((v) => v?.slice(0, 100).trim() || ''),
-  tipo: z.nativeEnum(Veiculo_tipo).optional(),
-  cliente_id: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  q: z.string().nullish().transform((v) => v?.slice(0, 100).trim() || ''),
+  tipo: z.nativeEnum(Veiculo_tipo).nullish(),
+  cliente_id: z.string().nullish(),
+  // ✅ CORRIGIDO: Blindagem do Zod para nunca quebrar com nulos ou zeros
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  // ✅ CORRIGIDO: Aumentado o limite máximo para 1000 para o Dashboard
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(1000).default(10)
+  ),
 });
 
 // ============================================================
@@ -70,12 +78,14 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    
+    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarVeiculosQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       tipo: searchParams.get('tipo') || undefined,
       cliente_id: searchParams.get('cliente_id') || undefined,
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { q, tipo, cliente_id, page, limit } = parsed;
