@@ -16,8 +16,8 @@ export default function EstoqueImportarNFeRedirect() {
 
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-      <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-      <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">
+      <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
+      <p className="text-zinc-500 font-black text-[10px] uppercase tracking-[0.4em] italic">
         Redirecionando para a central de importação...
       </p>
     </div>
