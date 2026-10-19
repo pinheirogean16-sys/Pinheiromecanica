@@ -58,12 +58,19 @@ const orcamentoSchema = z.object({
   termos_condicoes: z.string().max(2000).optional().nullable(),
 });
 
+// ✅ CORRIGIDO: Blindagem total do Zod para o GET
 const listarOrcamentosQuerySchema = z.object({
-  q: z.string().optional().transform(v => v?.slice(0, 100) || ''),
-  status: z.enum(STATUS_FILTRO_VALIDOS).optional(),
-  cliente_id: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  q: z.string().nullish().transform(v => v?.slice(0, 100) || ''),
+  status: z.enum(STATUS_FILTRO_VALIDOS).nullish(),
+  cliente_id: z.string().nullish(),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(1000).default(10) // Aumentado para 1000
+  ),
 });
 
 // ============================================================
@@ -99,12 +106,14 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    
+    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarOrcamentosQuerySchema.parse({
-      q: searchParams.get('q'),
+      q: searchParams.get('q') || undefined,
       status: searchParams.get('status') || undefined,
       cliente_id: searchParams.get('cliente_id') || undefined,
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { q, status, cliente_id, page, limit } = parsed;
