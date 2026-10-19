@@ -7,12 +7,14 @@ import {
   ChevronRight, AlertTriangle,
   Edit, Trash2, Eye, ArrowRightLeft,
   PlusCircle, MinusCircle, LayoutGrid, List as ListIcon,
-  Warehouse, BarChart3, TrendingUp
+  Warehouse, BarChart3, TrendingUp,
+  XCircle, Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
 import { normalizeText } from '@/lib/normalize-search';
+import { BRANDING } from '@/lib/branding';
 
 interface Peca {
   id: string;
@@ -28,15 +30,20 @@ interface Peca {
   unidadeMedida?: string;
 }
 
+// Função de status do estoque movida para fora do componente (evita recriação)
+const getEstoqueStatus = (qnt: number, min: number) => {
+  if (qnt <= 0) return { label: 'CRÍTICO', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/20' };
+  if (qnt <= min) return { label: 'BAIXO', color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
+  return { label: 'OK', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20' };
+};
+
 // Componente de Linha Memoizado
 const PecaRow = memo(({ 
   peca, 
-  getEstoqueStatus, 
   handleQuickAdjust, 
   handleDelete 
 }: { 
   peca: Peca, 
-  getEstoqueStatus: any, 
   handleQuickAdjust: any, 
   handleDelete: any 
 }) => {
@@ -48,7 +55,7 @@ const PecaRow = memo(({
       <td className="p-4 overflow-hidden max-w-[240px]">
          <div className="space-y-1 min-w-0">
             <p className="text-sm font-black text-white uppercase tracking-tight leading-none group-hover:text-orange-500 transition-colors italic truncate" title={peca.descricao}>{peca.descricao}</p>
-            <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest leading-none truncate">REF: {peca.id.slice(-6).toUpperCase()}</p>
+            <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none truncate">REF: {peca.id.slice(-6).toUpperCase()}</p>
          </div>
       </td>
       <td className="p-4 max-w-[140px]"><span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest bg-zinc-950 border border-zinc-800 px-3 py-1 rounded-full truncate block" title={peca.categoria.replace(/_/g, ' ')}>{peca.categoria.replace(/_/g, ' ')}</span></td>
@@ -61,7 +68,7 @@ const PecaRow = memo(({
             </div>
          </div>
       </td>
-      <td className="p-4 text-center"><span className="text-[10px] font-black text-zinc-700 font-mono italic">{peca.estoque_minimo}</span></td>
+      <td className="p-4 text-center"><span className="text-[10px] font-black text-zinc-600 font-mono italic">{peca.estoque_minimo}</span></td>
       <td className="p-4 text-right"><span className="text-xs font-black text-white font-mono italic tracking-tighter">{peca.preco_venda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></td>
       <td className="p-4 text-right"><span className="text-xs font-black text-orange-500/80 font-mono italic tracking-tighter">{(peca.quantidade * peca.preco_venda).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></td>
       <td className="p-4 text-center">
@@ -85,6 +92,11 @@ export default function EstoquePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   
+  // Estado para o modal de exclusão
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingItem, setDeletingItem] = useState<{ id: string, descricao: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [metrics, setMetrics] = useState({
     totalSkus: 0,
     valorEstoque: 0,
@@ -102,7 +114,7 @@ export default function EstoquePage() {
         setAnaliseData(d);
       }
     } catch (e) {
-      console.error('Erro ao buscar analise:', e);
+      // Silencioso: o erro é tratado no estado de análise
     } finally {
       setAnaliseLoading(false);
     }
@@ -114,7 +126,7 @@ export default function EstoquePage() {
     }
   }, [activeSection, fetchAnalise]);
 
-  // Custom debounced search states to prevent bank flooding and stuttering (Etapa 4)
+  // Custom debounced search states to prevent bank flooding and stuttering
   const [searchValue, setSearchValue] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   
@@ -123,7 +135,7 @@ export default function EstoquePage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [page, setPage] = useState(1);
 
-  // Efeito de Debounce (300ms) sem memory leaks (Etapa 4)
+  // Efeito de Debounce (300ms) sem memory leaks
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchValue);
@@ -134,15 +146,13 @@ export default function EstoquePage() {
     };
   }, [searchValue]);
 
-  // Função resiliente unificada com AbortController para deduplicação automática (Etapa 5)
+  // Função resiliente unificada com AbortController para deduplicação automática
   const fetchPecas = useCallback(async (signal?: AbortSignal) => {
-    // Evita atualizações de estado síncronas imediatas dentro do ciclo do useEffect
     await Promise.resolve();
     
     setLoading(true);
     setError(false);
     try {
-      // Mantém o termo original com acentos no envio para viabilizar resiliência de collations no backend
       const cleanSearch = encodeURIComponent(debouncedSearch.trim());
       const res = await fetch(`/api/pecas?q=${cleanSearch}&categoria=${categoria}&page=${page}&limit=10`, { signal });
       
@@ -156,7 +166,7 @@ export default function EstoquePage() {
         setError(true);
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') return; // Cancelamento silencioso e seguro
+      if (err.name === 'AbortError') return;
       console.error(err);
       setError(true);
       toast.error('Erro ao carregar almoxarifado');
@@ -180,7 +190,7 @@ export default function EstoquePage() {
         });
       }
     } catch (e) {
-      console.error('Erro ao buscar métricas globais:', e);
+      // Silencioso: as métricas são atualizadas periodicamente
     }
   }, []);
 
@@ -223,21 +233,31 @@ export default function EstoquePage() {
           items: prev.items.map(p => p.id === id ? { ...p, quantidade: novaQuantidade } : p)
         }));
         fetchMetrics();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Erro ao ajustar estoque');
       }
     } catch (error) {
-      toast.error('Erro ao ajustar estoque');
+      toast.error('Erro de conexão ao ajustar estoque');
     }
   };
 
-  const handleDelete = async (id: string, descricao: string) => {
-    if (!confirm(`Tem certeza que deseja desativar o item "${descricao}" do inventário?`)) return;
+  const handleDeleteClick = (id: string, descricao: string) => {
+    setDeletingItem({ id, descricao });
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingItem) return;
+    setIsDeleting(true);
 
     try {
-      const res = await fetch(`/api/pecas/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/pecas/${deletingItem.id}`, { method: 'DELETE' });
       const data = await res.json();
       
       if (res.ok) {
         toast.success('Item removido do almoxarifado');
+        setShowDeleteModal(false);
         fetchPecas();
         fetchMetrics();
       } else {
@@ -245,13 +265,10 @@ export default function EstoquePage() {
       }
     } catch (err) {
       toast.error('Erro de conexão');
+    } finally {
+      setIsDeleting(false);
+      setDeletingItem(null);
     }
-  };
-
-  const getEstoqueStatus = (qnt: number, min: number) => {
-    if (qnt <= 0) return { label: 'CRÍTICO', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/20' };
-    if (qnt <= min) return { label: 'BAIXO', color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
-    return { label: 'OK', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20' };
   };
 
   const stats = useMemo(() => ({
@@ -263,7 +280,7 @@ export default function EstoquePage() {
   }), [metrics]);
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden">
+    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="space-y-1">
           <h1 className="text-3xl font-black text-white uppercase tracking-tight flex items-center gap-3 truncate">
@@ -287,7 +304,7 @@ export default function EstoquePage() {
       </div>
 
       {/* Abas de Navegação */}
-      <div className="flex border-b border-zinc-900 pb-px gap-6">
+      <div className="flex border-b border-zinc-800 pb-px gap-6">
         <button
           onClick={() => setActiveSection('inventario')}
           className={`pb-4 text-xs font-black uppercase tracking-widest relative transition-all ${
@@ -315,16 +332,16 @@ export default function EstoquePage() {
       {activeSection === 'inventario' ? (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
               <div className="flex items-center justify-between mb-4 relative z-10">
                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-orange-600"><Package size={20} /></div>
                 <span className="text-[10px] font-black text-green-500 px-2 py-1 bg-green-500/10 rounded-lg">ATIVO</span>
               </div>
               <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">TOTAL DE ITENS</p>
-              <h3 className="text-3xl font-black text-white tracking-tight">{stats.totalItens} <span className="text-zinc-700 text-sm">SKUs</span></h3>
+              <h3 className="text-3xl font-black text-white tracking-tight">{stats.totalItens} <span className="text-zinc-600 text-sm">SKUs</span></h3>
             </div>
 
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
               <div className="flex items-center justify-between mb-4 relative z-10">
                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-blue-500"><TrendingUp size={20} /></div>
                 <span className="text-[10px] font-black text-blue-400 px-2 py-1 bg-blue-500/10 rounded-lg">CUSTO</span>
@@ -333,16 +350,16 @@ export default function EstoquePage() {
               <h3 className="text-3xl font-black text-white tracking-tight">{stats.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</h3>
             </div>
 
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
               <div className="flex items-center justify-between mb-4 relative z-10">
                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-red-500"><AlertTriangle size={20} /></div>
                 {stats.itensBaixos > 0 && <span className="text-[10px] font-black text-red-400 px-2 py-1 bg-red-500/10 rounded-lg animate-pulse">URGENTE</span>}
               </div>
               <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">ESTOQUE BAIXO</p>
-              <h3 className={`text-3xl font-black ${stats.itensBaixos > 0 ? 'text-red-500' : 'text-white'} tracking-tight`}>{stats.itensBaixos} <span className="text-zinc-700 text-sm">ALERTAS</span></h3>
+              <h3 className={`text-3xl font-black ${stats.itensBaixos > 0 ? 'text-red-500' : 'text-white'} tracking-tight`}>{stats.itensBaixos} <span className="text-zinc-600 text-sm">ALERTAS</span></h3>
             </div>
 
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 transition hover:border-orange-500/30 group relative overflow-hidden">
               <div className="flex items-center justify-between mb-4 relative z-10">
                 <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-green-500"><BarChart3 size={20} /></div>
                 <span className="text-[10px] font-black text-green-400 px-2 py-1 bg-green-500/10 rounded-lg">PROJEÇÃO</span>
@@ -352,43 +369,43 @@ export default function EstoquePage() {
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center bg-zinc-900/50 border border-zinc-800 p-4 rounded-3xl shadow-xl animate-fadeIn w-full max-w-full overflow-hidden">
+          <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center bg-zinc-900/50 border border-zinc-800 p-4 rounded-2xl shadow-xl animate-fadeIn w-full max-w-full overflow-hidden">
             <div className="relative w-full lg:flex-1 group min-w-0">
               <div className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-orange-500 transition-colors"><Search size={18} /></div>
-              <input type="text" id="campo-de-busca-estoque" placeholder="LOCALIZAR NO ALMOXARIFADO..." className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-14 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-800 truncate min-h-[44px]" value={searchValue} onChange={(e) => { setSearchValue(e.target.value); setPage(1); }} />
+              <input type="text" id="campo-de-busca-estoque" placeholder="LOCALIZAR NO ALMOXARIFADO..." className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-14 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700 truncate min-h-[44px]" value={searchValue} onChange={(e) => { setSearchValue(e.target.value); setPage(1); }} />
             </div>
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
               <div className="relative w-full lg:w-64 min-w-0">
-                <select className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-[10px] text-zinc-500 focus:border-orange-500 outline-none transition font-black uppercase tracking-widest cursor-pointer min-h-[44px]" value={categoria} onChange={(e) => { setCategoria(e.target.value); setPage(1); }}>
+                <select className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-6 text-[10px] text-zinc-500 focus:border-orange-500 outline-none transition font-black uppercase tracking-widest cursor-pointer min-h-[44px] appearance-none" value={categoria} onChange={(e) => { setCategoria(e.target.value); setPage(1); }}>
                   <option value="TODAS">TODAS AS CATEGORIAS</option>
                   {categorias.map(cat => <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>)}
                 </select>
               </div>
               
-              <div className="flex bg-zinc-950 border border-zinc-800 rounded-2xl p-1 shadow-inner justify-center min-h-[44px] items-center">
-                 <button onClick={() => setViewMode('list')} className={`flex-1 sm:flex-initial p-3 rounded-xl transition ${viewMode === 'list' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-600 hover:text-white'} min-h-[36px] flex items-center justify-center`}><ListIcon size={18} /></button>
-                 <button onClick={() => setViewMode('grid')} className={`flex-1 sm:flex-initial p-3 rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-600 hover:text-white'} min-h-[36px] flex items-center justify-center`}><LayoutGrid size={18} /></button>
+              <div className="flex bg-zinc-950 border border-zinc-800 rounded-xl p-1 shadow-inner justify-center min-h-[44px] items-center">
+                 <button onClick={() => setViewMode('list')} className={`flex-1 sm:flex-initial p-3 rounded-lg transition ${viewMode === 'list' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-600 hover:text-white'} min-h-[36px] flex items-center justify-center`}><ListIcon size={18} /></button>
+                 <button onClick={() => setViewMode('grid')} className={`flex-1 sm:flex-initial p-3 rounded-lg transition ${viewMode === 'grid' ? 'bg-orange-600 text-white shadow-lg' : 'text-zinc-600 hover:text-white'} min-h-[36px] flex items-center justify-center`}><LayoutGrid size={18} /></button>
               </div>
             </div>
           </div>
 
           <div className="flex flex-col xl:flex-row gap-8 animate-fadeIn w-full max-w-full overflow-hidden">
             <div className="flex-1 xl:flex-[3] w-full min-w-0 space-y-6 overflow-hidden">
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden min-h-[600px] flex flex-col w-full max-w-full">
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden min-h-[600px] flex flex-col w-full max-w-full">
                 {loading ? (
                   <div className="flex-1 flex flex-col items-center justify-center space-y-4">
                      <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
-                     <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-600 italic">Sincronizando inventário...</p>
+                     <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-500 italic">Sincronizando inventário...</p>
                   </div>
                 ) : error ? (
                   <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-                     <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest italic">Falha de Protocolo no Almoxarifado</p>
+                     <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">Falha de Protocolo no Almoxarifado</p>
                   </div>
                 ) : data.items.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-30">
-                     <Package size={60} className="text-zinc-700" />
-                     <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-700 italic">Nenhum Insumo Localizado na Base</p>
+                  <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-60">
+                     <Package size={60} className="text-zinc-600" />
+                     <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-500 italic">Nenhum Insumo Localizado na Base</p>
                   </div>
                 ) : (
                   <>
@@ -412,9 +429,8 @@ export default function EstoquePage() {
                               <PecaRow 
                                 key={peca.id} 
                                 peca={peca} 
-                                getEstoqueStatus={getEstoqueStatus} 
                                 handleQuickAdjust={handleQuickAdjust} 
-                                handleDelete={handleDelete} 
+                                handleDelete={handleDeleteClick} 
                               />
                             ))}
                         </tbody>
@@ -439,7 +455,7 @@ export default function EstoquePage() {
                                   <span className="text-[10px] font-bold font-mono text-orange-500 uppercase tracking-tighter">
                                     {peca.codigo}
                                   </span>
-                                  <span className="text-[8px] text-zinc-650 font-mono font-bold">
+                                  <span className="text-[8px] text-zinc-500 font-mono font-bold">
                                     REF: {peca.id.slice(-6).toUpperCase()}
                                   </span>
                                 </div>
@@ -484,7 +500,7 @@ export default function EstoquePage() {
                               <Link href={`/estoque/${peca.id}/editar`} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition" title="Editar">
                                 <Edit size={12} /> Editar
                               </Link>
-                              <button onClick={() => handleDelete(peca.id, peca.descricao)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-red-500 rounded-xl text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Excluir">
+                              <button onClick={() => handleDeleteClick(peca.id, peca.descricao)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-red-500 rounded-xl text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Excluir">
                                 <Trash2 size={12} /> Excluir
                               </button>
                             </div>
@@ -506,9 +522,9 @@ export default function EstoquePage() {
             </div>
 
             <div className="flex-1 space-y-8">
-               <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-8 shadow-2xl relative overflow-hidden">
+               <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 space-y-8 shadow-2xl relative overflow-hidden">
                   <div className="relative z-10 space-y-6">
-                     <div><h3 className="text-lg font-black text-white uppercase">Análise de Ativos</h3><p className="text-[9px] text-zinc-600 font-black uppercase tracking-[0.4em]">Resumo do Inventário</p></div>
+                     <div><h3 className="text-lg font-black text-white uppercase">Análise de Ativos</h3><p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.4em]">Resumo do Inventário</p></div>
                      <div className="space-y-4">
                         {[
                            { label: 'Valor Total em Estoque', value: stats.valorVenda, color: 'text-orange-600', format: true },
@@ -520,7 +536,7 @@ export default function EstoquePage() {
                               <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{item.label}</p>
                               <div className="flex items-baseline justify-between">
                                  <span className={`text-xl font-black font-mono italic tracking-tighter ${item.color || 'text-white'}`}>{item.format ? item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : item.value}</span>
-                                 {item.sub && <span className="text-[8px] text-zinc-700 font-black uppercase">{item.sub}</span>}
+                                 {item.sub && <span className="text-[8px] text-zinc-600 font-black uppercase">{item.sub}</span>}
                               </div>
                            </div>
                         ))}
@@ -538,7 +554,7 @@ export default function EstoquePage() {
                      </div>
                   </div>
                </div>
-               <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+               <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
                   <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6 px-1">Atividades Recentes</h4>
                   <div className="space-y-6">
                      {[1, 2, 3].map(i => (
@@ -558,42 +574,42 @@ export default function EstoquePage() {
           {analiseLoading ? (
             <div className="flex flex-col items-center justify-center py-32 space-y-4">
               <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
-              <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-600 italic">Processando Inteligência de Ativos...</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-500 italic">Processando Inteligência de Ativos...</p>
             </div>
           ) : !analiseData ? (
-            <div className="text-center py-32 text-zinc-600 text-xs tracking-widest uppercase bg-zinc-900/30 rounded-3xl border border-zinc-800">Falha ao processar análise técnica do almoxarifado</div>
+            <div className="text-center py-32 text-zinc-600 text-xs tracking-widest uppercase bg-zinc-900/30 rounded-2xl border border-zinc-800">Falha ao processar análise técnica do almoxarifado</div>
           ) : (
             <>
               {/* Cards Analytics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 hover:border-orange-500/30 transition-all">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-orange-500/30 transition-all">
                   <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">VALUATION GLOBAL</p>
                   <h3 className="text-2xl font-black text-white tracking-tight">{analiseData.meta.totalValorGlobal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</h3>
-                  <p className="text-[9px] text-zinc-700 font-mono uppercase tracking-widest mt-1">Valor potencial de venda</p>
+                  <p className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest mt-1">Valor potencial de venda</p>
                 </div>
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 hover:border-orange-500/30 transition-all">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-orange-500/30 transition-all">
                   <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">CURVA ABC (CLASSE A)</p>
-                  <h3 className="text-2xl font-black text-orange-500 tracking-tight">{analiseData.meta.itensClasseA} <span className="text-zinc-700 text-xs">SKUS</span></h3>
-                  <p className="text-[9px] text-zinc-700 font-mono uppercase tracking-widest mt-1">Garantem 75% da receita potencial</p>
+                  <h3 className="text-2xl font-black text-orange-500 tracking-tight">{analiseData.meta.itensClasseA} <span className="text-zinc-600 text-xs">SKUS</span></h3>
+                  <p className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest mt-1">Garantem 75% da receita potencial</p>
                 </div>
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 hover:border-orange-500/30 transition-all">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-orange-500/30 transition-all">
                   <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">SUGESTÕES DE COMPRA</p>
-                  <h3 className="text-2xl font-black text-blue-400 tracking-tight">{analiseData.meta.sugestaesPendentes} <span className="text-zinc-700 text-xs">REPOSIÇÕES</span></h3>
-                  <p className="text-[9px] text-zinc-700 font-mono uppercase tracking-widest mt-1">Sugerido por giro de estoque</p>
+                  <h3 className="text-2xl font-black text-blue-400 tracking-tight">{analiseData.meta.sugestoesPendentes} <span className="text-zinc-600 text-xs">REPOSIÇÕES</span></h3>
+                  <p className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest mt-1">Sugerido por giro de estoque</p>
                 </div>
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 hover:border-orange-500/30 transition-all">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 hover:border-orange-500/30 transition-all">
                   <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">RUPTURAS DETECTADAS</p>
-                  <h3 className="text-2xl font-black text-red-500 tracking-tight">{analiseData.meta.alertasCriticos} <span className="text-zinc-700 text-xs text-red-400/50">ZERADOS</span></h3>
-                  <p className="text-[9px] text-zinc-700 font-mono uppercase tracking-widest mt-1">Itens esgotados em estoque</p>
+                  <h3 className="text-2xl font-black text-red-500 tracking-tight">{analiseData.meta.alertasCriticos} <span className="text-zinc-600 text-xs text-red-400/50">ZERADOS</span></h3>
+                  <p className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest mt-1">Itens esgotados em estoque</p>
                 </div>
               </div>
 
               {/* Tabela de inteligência */}
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
                 <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
                   <div>
                     <h3 className="text-lg font-black text-white uppercase">Giro dinâmico de Insumos</h3>
-                    <p className="text-[9px] text-zinc-600 font-black uppercase tracking-[0.4em]">Classificações analíticas de giro e curva abc</p>
+                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.4em]">Classificações analíticas de giro e curva abc</p>
                   </div>
                 </div>
 
@@ -673,13 +689,66 @@ export default function EstoquePage() {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-10">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-10 mt-8 pt-8 border-t border-zinc-900">
          <div className="flex items-center gap-6">
             <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" /><p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Sistema Operacional</p></div>
             <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-zinc-800 rounded-full" /><p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Database: Master_DB_Pinheiro</p></div>
          </div>
-         <p className="text-[9px] text-zinc-700 font-mono uppercase font-black">Pinheiro Diesel Pro v2.4.9 • 2024 All Rights Reserved</p>
+         <p className="text-[9px] text-zinc-600 font-mono uppercase font-black">{BRANDING.name} v2.4.9 • {new Date().getFullYear()} All Rights Reserved</p>
       </div>
+
+      {/* MODAL DE EXCLUSÃO */}
+      {showDeleteModal && deletingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir Item</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente o item <strong className="text-white">{deletingItem.descricao}</strong>?
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmar Exclusão
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
