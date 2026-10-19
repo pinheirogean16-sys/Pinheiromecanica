@@ -13,6 +13,46 @@ import { Pagination } from '@/components/Pagination';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 
+// ============================================================
+// HELPERS DE FORMATAÇÃO (fora do componente — evita recriação)
+// ============================================================
+const maskPhone = (v: string) => {
+  v = v.replace(/\D/g, '');
+  if (v.length > 11) v = v.substring(0, 11);
+  if (v.length > 10) {
+    v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
+  } else if (v.length > 5) {
+    v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+  } else if (v.length > 2) {
+    v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+  } else {
+    v = v.replace(/^(\d*)/, '($1');
+  }
+  return v;
+};
+
+const maskCPF_CNPJ = (v: string, tipo: 'PF' | 'PJ') => {
+  v = v.replace(/\D/g, '');
+  if (tipo === 'PF') {
+    if (v.length > 11) v = v.substring(0, 11);
+    return v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  } else {
+    if (v.length > 14) v = v.substring(0, 14);
+    return v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  }
+};
+
+const formatDate = (date: string | null | undefined) => {
+  if (!date) return 'N/A';
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleDateString('pt-BR');
+  } catch {
+    return 'N/A';
+  }
+};
+
 interface Cliente {
   id: string;
   nome: string;
@@ -33,15 +73,9 @@ interface Cliente {
 
 const ClienteRow = memo(({ 
   cliente, 
-  maskCPF_CNPJ, 
-  maskPhone, 
-  formatDate, 
   openEditModal 
 }: { 
   cliente: Cliente, 
-  maskCPF_CNPJ: any, 
-  maskPhone: any, 
-  formatDate: any, 
   openEditModal: any 
 }) => {
   return (
@@ -121,7 +155,7 @@ const ClienteRow = memo(({
 ClienteRow.displayName = 'ClienteRow';
 
 export default function ClientesPage() {
-  const [data, setData] = useState<{ items: Cliente[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
+  const [data, setData] = useState<{ items: Cliente[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState('');
@@ -130,35 +164,9 @@ export default function ClientesPage() {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ATIVO' | 'INATIVO'>('ALL');
   const [page, setPage] = useState(1);
 
-  // Lógica do Tour
-  useEffect(() => {
-    const handleOpenTourModal = () => {
-      openNewModal();
-    };
-    const handleCloseTourModal = () => {
-      setShowModal(false);
-    };
-    
-    window.addEventListener('vehlox:open-client-modal', handleOpenTourModal);
-    window.addEventListener('vehlox:close-client-modal', handleCloseTourModal);
-    
-    return () => {
-      window.removeEventListener('vehlox:open-client-modal', handleOpenTourModal);
-      window.removeEventListener('vehlox:close-client-modal', handleCloseTourModal);
-    };
-  }, []);
-
-  useEffect(() => {
-    const hand = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
-    return () => clearTimeout(hand);
-  }, [search]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, filterType, filterStatus]);
-  
+  // ============================================================
+  // Modais
+  // ============================================================
   const [showModal, setShowModal] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -182,68 +190,10 @@ export default function ClientesPage() {
     observacoes: ''
   });
 
-  const fetchClientes = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    setError(false);
-    try {
-      const params = new URLSearchParams();
-      if (filterStatus !== 'ALL') params.append('status', filterStatus);
-      if (filterType !== 'ALL') params.append('tipo', filterType);
-      if (debouncedSearch) params.append('q', debouncedSearch);
-      params.append('perfil', 'CLIENTE');
-      params.append('page', page.toString());
-      params.append('limit', '20');
-      
-      const result = await apiFetch<any>(`/api/clientes?${params.toString()}`, { signal });
-      const items = Array.isArray(result) ? result : (result.items || []);
-      const total = result.total || items.length;
-      const totalPages = result.totalPages || 1;
-      setData({ items, total, totalPages });
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError(true);
-        handleApiError(err, { defaultMessage: 'Ocorreu uma falha ao sincronizar o banco de dados.' });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [filterStatus, filterType, debouncedSearch, page]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchClientes(controller.signal);
-    return () => {
-      controller.abort();
-    };
-  }, [fetchClientes]);
-
-  const maskPhone = (v: string) => {
-    v = v.replace(/\D/g, "");
-    if (v.length > 11) v = v.substring(0, 11);
-    if (v.length > 10) {
-      v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, "($1) $2-$3");
-    } else if (v.length > 5) {
-      v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
-    } else if (v.length > 2) {
-      v = v.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-    } else {
-      v = v.replace(/^(\d*)/, "($1");
-    }
-    return v;
-  };
-
-  const maskCPF_CNPJ = (v: string, tipo: 'PF' | 'PJ') => {
-    v = v.replace(/\D/g, "");
-    if (tipo === 'PF') {
-      if (v.length > 11) v = v.substring(0, 11);
-      return v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-    } else {
-      if (v.length > 14) v = v.substring(0, 14);
-      return v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-    }
-  };
-
-  const openNewModal = () => {
+  // ============================================================
+  // Abertura do modal (useCallback — evita warning no useEffect)
+  // ============================================================
+  const openNewModal = useCallback(() => {
     setEditingCliente(null);
     setFormData({ 
       tipo: 'PF', 
@@ -264,9 +214,73 @@ export default function ClientesPage() {
       observacoes: ''
     });
     setShowModal(true);
-  };
+  }, []);
 
-  const openEditModal = (cliente: Cliente) => {
+  // Lógica do Tour
+  useEffect(() => {
+    const handleOpenTourModal = () => openNewModal();
+    const handleCloseTourModal = () => setShowModal(false);
+    
+    window.addEventListener('vehlox:open-client-modal', handleOpenTourModal);
+    window.addEventListener('vehlox:close-client-modal', handleCloseTourModal);
+    
+    return () => {
+      window.removeEventListener('vehlox:open-client-modal', handleOpenTourModal);
+      window.removeEventListener('vehlox:close-client-modal', handleCloseTourModal);
+    };
+  }, [openNewModal]);
+
+  // Debounce da busca
+  useEffect(() => {
+    const hand = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(hand);
+  }, [search]);
+
+  useEffect(() => { setPage(1); }, [search, filterType, filterStatus]);
+
+  // ============================================================
+  // Fetch paginado
+  // ============================================================
+  const fetchClientes = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(false);
+    try {
+      const params = new URLSearchParams();
+      if (filterStatus !== 'ALL') params.append('status', filterStatus);
+      if (filterType !== 'ALL') params.append('tipo', filterType);
+      if (debouncedSearch) params.append('q', debouncedSearch);
+      params.append('perfil', 'CLIENTE');
+      params.append('page', page.toString());
+      params.append('limit', '20');
+
+      const result = await apiFetch<any>(`/api/clientes?${params.toString()}`, { signal });
+
+      // ✅ Trata array (legado) ou { items } (paginado)
+      const items = Array.isArray(result) ? result : (result.items || []);
+      const total = typeof result.total === 'number' ? result.total : items.length;
+      const totalPages = Math.max(1, result.totalPages || 1);
+
+      setData({ items, total, totalPages });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setError(true);
+        handleApiError(err, { defaultMessage: 'Ocorreu uma falha ao sincronizar o banco de dados.' });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [filterStatus, filterType, debouncedSearch, page]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchClientes(controller.signal);
+    return () => controller.abort();
+  }, [fetchClientes]);
+
+  // ============================================================
+  // Edição
+  // ============================================================
+  const openEditModal = useCallback((cliente: Cliente) => {
     setEditingCliente(cliente);
     setFormData({
       tipo: cliente.tipo,
@@ -287,21 +301,33 @@ export default function ClientesPage() {
       observacoes: (cliente as any).observacoes || ''
     });
     setShowModal(true);
-  };
+  }, []);
 
+  // ✅ Ao trocar PF ↔ PJ, limpa o documento para não confundir
+  const handleTipoChange = useCallback((novoTipo: 'PF' | 'PJ') => {
+    setFormData((prev) => ({
+      ...prev,
+      tipo: novoTipo,
+      tipo_pessoa: novoTipo === 'PF' ? 'FISICA' : 'JURIDICA',
+      cpf_cnpj: '',
+    }));
+  }, []);
+
+  // ============================================================
+  // Submit
+  // ============================================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalLoading(true);
-    
     try {
       const url = editingCliente ? `/api/clientes/${editingCliente.id}` : '/api/clientes';
       const method = editingCliente ? 'PUT' : 'POST';
-      
+
       await apiFetch(url, {
         method,
         body: { ...formData, estado: formData.uf },
       });
-      
+
       toast.success(editingCliente ? 'Cliente atualizado com sucesso!' : 'Novo cliente registrado no sistema.');
       setShowModal(false);
       fetchClientes();
@@ -310,11 +336,6 @@ export default function ClientesPage() {
     } finally {
       setModalLoading(false);
     }
-  };
-
-  const formatDate = (date: string) => {
-    if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('pt-BR');
   };
 
   return (
@@ -339,7 +360,7 @@ export default function ClientesPage() {
         </button>
       </div>
 
-      {/* STATS — APENAS DADOS REAIS DA API */}
+      {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl">
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-2">
@@ -472,9 +493,6 @@ export default function ClientesPage() {
                 <ClienteRow 
                   key={cliente.id} 
                   cliente={cliente} 
-                  maskCPF_CNPJ={maskCPF_CNPJ} 
-                  maskPhone={maskPhone} 
-                  formatDate={formatDate} 
                   openEditModal={openEditModal} 
                 />
               ))}
@@ -485,7 +503,7 @@ export default function ClientesPage() {
         <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
           <Pagination 
             page={page} 
-            totalPages={data.totalPages || 0} 
+            totalPages={data.totalPages} 
             onPageChange={setPage} 
           />
         </div>
@@ -589,7 +607,7 @@ export default function ClientesPage() {
             <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-2xl">
               <Pagination 
                 page={page} 
-                totalPages={data.totalPages || 0} 
+                totalPages={data.totalPages} 
                 onPageChange={setPage} 
               />
             </div>
@@ -628,8 +646,9 @@ export default function ClientesPage() {
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl">
-                    <button                      type="button"
-                      onClick={() => setFormData({ ...formData, tipo: 'PF', tipo_pessoa: 'FISICA' })}
+                    <button 
+                      type="button"
+                      onClick={() => handleTipoChange('PF')}
                       className={`py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.tipo === 'PF' 
                           ? 'bg-zinc-800 text-white shadow-md' 
@@ -642,7 +661,7 @@ export default function ClientesPage() {
                     
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, tipo: 'PJ', tipo_pessoa: 'JURIDICA' })}
+                      onClick={() => handleTipoChange('PJ')}
                       className={`py-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         formData.tipo === 'PJ' 
                           ? 'bg-zinc-800 text-white shadow-md' 
@@ -782,11 +801,10 @@ export default function ClientesPage() {
                   </div>
                   <div className="space-y-2 col-span-full md:col-span-2">
                     <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 px-2 flex items-center gap-1">
-                      Endereço de E-mail <span className="text-orange-500">*</span>
+                      Endereço de E-mail
                     </label>
                     <input 
                       type="email" 
-                      required
                       value={formData.email || ''}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition shadow-inner placeholder:text-zinc-700"
