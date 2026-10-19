@@ -18,6 +18,11 @@ const SECRET_KEY = new TextEncoder().encode(JWT_SECRET);
 // Access token curto + refresh token no banco
 const ACCESS_TOKEN_EXPIRES_IN = '8h'; // Reduzido de 7d para 8h
 
+// Identificação do emissor/audiência (mantida para compatibilidade
+// com tokens já emitidos — se mudar, todos os tokens atuais expiram).
+const JWT_ISSUER = 'pinheiro-diesel-pro';
+const JWT_AUDIENCE = 'erp-oficina';
+
 export interface UserTokenPayload {
   id: string;
   email: string;
@@ -37,8 +42,8 @@ export async function signToken(payload: UserTokenPayload): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_EXPIRES_IN)
-    .setIssuer('pinheiro-diesel-pro')
-    .setAudience('erp-oficina')
+    .setIssuer(JWT_ISSUER)
+    .setAudience(JWT_AUDIENCE)
     .sign(SECRET_KEY);
 }
 
@@ -49,8 +54,8 @@ export async function signToken(payload: UserTokenPayload): Promise<string> {
 export async function verifyToken(token: string): Promise<UserTokenPayload | null> {
   try {
     const { payload } = await jwtVerify(token, SECRET_KEY, {
-      issuer: 'pinheiro-diesel-pro',
-      audience: 'erp-oficina',
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
     });
 
     if (!payload || !payload.empresa_id || payload.empresa_id === 'default') {
@@ -84,6 +89,10 @@ export async function verifyToken(token: string): Promise<UserTokenPayload | nul
 //  - Usuário foi desativado (ativo = false)
 //  - Usuário mudou de empresa (defesa em profundidade)
 //  - token_version do JWT não bate com o do banco (senha trocada, logout forçado)
+//
+// ✅ CORREÇÃO: agora busca role/email/name do banco e sobrescreve
+// os valores do JWT. Mudanças de role/email/nome por admin têm
+// efeito imediato — sem esperar o token expirar (8h).
 // ============================================================
 export async function verifySession(
   token: string
@@ -94,7 +103,15 @@ export async function verifySession(
   try {
     const user = await prisma.user.findUnique({
       where: { id: payload.id },
-      select: { ativo: true, token_version: true, empresa_id: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        ativo: true,
+        token_version: true,
+        empresa_id: true,
+      },
     });
 
     if (!user) return null;
@@ -105,7 +122,16 @@ export async function verifySession(
     const tokenVersion = payload.token_version ?? 0;
     if (dbVersion !== tokenVersion) return null;
 
-    return payload;
+    // ✅ CORREÇÃO: sobrescreve com os valores ATUAIS do banco.
+    // Se o admin rebaixou este usuário (role), trocou o email ou o nome,
+    // a próxima requisição já vê o valor atualizado — sem esperar o token expirar.
+    return {
+      ...payload,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      empresa_id: user.empresa_id,
+    };
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
       console.error('[auth] Session verification failed:', error);
