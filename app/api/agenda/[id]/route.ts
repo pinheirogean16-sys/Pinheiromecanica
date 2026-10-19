@@ -76,6 +76,7 @@ export async function PUT(request: Request, props: { params: Promise<{ id: strin
     const { id } = params;
     const body = eventoSchema.parse(await request.json());
 
+    // Verificação dupla: confirma se o evento existe e pertence à empresa
     const antes = await prisma.eventoAgenda.findFirst({ 
       where: { 
         id,
@@ -84,8 +85,12 @@ export async function PUT(request: Request, props: { params: Promise<{ id: strin
     });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
 
+    // Atualização com redundância de segurança: empresa_id no where
     const event = await prisma.eventoAgenda.update({
-      where: { id },
+      where: { 
+        id,
+        empresa_id: user.empresa_id // 👈 Redundância de segurança
+      },
       data: {
         ...body,
         data_inicio: body.data_inicio ? new Date(body.data_inicio) : undefined,
@@ -126,6 +131,8 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
     }
 
     const { id } = params;
+
+    // Verificação dupla: confirma se o evento existe e pertence à empresa
     const antes = await prisma.eventoAgenda.findFirst({ 
       where: { 
         id,
@@ -134,8 +141,12 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
     });
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
 
+    // Exclusão com redundância de segurança: empresa_id no where
     await prisma.eventoAgenda.delete({
-      where: { id },
+      where: { 
+        id,
+        empresa_id: user.empresa_id // 👈 Redundância de segurança
+      },
     });
 
     await createAuditLog({
