@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
+import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
 // C04: validação por magic bytes (não confia no header enviado pelo cliente)
-// Retorna a extensão segura se o arquivo for JPG, PNG ou WEBP. Null se não for.
 function detectImageType(buffer: Buffer): { ext: 'jpg' | 'png' | 'webp'; mime: string } | null {
   if (buffer.length < 12) return null;
 
@@ -53,6 +54,11 @@ export async function POST(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
+    // ✅ NOVO: exige permissão para executar checklist
+    if (!checkPermission(user, 'checklist', 'executar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('foto') as File | null;
     const execucaoId = (formData.get('execucao_id') as string) || null;
@@ -91,7 +97,7 @@ export async function POST(request: Request) {
     if (execucaoId && execucaoId !== 'temp') {
       const execucao = await prisma.checklistExecucao.findFirst({
         where: { id: execucaoId, empresa_id: user.empresa_id },
-        select: { id: true },
+        select: { id: true, checklist_id: true },
       });
 
       if (!execucao) {
@@ -100,11 +106,23 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+
+      // ✅ NOVO: valida se o item_id pertence ao checklist da execução
+      if (itemId) {
+        const itemPertence = await prisma.checklistItem.findFirst({
+          where: { id: itemId, checklist_id: execucao.checklist_id },
+          select: { id: true },
+        });
+        if (!itemPertence) {
+          return NextResponse.json(
+            { error: 'Item não pertence ao checklist desta execução' },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     // C04: nome do arquivo é gerado internamente (UUID) — nunca usa input do cliente
-    // Isso elimina o path traversal (execucaoId podia conter "../..") e força
-    // extensão segura derivada do conteúdo detectado.
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'checklist');
     await mkdir(uploadDir, { recursive: true });
 
@@ -157,7 +175,6 @@ export async function POST(request: Request) {
       foto,
     });
   } catch (error: any) {
-    log('ERROR', 'CHECKLIST', 'Erro ao processar upload de foto', { error: error.message }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao processar upload' }, { status: 500 });
+    return apiError(error, 'CHECKLIST', 'Erro ao processar upload');
   }
 }
