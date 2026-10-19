@@ -61,16 +61,12 @@ export async function GET(
 
     const { id } = await params;
     const rawVeiculo = await prisma.veiculo.findFirst({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
+      where: { id, empresa_id: user.empresa_id },
       include: {
         Cliente: true,
         OrdemServico: {
           orderBy: { created_at: 'desc' },
           take: 5,
-          // ✅ Otimização: só os campos que a tela usa
           select: {
             id: true,
             numero: true,
@@ -89,13 +85,11 @@ export async function GET(
     }
 
     const { Cliente, OrdemServico, ...rest } = rawVeiculo;
-    const veiculo = {
+    return NextResponse.json({
       ...rest,
       cliente: Cliente,
       ordens: OrdemServico,
-    };
-
-    return NextResponse.json(veiculo);
+    });
   } catch (error: any) {
     return apiError(error, 'VEICULO', 'Erro ao buscar veículo');
   }
@@ -112,7 +106,6 @@ export async function PUT(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // ✅ CORRIGIDO: 'veiculos' (plural)
     if (!checkPermission(user, 'veiculos', 'editar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -121,10 +114,7 @@ export async function PUT(
     const body = updateVeiculoSchema.parse(await request.json());
 
     const antes = await prisma.veiculo.findFirst({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
+      where: { id, empresa_id: user.empresa_id },
     });
     if (!antes) {
       return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
@@ -161,12 +151,18 @@ export async function PUT(
     }
 
     // ============================================================
-    // Validação de odômetro/horímetro (com as flags de confirmação)
+    // Validação de odômetro/horímetro
+    //
+    // ⚠️ IMPORTANTE: `validarEProcessarLeiturasVeiculo` SALVA internamente
+    // no banco quando o valor é válido (autorizado). NÃO incluímos
+    // `quilometragem`/`horimetro_atual` no `updateData` abaixo para
+    // NÃO sobrescrever o valor protegido pela função.
     // ============================================================
     let leiturasRes: any = {
       kmFinalAtualizar: null,
       horimetroFinalAtualizar: null,
       sucesso: true,
+      aviso: undefined,
     };
 
     if (body.quilometragem !== undefined || body.horimetro_atual !== undefined) {
@@ -190,7 +186,8 @@ export async function PUT(
     }
 
     // ============================================================
-    // Whitelist explícita — impede injeção de campos
+    // Whitelist explícita — NÃO inclui quilometragem/horimetro_atual
+    // (a função acima já salvou o que for válido)
     // ============================================================
     const updateData: any = {
       updated_by: user?.name || user?.email || 'Sistema',
@@ -203,27 +200,9 @@ export async function PUT(
     if (body.tipo !== undefined) updateData.tipo = body.tipo;
     if (body.cliente_id !== undefined) updateData.cliente_id = body.cliente_id;
 
-    // ✅ CORRIGIDO: persistir quilometragem e horímetro no update
-    // (antes eram validados mas NÃO salvos explicitamente)
-    if (body.quilometragem !== undefined) {
-      updateData.quilometragem =
-        leiturasRes.kmFinalAtualizar !== null && leiturasRes.kmFinalAtualizar !== undefined
-          ? leiturasRes.kmFinalAtualizar
-          : body.quilometragem;
-    }
-    if (body.horimetro_atual !== undefined) {
-      updateData.horimetro_atual =
-        leiturasRes.horimetroFinalAtualizar !== null && leiturasRes.horimetroFinalAtualizar !== undefined
-          ? leiturasRes.horimetroFinalAtualizar
-          : body.horimetro_atual;
-    }
-
     // ✅ Defense in Depth: empresa_id no where
     const veiculo = await prisma.veiculo.update({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
+      where: { id, empresa_id: user.empresa_id },
       data: updateData,
     });
 
@@ -240,7 +219,11 @@ export async function PUT(
 
     log('INFO', 'VEICULO', 'Veículo atualizado', { id }, user?.name);
 
-    return NextResponse.json(veiculo);
+    return NextResponse.json({
+      ...veiculo,
+      // Aviso de leitura rejeitada (redução sem autorização) — frontend pode exibir
+      aviso_leitura: leiturasRes.aviso,
+    });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
@@ -260,24 +243,18 @@ export async function DELETE(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // ✅ CORRIGIDO: 'veiculos' (plural)
     if (!checkPermission(user, 'veiculos', 'excluir')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { id } = await params;
     const antes = await prisma.veiculo.findFirst({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
+      where: { id, empresa_id: user.empresa_id },
     });
     if (!antes) {
       return NextResponse.json({ error: 'Veículo não encontrado' }, { status: 404 });
     }
 
-    // ✅ NOVO: verifica dependências antes de tentar deletar
-    // (evita 500 por FK e dá mensagem clara ao usuário)
     const [osCount, preventivasCount] = await Promise.all([
       prisma.ordemServico.count({ where: { veiculo_id: id } }),
       prisma.preventiva.count({ where: { veiculo_id: id } }),
@@ -296,12 +273,8 @@ export async function DELETE(
       );
     }
 
-    // ✅ Defense in Depth: empresa_id no where
     await prisma.veiculo.delete({
-      where: {
-        id,
-        empresa_id: user.empresa_id,
-      },
+      where: { id, empresa_id: user.empresa_id },
     });
 
     await createAuditLog({
@@ -310,7 +283,7 @@ export async function DELETE(
       entidade: 'Veiculo',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
-      empresa_id: user.empresa_id, // ✅ Adicionado
+      empresa_id: user.empresa_id,
       dados_antes: antes,
     });
 
