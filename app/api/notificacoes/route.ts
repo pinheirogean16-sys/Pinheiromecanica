@@ -21,9 +21,16 @@ const notificacaoSchema = z.object({
 });
 
 const listarQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(100).default(10)
+  ),
   lida: z.enum(['true', 'false']).optional(),
+  triggerCheck: z.string().optional(), // Ignora o parâmetro enviado pelo front
 });
 
 // ============================================================
@@ -36,14 +43,12 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
 
-    // ✅ CORRIGIDO: O `|| undefined` é essencial. 
-    // Se o parâmetro não estiver na URL, searchParams.get retorna `null`. 
-    // O Zod coerce.number() transforma `null` em `0`, o que quebra o .min(1).
-    // Usando `|| undefined`, o .default() do Zod entra em ação corretamente.
+    // ✅ O `|| undefined` garante que valores nulos da URL não quebrem o Zod
     const parsed = listarQuerySchema.parse({
       page: searchParams.get('page') || undefined,
       limit: searchParams.get('limit') || searchParams.get('limite') || undefined,
       lida: searchParams.get('lida') || undefined,
+      triggerCheck: searchParams.get('triggerCheck') || undefined,
     });
 
     const { page, limit, lida } = parsed;
