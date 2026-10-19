@@ -10,17 +10,42 @@ import { createAuditLog } from '@/lib/audit';
 import { roundDecimal } from '@/lib/utils';
 import { apiError } from '@/lib/api-error';
 
-// A15 + A32: `quantidade` NÃO pode ser alterada por este endpoint.
-// Alteração de saldo só via POST /api/estoque/movimentacao
-// (que grava MovimentacaoEstoque e usa increment/decrement atômico).
-//
-// Se alguém enviar `quantidade` no body, o Zod STRIPa silenciosamente
-// (não tem o campo no schema). Mas adicionamos uma checagem explícita
-// depois, para devolver erro 400 com mensagem clara — assim o front
-// sabe que a operação não fez o que ele queria.
+// ============================================================
+// SERIALIZAÇÃO DE DECIMAIS (evita { s, e, d } no JSON)
+// ============================================================
+function serializeDecimals(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(serializeDecimals);
+  if (obj instanceof Date) return obj;
+  if ('toNumber' in obj && typeof (obj as any).toNumber === 'function') {
+    try {
+      return (obj as any).toNumber();
+    } catch {
+      return obj;
+    }
+  }
+  let keys: string[] = [];
+  try {
+    keys = Object.keys(obj);
+  } catch {
+    return obj;
+  }
+  const converted: Record<string, any> = {};
+  for (const key of keys) {
+    try {
+      converted[key] = serializeDecimals((obj as any)[key]);
+    } catch {
+      converted[key] = (obj as any)[key];
+    }
+  }
+  return converted;
+}
+
+// A15 + A32: quantidade NÃO pode ser alterada por este endpoint.
 const updatePecaSchema = z.object({
-  codigo: z.string().min(2).trim().optional(),
-  descricao: z.string().min(3).trim().optional(),
+  codigo: z.string().min(2).max(100).trim().optional(),
+  descricao: z.string().min(3).max(500).trim().optional(),
   fabricante: z.string().max(200).optional().nullable(),
   categoria: z.nativeEnum(Peca_categoria).optional(),
   estoque_minimo: z.number().min(0).optional(),
@@ -92,7 +117,8 @@ export async function GET(
       }),
     };
 
-    return NextResponse.json(peca);
+    // ✅ NOVO: serializa Decimal antes de retornar
+    return NextResponse.json(serializeDecimals(peca));
   } catch (error: any) {
     return apiError(error, 'PECA', 'Erro ao buscar peça');
   }
@@ -117,7 +143,8 @@ export async function PUT(
     const rawBody = await request.json();
 
     // A32: bloqueio explícito — quantidade não pode ser alterada aqui.
-    if (rawBody && (rawBody.quantidade !== undefined || rawBody.quantidade === 0)) {
+    // ✅ CORRIGIDO: condição simplificada
+    if (rawBody && rawBody.quantidade !== undefined) {
       log(
         'WARN',
         'PECA',
@@ -146,6 +173,25 @@ export async function PUT(
       return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
     }
 
+    // ✅ NOVO: valida preco_venda >= preco_custo considerando merge com valores atuais
+    const precoCustoFinal =
+      data.preco_custo !== undefined
+        ? roundDecimal(data.preco_custo)
+        : Number(antes.preco_custo);
+    const precoVendaFinal =
+      data.preco_venda !== undefined
+        ? roundDecimal(data.preco_venda)
+        : Number(antes.preco_venda);
+
+    if (precoVendaFinal < precoCustoFinal) {
+      return NextResponse.json(
+        {
+          error: `Preço de venda (R$ ${precoVendaFinal.toFixed(2)}) não pode ser menor que o custo (R$ ${precoCustoFinal.toFixed(2)}).`,
+        },
+        { status: 400 }
+      );
+    }
+
     if (data.codigo && data.codigo !== antes.codigo) {
       const existing = await prisma.peca.findFirst({
         where: {
@@ -165,7 +211,10 @@ export async function PUT(
     }
 
     const peca = await prisma.peca.update({
-      where: { id },
+      where: {
+        id,
+        empresa_id: user.empresa_id, // ✅ Redundância de segurança
+      },
       data: {
         ...data,
         preco_custo:
@@ -180,10 +229,13 @@ export async function PUT(
       },
     });
 
+    // ✅ NOVO: serializa antes de auditar/notificar/retornar
+    const pecaSerializada = serializeDecimals(peca);
+
     // Notifica estoque baixo — silencioso se falhar
     if (peca.quantidade <= peca.estoque_minimo) {
       try {
-        await notificarEstoqueBaixo(peca);
+        await notificarEstoqueBaixo(pecaSerializada);
       } catch {}
     }
 
@@ -194,8 +246,8 @@ export async function PUT(
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
       empresa_id: user.empresa_id,
-      dados_antes: antes,
-      dados_depois: peca,
+      dados_antes: serializeDecimals(antes),
+      dados_depois: pecaSerializada,
     });
 
     log('INFO', 'PECA', 'Peça atualizada', { id }, user?.name);
@@ -205,7 +257,7 @@ export async function PUT(
       invalidateDashboardCache(user.empresa_id);
     }
 
-    return NextResponse.json(peca);
+    return NextResponse.json(pecaSerializada);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -260,7 +312,10 @@ export async function DELETE(
     }
 
     await prisma.peca.delete({
-      where: { id },
+      where: {
+        id,
+        empresa_id: user.empresa_id, // ✅ Redundância de segurança
+      },
     });
 
     await createAuditLog({
@@ -270,7 +325,7 @@ export async function DELETE(
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
       empresa_id: user.empresa_id,
-      dados_antes: antes,
+      dados_antes: serializeDecimals(antes),
     });
 
     log('INFO', 'PECA', 'Peça excluída', { id }, user?.name);
