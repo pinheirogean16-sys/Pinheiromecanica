@@ -17,7 +17,7 @@ const checklistItemSchema = z.object({
     .string()
     .min(1, 'Descrição do item é obrigatória')
     .max(500, 'Descrição muito longa'),
-  tipo: z.string().max(50).optional().default('TEXTO'),
+  tipo: z.enum(['SIM_NAO', 'TEXTO', 'NUMERO', 'NUMERICO', 'FOTO']).optional().default('TEXTO'),
   obrigatorio: z.boolean().optional().default(true),
   ordem: z.number().int().nonnegative().optional(),
 });
@@ -35,9 +35,19 @@ const createChecklistSchema = z.object({
 });
 
 // ============================================================
+// SCHEMA DE VALIDAÇÃO PARA FILTROS E PAGINAÇÃO DO GET
+// ============================================================
+const listarChecklistsQuerySchema = z.object({
+  ativo: z.enum(['true', 'false']).optional(),
+  categoria: z.string().optional(),
+  q: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+// ============================================================
 // HELPER: normaliza o retorno para que o front sempre encontre
-// o campo `itens` (C10). Mantém `ChecklistItem` para compatibilidade
-// com telas antigas que ainda leem o nome do model Prisma.
+// o campo `itens` (C10).
 // ============================================================
 function normalizarChecklist(raw: any) {
   const itens = Array.isArray(raw?.ChecklistItem) ? raw.ChecklistItem : [];
@@ -47,38 +57,75 @@ function normalizarChecklist(raw: any) {
   return {
     ...raw,
     itens,
-    ChecklistItem: itens, // compatibilidade com telas legadas
+    ChecklistItem: itens,
     _count: { execucoes: totalExecucoes },
   };
 }
 
 // ============================================================
-// GET — Listar checklists da empresa
+// GET — Listar checklists da empresa (com filtros e paginação)
 // ============================================================
 export async function GET(req: NextRequest) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para ver checklists
     if (!checkPermission(user, 'checklist', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    const checklists = await prisma.checklist.findMany({
-      where: { empresa_id: user.empresa_id },
-      include: {
-        ChecklistItem: { orderBy: { ordem: 'asc' } },
-        _count: { select: { ChecklistExecucao: true } },
-      },
-      orderBy: { created_at: 'desc' },
+    const { searchParams } = new URL(req.url);
+    const parsed = listarChecklistsQuerySchema.parse({
+      ativo: searchParams.get('ativo'),
+      categoria: searchParams.get('categoria'),
+      q: searchParams.get('q'),
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
     });
 
-    // C10: padroniza o campo `itens` e `_count.execucoes`
-    const normalizados = checklists.map(normalizarChecklist);
+    const { ativo, categoria, q, page, limit } = parsed;
 
-    return NextResponse.json(normalizados);
+    const where: any = { empresa_id: user.empresa_id };
+
+    if (ativo !== undefined) {
+      where.ativo = ativo === 'true';
+    }
+    if (categoria) {
+      where.categoria = categoria;
+    }
+    if (q) {
+      where.nome = { contains: q.trim() };
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.checklist.findMany({
+        where,
+        include: {
+          ChecklistItem: { orderBy: { ordem: 'asc' } },
+          _count: { select: { ChecklistExecucao: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.checklist.count({ where }),
+    ]);
+
+    const normalizados = items.map(normalizarChecklist);
+
+    return NextResponse.json({
+      items: normalizados,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
     return apiError(error, 'CHECKLIST', 'Erro ao buscar checklists');
   }
 }
@@ -91,7 +138,6 @@ export async function POST(req: NextRequest) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para criar
     if (!checkPermission(user, 'checklist', 'criar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -133,7 +179,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Auditoria
     await createAuditLog({
       modulo: 'CHECKLIST',
       acao: 'CRIAR',
@@ -160,7 +205,6 @@ export async function POST(req: NextRequest) {
       user.name
     );
 
-    // Devolve normalizado (com `itens`)
     return NextResponse.json(normalizarChecklist(createdChecklist), { status: 201 });
   } catch (error: any) {
     return apiError(error, 'CHECKLIST', 'Erro ao criar checklist');
