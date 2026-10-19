@@ -8,25 +8,22 @@ import { createAuditLog } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import bcrypt from 'bcryptjs';
 
+// ============================================================
+// SCHEMA
+// ============================================================
 const updateUserSchema = z.object({
   name: z.string().min(2, 'Nome muito curto').max(200).trim().optional(),
-  email: z
-    .string()
-    .email('E-mail inválido')
-    .max(200)
-    .trim()
-    .toLowerCase()
-    .optional(),
+  email: z.string().email('E-mail inválido').max(200).trim().toLowerCase().optional(),
   password: z
     .string()
     .min(8, 'Senha deve ter pelo menos 8 caracteres')
     .max(200)
+    .refine((v) => /[A-Za-z]/.test(v), 'Senha deve conter ao menos uma letra')
+    .refine((v) => /\d/.test(v), 'Senha deve conter ao menos um número')
     .optional(),
-  role: z
-    .enum(['ADMIN', 'LIDER', 'MECANICO', 'FINANCEIRO', 'ESTOQUISTA'])
-    .optional(),
+  role: z.enum(['ADMIN', 'LIDER', 'MECANICO', 'FINANCEIRO', 'ESTOQUISTA']).optional(),
   especialidade: z.string().max(200).optional().nullable(),
-  comissao: z.coerce.number().nonnegative().optional(),
+  comissao: z.coerce.number().nonnegative().max(100, 'Comissão não pode exceder 100%').optional(),
 });
 
 // ============================================================
@@ -41,9 +38,11 @@ export async function GET(
     const { user: currentUser, error } = await requireAuth();
     if (error) return error;
 
-    // GET: autoriza se for o próprio usuário OU se tem permissão de visualizar
-    // (corrigido: antes usava 'ler', que não existe no RBAC)
-    const isSelf = currentUser?.id === id;
+    if (!currentUser?.empresa_id) {
+      return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 });
+    }
+
+    const isSelf = currentUser.id === id;
     const canView = checkPermission(currentUser, 'usuarios', 'visualizar');
 
     if (!canView && !isSelf) {
@@ -89,7 +88,11 @@ export async function PUT(
     const { user: currentUser, error } = await requireAuth();
     if (error) return error;
 
-    const isSelf = currentUser?.id === id;
+    if (!currentUser?.empresa_id) {
+      return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 });
+    }
+
+    const isSelf = currentUser.id === id;
     const canEdit = checkPermission(currentUser, 'usuarios', 'editar');
 
     if (!canEdit && !isSelf) {
@@ -108,13 +111,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
     }
 
-    // Correção (M08): bloquear troca de senha própria por este endpoint.
-    // A troca correta é via /api/usuario, que exige senha_atual.
+    // Bloqueia troca de senha própria por este endpoint (use /api/usuario)
     if (body.password && isSelf) {
       return NextResponse.json(
         {
-          error:
-            'Para trocar sua própria senha, use o menu "Meu Perfil" (exige senha atual).',
+          error: 'Para trocar sua própria senha, use o menu "Meu Perfil" (exige senha atual).',
         },
         { status: 400 }
       );
@@ -125,7 +126,6 @@ export async function PUT(
     if (body.name !== undefined) updateData.name = body.name;
 
     if (body.email !== undefined && body.email !== antes.email) {
-      // Verifica duplicidade dentro da empresa antes de tentar
       const outro = await prisma.user.findFirst({
         where: {
           email: body.email,
@@ -147,20 +147,60 @@ export async function PUT(
       updateData.especialidade = body.especialidade;
     }
 
+    // ---------------------------------------------------------
+    // RESET DE SENHA POR ADMIN — invalida sessões antigas
+    // ---------------------------------------------------------
+    let senhaResetada = false;
     if (body.password && !isSelf) {
       updateData.password_hash = await bcrypt.hash(body.password, 10);
+      updateData.token_version = (antes.token_version ?? 0) + 1; // ✅ CRÍTICO
+      senhaResetada = true;
     }
 
-    // Apenas quem tem permissão pode mudar role e comissão
+    // ---------------------------------------------------------
+    // ROLE e COMISSÃO — apenas com permissão de edição
+    // + TRAVA DE PRIVILÉGIO: só ADMIN mexe com papéis ADMIN
+    // ---------------------------------------------------------
     if (canEdit) {
       if (body.role !== undefined) {
-        // Correção: não permitir que um ADMIN rebaixe a si mesmo
+        // Não permite auto-alteração de papel (mantido do original)
         if (isSelf && body.role !== antes.role) {
           return NextResponse.json(
             { error: 'Você não pode alterar seu próprio papel (role).' },
             { status: 400 }
           );
         }
+
+        // ✅ NON-ADMIN não pode promover ninguém a ADMIN
+        if (body.role === 'ADMIN' && currentUser.role !== 'ADMIN') {
+          log(
+            'WARN',
+            'USUARIOS',
+            'Tentativa de promoção a ADMIN por não-ADMIN bloqueada',
+            { targetUserId: id, userId: currentUser.id },
+            currentUser.name
+          );
+          return NextResponse.json(
+            { error: 'Apenas administradores podem promover usuários a administrador.' },
+            { status: 403 }
+          );
+        }
+
+        // ✅ NON-ADMIN não pode alterar o papel de um ADMIN
+        if (antes.role === 'ADMIN' && body.role !== 'ADMIN' && currentUser.role !== 'ADMIN') {
+          log(
+            'WARN',
+            'USUARIOS',
+            'Tentativa de rebaixar ADMIN por não-ADMIN bloqueada',
+            { targetUserId: id, userId: currentUser.id },
+            currentUser.name
+          );
+          return NextResponse.json(
+            { error: 'Apenas administradores podem alterar o papel de outro administrador.' },
+            { status: 403 }
+          );
+        }
+
         updateData.role = body.role;
       }
       if (body.comissao !== undefined) updateData.comissao = body.comissao;
@@ -175,8 +215,12 @@ export async function PUT(
 
     let user;
     try {
+      // ✅ Defense in Depth: empresa_id no where
       user = await prisma.user.update({
-        where: { id },
+        where: {
+          id,
+          empresa_id: currentUser.empresa_id,
+        },
         data: updateData,
         select: {
           id: true,
@@ -190,8 +234,9 @@ export async function PUT(
       });
     } catch (err: any) {
       if (err?.code === 'P2002') {
+        // Enquanto A24 não estiver migrado, o índice pode ser global
         return NextResponse.json(
-          { error: 'Este e-mail já está cadastrado no sistema' },
+          { error: 'Este e-mail já está em uso. Verifique a lista de usuários.' },
           { status: 409 }
         );
       }
@@ -212,26 +257,25 @@ export async function PUT(
         role: antes.role,
         especialidade: antes.especialidade,
         comissao: antes.comissao,
-        senha_alterada: !!body.password,
       },
-      dados_depois: user,
+      dados_depois: {
+        ...user,
+        senha_resetada: senhaResetada,
+      },
     });
 
     log(
       'INFO',
       'USUARIOS',
       'Usuário atualizado',
-      { id, senha_alterada: !!body.password },
+      { id, senha_resetada: senhaResetada },
       currentUser?.name
     );
 
     return NextResponse.json(user);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues[0].message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
     return apiError(error, 'USUARIOS', 'Erro ao atualizar usuário');
   }
@@ -249,11 +293,15 @@ export async function DELETE(
     const { user: currentUser, error } = await requireAuth();
     if (error) return error;
 
+    if (!currentUser?.empresa_id) {
+      return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 });
+    }
+
     if (!checkPermission(currentUser, 'usuarios', 'excluir')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
-    if (currentUser?.id === id) {
+    if (currentUser.id === id) {
       return NextResponse.json(
         { error: 'Você não pode excluir seu próprio usuário' },
         { status: 403 }
@@ -270,8 +318,22 @@ export async function DELETE(
       return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
     }
 
-    // Verificar dependências antes de tentar excluir.
-    // Evita 500 causado por violação de FK (EventoAgenda.usuario_id é obrigatório).
+    // ✅ TRAVA DE PRIVILÉGIO: NON-ADMIN não pode excluir ADMIN
+    if (antes.role === 'ADMIN' && currentUser.role !== 'ADMIN') {
+      log(
+        'WARN',
+        'USUARIOS',
+        'Tentativa de excluir ADMIN por não-ADMIN bloqueada',
+        { targetUserId: id, userId: currentUser.id },
+        currentUser.name
+      );
+      return NextResponse.json(
+        { error: 'Apenas administradores podem excluir outros administradores.' },
+        { status: 403 }
+      );
+    }
+
+    // Verificar dependências antes de tentar excluir
     const [osCount, eventosUsuarioCount, eventosMecanicoCount] = await Promise.all([
       prisma.ordemServico.count({ where: { mecanico_id: id } }),
       prisma.eventoAgenda.count({ where: { usuario_id: id } }),
@@ -288,7 +350,13 @@ export async function DELETE(
       );
     }
 
-    await prisma.user.delete({ where: { id } });
+    // ✅ Defense in Depth: empresa_id no where
+    await prisma.user.delete({
+      where: {
+        id,
+        empresa_id: currentUser.empresa_id,
+      },
+    });
 
     await createAuditLog({
       modulo: 'USUARIOS',
@@ -305,7 +373,7 @@ export async function DELETE(
       },
     });
 
-    log('INFO', 'USUARIOS', 'Usuário excluído', { id }, currentUser?.name);
+    log('INFO', 'USUARIOS', 'Usuário excluído', { id, role: antes.role }, currentUser?.name);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
