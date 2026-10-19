@@ -6,7 +6,7 @@ import {
   ChevronLeft, Save, Package, Tag, 
   BarChart3, Warehouse, Info, ArrowLeft, Scale, ArrowLeftRight, Check,
   DollarSign, Hash, Layers, MapPin, 
-  TrendingUp, AlertCircle, Loader2
+  TrendingUp, AlertCircle, Loader2, ChevronDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -106,7 +106,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
   const precoCusto = Number(watch('preco_custo'));
   const precoVenda = Number(watch('preco_venda'));
   const permiteFracionado = watch('permiteFracionado');
-  const margem = precoCusto && precoVenda ? ((precoVenda / precoCusto - 1) * 100).toFixed(1) : '0';
+  const margem = precoCusto > 0 && precoVenda > 0 ? ((precoVenda / precoCusto - 1) * 100).toFixed(1) : '0.0';
 
   const onSubmit = async (data: any) => {
     setLoading(true);
@@ -135,7 +135,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
   if (fetching) return (
     <div className="flex-1 flex flex-col items-center justify-center p-20 space-y-4">
        <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
-       <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-600 italic">ACESSANDO TERMINAL PARA EDIÇÃO...</p>
+       <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-500 italic">ACESSANDO TERMINAL PARA EDIÇÃO...</p>
     </div>
   );
 
@@ -147,7 +147,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
         </Link>
         <div className="space-y-0.5">
           <h1 className="text-2xl font-black text-white uppercase tracking-tighter italic">Editar Registro Técnico</h1>
-          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.3em]">Módulo de Almoxarifado Digital</p>
+          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em]">Módulo de Almoxarifado Digital</p>
         </div>
       </div>
 
@@ -162,7 +162,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Atualizar Especificações</h2>
-                    <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Modificação de Dados em Lote</p>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Modificação de Dados em Lote</p>
                   </div>
                </div>
 
@@ -173,7 +173,8 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                       <Hash size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700" />
                       <input 
                         {...register('codigo')}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700"
+                        placeholder="EX: SKU-001"
                       />
                     </div>
                     {errors.codigo && <p className="text-[10px] text-red-500 font-bold italic px-1">{errors.codigo.message}</p>}
@@ -185,7 +186,8 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                       <Tag size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700" />
                       <input 
                         {...register('fabricante')}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black placeholder:text-zinc-700"
+                        placeholder="EX: BOSCH"
                       />
                     </div>
                   </div>
@@ -194,7 +196,8 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                     <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Descrição Completa</label>
                     <input 
                       {...register('descricao')}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black placeholder:text-zinc-700"
+                      placeholder="EX: FILTRO DE ÓLEO MOTOR"
                     />
                     {errors.descricao && <p className="text-[10px] text-red-500 font-bold italic px-1">{errors.descricao.message}</p>}
                   </div>
@@ -205,12 +208,13 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                       <Layers size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 pointer-events-none" />
                       <select 
                         {...register('categoria')}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-[10px] text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest appearance-none cursor-pointer"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-10 text-[10px] text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest appearance-none cursor-pointer"
                       >
                         {categorias.map(cat => (
                           <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
                         ))}
                       </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
                     </div>
                   </div>
 
@@ -220,7 +224,8 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                       <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700" />
                       <input 
                         {...register('localizacao')}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black placeholder:text-zinc-700"
+                        placeholder="EX: PRATELEIRA A2"
                       />
                     </div>
                   </div>
@@ -234,7 +239,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Unidades de Medida & Conversão</h2>
-                    <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Faturamento e Controle de Frações Avançados</p>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Faturamento e Controle de Frações Avançados</p>
                   </div>
                </div>
 
@@ -261,7 +266,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                     <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Fator de Conversão (Multiplicador de Entrada)</label>
                     <div className="relative">
                       <ArrowLeftRight size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700" />
-                      <input type="number" step="any" {...register('fatorConversao')} placeholder="1.0" className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white font-mono focus:border-orange-500 outline-none transition" />
+                      <input type="number" step="any" {...register('fatorConversao')} placeholder="1.0" className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-6 text-xs text-white font-mono focus:border-orange-500 outline-none transition placeholder:text-zinc-700" />
                     </div>
                   </div>
 
@@ -284,7 +289,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Níveis de Inventário</h2>
-                    <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Ajuste de Saldo e Alertas</p>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Ajuste de Saldo e Alertas</p>
                   </div>
                </div>
 
@@ -294,7 +299,8 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                     <input 
                       type="number" 
                       {...register('quantidade')} 
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-white text-sm focus:border-orange-500 font-mono outline-none transition" 
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-white text-sm focus:border-orange-500 font-mono outline-none transition placeholder:text-zinc-700" 
+                      placeholder="0"
                     />
                   </div>
 
@@ -303,7 +309,8 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                     <input 
                       type="number" 
                       {...register('estoque_minimo')} 
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-white text-sm focus:border-orange-500 font-mono outline-none transition" 
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-white text-sm focus:border-orange-500 font-mono outline-none transition placeholder:text-zinc-700" 
+                      placeholder="0"
                     />
                   </div>
                </div>
@@ -319,7 +326,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Recalcular Preços</h2>
-                    <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Atualização de Mark-up</p>
+                    <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Atualização de Mark-up</p>
                   </div>
                </div>
 
@@ -370,7 +377,7 @@ export default function EditarItemEstoquePage({ params }: { params: Promise<{ id
                <button 
                   type="button"
                   onClick={() => router.back()}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-600 hover:text-white py-6 rounded-[2.5rem] font-black text-[10px] uppercase tracking-[0.4em] transition-colors text-center"
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-white py-6 rounded-[2.5rem] font-black text-[10px] uppercase tracking-[0.4em] transition-colors text-center"
                >
                   CANCELAR ALTERAÇÕES
                </button>
