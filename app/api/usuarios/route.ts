@@ -1,42 +1,61 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
 import { createAuditLog } from '@/lib/audit';
 
+// ============================================================
+// SCHEMAS
+// ============================================================
 const userSchema = z.object({
   name: z.string().min(2, 'Nome muito curto').max(200).trim(),
   email: z.string().email('E-mail inválido').max(200).trim().toLowerCase(),
-  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(200),
+  password: z
+    .string()
+    .min(8, 'Senha deve ter pelo menos 8 caracteres')
+    .max(200)
+    .refine((v) => /[A-Za-z]/.test(v), 'Senha deve conter ao menos uma letra')
+    .refine((v) => /\d/.test(v), 'Senha deve conter ao menos um número'),
   role: z
     .enum(['ADMIN', 'LIDER', 'MECANICO', 'FINANCEIRO', 'ESTOQUISTA'])
     .default('MECANICO'),
   especialidade: z.string().max(200).optional().nullable(),
-  comissao: z.coerce.number().nonnegative().optional().default(0),
+  comissao: z.coerce.number().nonnegative().max(100, 'Comissão não pode exceder 100%').optional().default(0),
+});
+
+const listarUsuariosQuerySchema = z.object({
+  q: z.string().optional().transform((v) => v?.slice(0, 100) || ''),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
 // ============================================================
-// GET — Listar usuários da empresa
+// GET — Listar usuários
 // ============================================================
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // C05: exige permissão para ver a lista
     if (!checkPermission(user, 'usuarios', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const q = (searchParams.get('q') || '').slice(0, 100);
+    const parsed = listarUsuariosQuerySchema.parse({
+      q: searchParams.get('q') || undefined,
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+    });
 
-    const where: any = {
-      empresa_id: user.empresa_id,
-    };
+    const { q, page, limit } = parsed;
+    const skip = (page - 1) * limit;
+
+    const where: any = { empresa_id: user.empresa_id };
     if (q) {
       where.OR = [
         { name: { contains: q } },
@@ -44,13 +63,6 @@ export async function GET(request: Request) {
         { especialidade: { contains: q } },
       ];
     }
-
-    // M06: limita tamanho da página
-    const rawPage = parseInt(searchParams.get('page') || '1', 10);
-    const rawLimit = parseInt(searchParams.get('limit') || '10', 10);
-    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-    const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
-    const skip = (page - 1) * limit;
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
@@ -75,25 +87,20 @@ export async function GET(request: Request) {
       items: users,
       total,
       page,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
-    // B05: retorna 500 em vez de lista vazia silenciosa
-    log(
-      'ERROR',
-      'USUARIOS',
-      'Erro ao listar usuários',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json({ error: 'Erro ao listar usuários' }, { status: 500 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+    }
+    return apiError(error, 'USUARIOS', 'Erro ao listar usuários');
   }
 }
 
 // ============================================================
 // POST — Criar usuário
 // ============================================================
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { error, user: currentUser } = await requireAuth();
     if (error) return error;
@@ -104,10 +111,23 @@ export async function POST(request: Request) {
 
     const body = userSchema.parse(await request.json());
 
-    // A24 (parcial): verifica e-mail DENTRO da empresa.
-    // NOTA: o schema.prisma ainda tem `email @unique` GLOBAL. Isso significa
-    // que o mesmo e-mail ainda NÃO pode existir em duas empresas diferentes.
-    // Corrigir isso requer migration para `@@unique([email, empresa_id])`.
+    // ✅ NOVO: previne escalada de privilégio — só ADMIN pode criar ADMIN
+    if (body.role === 'ADMIN' && currentUser.role !== 'ADMIN') {
+      log(
+        'WARN',
+        'USUARIOS',
+        'Tentativa de criar ADMIN por não-ADMIN bloqueada',
+        { userId: currentUser.id, tentouCriar: body.email },
+        currentUser.name
+      );
+      return NextResponse.json(
+        { error: 'Apenas administradores podem criar outros administradores' },
+        { status: 403 }
+      );
+    }
+
+    // Verifica e-mail na empresa
+    // (após a migration A24, o índice será @@unique([email, empresa_id]))
     const existing = await prisma.user.findFirst({
       where: { email: body.email, empresa_id: currentUser.empresa_id },
       select: { id: true },
@@ -125,7 +145,7 @@ export async function POST(request: Request) {
     try {
       newUser = await prisma.user.create({
         data: {
-          id: crypto.randomUUID(),
+          id: globalThis.crypto.randomUUID(),
           empresa_id: currentUser.empresa_id,
           name: body.name,
           email: body.email,
@@ -138,14 +158,27 @@ export async function POST(request: Request) {
         select: { id: true, name: true, email: true, role: true },
       });
     } catch (err: any) {
-      // A24 (parcial): se o e-mail já existe em OUTRA empresa, o banco rejeita
-      // com P2002 porque o índice ainda é global. Mensagem clara para o usuário.
       if (err?.code === 'P2002') {
-  return NextResponse.json(
-    { error: 'Este e-mail já está cadastrado nesta empresa' },
-    { status: 409 }
-  );
-}
+        // ⚠️ Enquanto o schema tiver `email @unique` GLOBAL (A24 pendente),
+        // este P2002 pode indicar e-mail em OUTRA empresa. Mensagem neutra
+        // para não expor informação (segurança) e para ser precisa.
+        log(
+          'WARN',
+          'USUARIOS',
+          'Race condition ou e-mail duplicado ao criar usuário',
+          {
+            email: body.email,
+            empresa_id: currentUser.empresa_id,
+            target: err?.meta?.target,
+          },
+          currentUser.name
+        );
+
+        return NextResponse.json(
+          { error: 'Este e-mail já está em uso. Verifique a lista de usuários.' },
+          { status: 409 }
+        );
+      }
       throw err;
     }
 
@@ -175,18 +208,8 @@ export async function POST(request: Request) {
     return NextResponse.json(newUser, { status: 201 });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues[0].message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
-    log(
-      'ERROR',
-      'USUARIOS',
-      'Erro ao criar usuário',
-      { error: error?.message },
-      'sistema'
-    );
-    return NextResponse.json({ error: 'Erro ao criar usuário' }, { status: 500 });
+    return apiError(error, 'USUARIOS', 'Erro ao criar usuário');
   }
 }
