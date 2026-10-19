@@ -1,11 +1,6 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
+// Rota legada: /financeiro/nova → /financeiro/lancamento (redirect permanente).
 export default function NovaRedirect() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace('/financeiro/lancamento');
-  }, [router]);
-  return null;
+  redirect('/financeiro/lancamento');
 }
