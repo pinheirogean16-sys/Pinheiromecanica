@@ -1,10 +1,27 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, ChevronLeft } from 'lucide-react';
+import { Printer, ChevronLeft, AlertCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { BRANDING } from '@/lib/branding';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
+
+// ============================================================
+// HELPER DE FORMATAÇÃO (fora do componente — evita recriação)
+// ============================================================
+function formatCurrency(val: number | null | undefined) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+}
+
+function formatDateSafe(dateStr: string | null | undefined) {
+  if (!dateStr) return 'N/A';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('pt-BR');
+}
 
 function RelatorioPrintContent() {
   const searchParams = useSearchParams();
@@ -12,50 +29,68 @@ function RelatorioPrintContent() {
 
   const [data, setData] = useState<any>(null);
   const [analise, setAnalise] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchData = async () => {
+      setLoading(true);
+      setError(false);
       try {
-        setLoading(true);
-        // A31: usa a rota pública (acessível a todos os papéis).
-        const companyRes = await fetch('/api/configuracoes/empresa/publico');
-        if (companyRes.ok) {
-          const d = await companyRes.json();
-          if (d && Object.keys(d).length > 0) {
-            setCompany(d);
-          }
-        }
+        // A31: usa a rota pública (acessível a todos os papéis)
+        const [companyData, summaryData, analiseData] = await Promise.all([
+          apiFetch<any>('/api/configuracoes/empresa/publico', { signal: controller.signal }).catch(() => null),
+          apiFetch<any>('/api/financeiro/resumo', { signal: controller.signal }).catch(() => null),
+          apiFetch<any>('/api/financeiro/analise', { signal: controller.signal }).catch(() => null),
+        ]);
 
-        const summaryRes = await fetch('/api/financeiro/resumo', { credentials: 'include' });
-        if (summaryRes.ok) {
-          setData(await summaryRes.json());
+        if (companyData && Object.keys(companyData).length > 0) {
+          setCompany(companyData);
         }
+        if (summaryData) setData(summaryData);
+        if (analiseData) setAnalise(analiseData);
 
-        const analiseRes = await fetch('/api/financeiro/analise', { credentials: 'include' });
-        if (analiseRes.ok) {
-          setAnalise(await analiseRes.json());
+        // Se nenhum dos 3 retornou dados, consideramos erro
+        if (!summaryData && !analiseData && !companyData) {
+          setError(true);
         }
-      } catch {
-        // Silencioso
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        setError(true);
+        handleApiError(err, { defaultMessage: 'Erro ao compilar relatório financeiro' });
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
+    return () => controller.abort();
   }, []);
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
-  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-10 font-mono text-xs">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 mb-4"></div>
+        <div className="w-8 h-8 border-4 border-zinc-900/20 border-t-zinc-900 rounded-full animate-spin mb-4" />
         <p className="uppercase tracking-widest font-black text-zinc-500">Compilando Relatório Gerencial...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-10 font-mono text-xs gap-4">
+        <AlertCircle className="w-12 h-12 text-red-500" />
+        <p className="uppercase tracking-widest font-black text-zinc-900">Falha ao compilar relatório</p>
+        <p className="text-zinc-500 text-center max-w-md">Verifique sua conexão e tente novamente. Se o problema persistir, contate o suporte.</p>
+        <Link 
+          href="/financeiro" 
+          className="px-6 py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition"
+        >
+          Voltar ao Painel
+        </Link>
       </div>
     );
   }
@@ -173,7 +208,7 @@ function RelatorioPrintContent() {
                 <tbody className="divide-y divide-zinc-200">
                   {analise?.recorrentes?.map((rec: any, idx: number) => (
                     <tr key={idx}>
-                      <td className="p-2 border-r border-zinc-300">{rec.data ? new Date(rec.data).toLocaleDateString() : 'N/A'}</td>
+                      <td className="p-2 border-r border-zinc-300">{formatDateSafe(rec.data)}</td>
                       <td className="p-2 border-r border-zinc-300 font-bold uppercase">{rec.descricao}</td>
                       <td className="p-2 border-r border-zinc-300 uppercase">{rec.categoria || 'Nenhum'}</td>
                       <td className="p-2 border-r border-zinc-300 uppercase">{rec.forma_pagamento || 'Fato'}</td>
@@ -182,6 +217,11 @@ function RelatorioPrintContent() {
                       </td>
                     </tr>
                   ))}
+                  {(!analise?.recorrentes || analise.recorrentes.length === 0) && (
+                    <tr>
+                      <td colSpan={5} className="p-4 text-center italic uppercase text-zinc-500">Nenhum lançamento no período</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -267,17 +307,17 @@ function RelatorioPrintContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-200">
-                  {analise.inadimplencia.lista.length === 0 ? (
+                  {analise.inadimplencia?.lista?.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="p-4 text-center italic uppercase">Sem contas vencidas registradas em carteira</td>
                     </tr>
                   ) : (
-                    analise.inadimplencia.lista.map((ln: any, idx: number) => (
+                    analise.inadimplencia?.lista?.map((ln: any, idx: number) => (
                       <tr key={idx}>
                         <td className="p-2 border-r border-zinc-300 font-bold uppercase">{ln.cliente?.nome || 'Não definido'}</td>
                         <td className="p-2 border-r border-zinc-300 font-mono text-[9px]">{ln.cliente?.cpf_cnpj || '---'}</td>
                         <td className="p-2 border-r border-zinc-300">{ln.cliente?.telefone || '---'}</td>
-                        <td className="p-2 border-r border-zinc-300">{ln.data_vencimento ? new Date(ln.data_vencimento).toLocaleDateString() : 'N/A'}</td>
+                        <td className="p-2 border-r border-zinc-300">{formatDateSafe(ln.data_vencimento)}</td>
                         <td className="p-2 text-right font-bold text-red-700">{formatCurrency(ln.valor)}</td>
                       </tr>
                     ))
@@ -286,13 +326,13 @@ function RelatorioPrintContent() {
               </table>
               <div className="text-right font-black text-xs space-y-1">
                 <span className="text-[10px] text-zinc-500 uppercase">Valores Totais Líquidos em Aberto: </span>
-                <span className="text-red-700">{formatCurrency(analise.inadimplencia.total)}</span>
+                <span className="text-red-700">{formatCurrency(analise.inadimplencia?.total || 0)}</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* RODAPÉ — M25: removido QR Code fake */}
+        {/* RODAPÉ */}
         <div className="pt-8 border-t border-black grid grid-cols-2 gap-12 items-end text-center uppercase text-[9px]">
           <div className="space-y-6">
             <span className="font-mono text-zinc-500 font-black">Auditado por</span>
@@ -321,6 +361,7 @@ export default function RelatorioPrintPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-10 font-mono text-xs">
+        <Loader2 className="w-8 h-8 animate-spin text-zinc-900 mb-4" />
         <p className="uppercase tracking-widest font-black text-zinc-500">Inicializando ambiente de suspensão...</p>
       </div>
     }>
