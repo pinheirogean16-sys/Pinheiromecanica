@@ -4,7 +4,11 @@ import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 
+// ============================================================
+// GET — Buscar execução de checklist por ID
+// ============================================================
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,8 +22,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    console.error('GET EXECUCAO ID', id);
-    console.error('[GET EXECUCAO] PASSO 1 - Antes do findFirst');
+
     const execucao = await prisma.checklistExecucao.findFirst({
       where: { 
         id,
@@ -43,14 +46,11 @@ export async function GET(
       }
     });
 
-    console.error('[GET EXECUCAO] PASSO 2 - Após findUnique');
-    console.error('[GET EXECUCAO] PASSO 3', !!execucao);
-
     if (!execucao) {
       return NextResponse.json({ error: 'Execução não encontrada' }, { status: 404 });
     }
 
-    console.error('[GET EXECUCAO] PASSO 4 - Mapeamento');
+    // Mapeamento para o frontend (compatível com a tela de resultado)
     const mappedExecucao = {
       ...execucao,
       checklist: execucao.Checklist ? {
@@ -71,18 +71,16 @@ export async function GET(
       ChecklistFoto: undefined
     };
 
-    console.error('[GET EXECUCAO] PASSO 5 - Mapeamento concluído');
-    console.error('[GET EXECUCAO] PASSO 6 - Retornando JSON');
-
     return NextResponse.json(mappedExecucao);
   } catch (error: any) {
-    console.error('GET EXECUCAO FULL ERROR', error);
-    console.error('GET EXECUCAO MESSAGE', error?.message);
-    console.error('GET EXECUCAO STACK', error?.stack);
-    return NextResponse.json({ error: error?.message || 'Erro ao buscar execução' }, { status: 500 });
+    // Não vaza detalhes internos para o cliente
+    return apiError(error, 'CHECKLIST_EXECUCAO', 'Erro ao buscar execução');
   }
 }
 
+// ============================================================
+// DELETE — Excluir execução de checklist
+// ============================================================
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -96,18 +94,25 @@ export async function DELETE(
     }
 
     const { id } = await params;
+
+    // Verifica se a execução existe e pertence à empresa
     const antes = await prisma.checklistExecucao.findFirst({ 
       where: { 
         id,
         empresa_id: user.empresa_id 
       } 
     });
+
     if (!antes) {
       return NextResponse.json({ error: 'Execução não encontrada' }, { status: 404 });
     }
 
+    // Exclusão com redundância de segurança: empresa_id no where
     await prisma.checklistExecucao.delete({
-      where: { id }
+      where: { 
+        id,
+        empresa_id: user.empresa_id // 👈 Redundância de segurança
+      }
     });
 
     await createAuditLog({
@@ -116,14 +121,14 @@ export async function DELETE(
       entidade: 'ChecklistExecucao',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id,
       dados_antes: antes
     });
 
     log('INFO', 'CHECKLIST', 'Execução de checklist excluída', { id }, user?.name);
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    log('ERROR', 'CHECKLIST', 'Delete execucao error', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao excluir execução' }, { status: 500 });
+  } catch (error: any) {
+    return apiError(error, 'CHECKLIST_EXECUCAO', 'Erro ao excluir execução');
   }
 }
