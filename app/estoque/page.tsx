@@ -6,7 +6,7 @@ import {
   Package, Search, Plus, AlertTriangle, 
   Edit, Trash2, Eye, ArrowRightLeft,
   PlusCircle, MinusCircle, LayoutGrid, List as ListIcon,
-  Warehouse, BarChart3, TrendingUp, X, Loader2
+  Warehouse, BarChart3, TrendingUp, X, Loader2, ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -29,14 +29,12 @@ interface Peca {
   unidadeMedida?: string;
 }
 
-// Função de status do estoque movida para fora do componente (evita recriação)
 const getEstoqueStatus = (qnt: number, min: number) => {
   if (qnt <= 0) return { label: 'CRÍTICO', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/20' };
   if (qnt <= min) return { label: 'BAIXO', color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
   return { label: 'OK', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/20' };
 };
 
-// Componente de Linha Memoizado
 const PecaRow = memo(({ 
   peca, 
   handleQuickAdjust, 
@@ -88,12 +86,10 @@ export default function EstoquePage() {
   const [analiseData, setAnaliseData] = useState<any>(null);
   const [analiseLoading, setAnaliseLoading] = useState(false);
   
-  // ✅ CORRIGIDO: totalPages inicia em 1
   const [data, setData] = useState<{ items: Peca[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   
-  // Estado para o modal de exclusão
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingItem, setDeletingItem] = useState<{ id: string, descricao: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -112,7 +108,7 @@ export default function EstoquePage() {
       const d = await apiFetch('/api/estoque/analise');
       setAnaliseData(d);
     } catch (e) {
-      // Silencioso: o erro é tratado no estado de análise
+      // silencioso
     } finally {
       setAnaliseLoading(false);
     }
@@ -148,7 +144,7 @@ export default function EstoquePage() {
       
       const items = Array.isArray(result) ? result : (result.items || []);
       const total = typeof result.total === 'number' ? result.total : items.length;
-      const totalPages = Math.max(1, result.totalPages || 1); // ✅ mínimo 1
+      const totalPages = Math.max(1, result.totalPages || 1);
       
       setData({ items, total, totalPages });
     } catch (err: any) {
@@ -171,7 +167,7 @@ export default function EstoquePage() {
         foraEstoque: m.foraEstoque || 0,
       });
     } catch (e) {
-      // Silencioso: as métricas são atualizadas periodicamente
+      // silencioso
     }
   }, []);
 
@@ -195,7 +191,6 @@ export default function EstoquePage() {
       .catch(() => setCategorias([]));
   }, []);
 
-  // ✅ CRÍTICO: Corrigido para usar o endpoint de movimentação ao invés de PUT de peça
   const handleQuickAdjust = async (id: string, quantidade: number, operacao: 'add' | 'remove') => {
     try {
       await apiFetch('/api/estoque/movimentacao', {
@@ -211,7 +206,6 @@ export default function EstoquePage() {
       
       toast.success(`Estoque ${operacao === 'add' ? 'adicionado' : 'removido'} com sucesso!`);
       
-      // Atualiza localmente para feedback instantâneo, mas busca do banco em background para garantir sync
       setData(prev => ({
         ...prev,
         items: prev.items.map(p => p.id === id ? { 
@@ -282,7 +276,6 @@ export default function EstoquePage() {
         </div>
       </div>
 
-      {/* Abas de Navegação */}
       <div className="flex border-b border-zinc-800 pb-px gap-6">
         <button
           onClick={() => setActiveSection('inventario')}
