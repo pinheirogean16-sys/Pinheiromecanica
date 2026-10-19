@@ -4,9 +4,16 @@ import bcrypt from 'bcryptjs';
 import { signToken } from '@/lib/auth';
 import { log } from '@/lib/logger';
 import { isRateLimited, resetRateLimit } from '@/lib/rate-limit';
+import { z } from 'zod';
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 5 * 60 * 1000;
+
+// Schema de validação de entrada
+const loginSchema = z.object({
+  email: z.string().email('E-mail inválido').transform(v => v.toLowerCase().trim()),
+  password: z.string().min(1, 'Senha obrigatória'),
+});
 
 function extrairIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -19,18 +26,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { email, password } = body;
+    
+    // Validação com zod
+    const parsed = loginSchema.parse(body);
+    const { email: emailNormalizado, password } = parsed;
 
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: 'Email e senha são obrigatórios' },
-        { status: 400 }
-      );
-    }
-
-    const emailNormalizado = String(email).toLowerCase().trim();
+    // Rate limit por email + ip
     const rateLimitKey = `login:${emailNormalizado}:${ip}`;
-
     const rateCheck = await isRateLimited(rateLimitKey, MAX_ATTEMPTS, WINDOW_MS);
 
     if (rateCheck.limited) {
@@ -50,13 +52,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ============================================================
-    // A24: e-mail agora é único POR EMPRESA, não global.
-    // Pode haver múltiplos usuários com o mesmo email (empresas diferentes).
-    // Estratégia: busca todos, itera com bcrypt.compare até achar o que casa.
-    // bcrypt.compare é a prova de timing; mesmo que dois usuários com mesmo
-    // email e senhas diferentes existam, só o certo autentica.
-    // ============================================================
+    // Busca todos os usuários com o e-mail (pode haver múltiplos, um por empresa)
     const candidatos = await prisma.user.findMany({
       where: { email: emailNormalizado },
     });
@@ -69,6 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
+    // Itera sobre os candidatos e verifica a senha
     let user: typeof candidatos[number] | null = null;
     for (const candidato of candidatos) {
       const ok = await bcrypt.compare(password, candidato.password_hash);
@@ -106,8 +103,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Reset do rate limit após login bem-sucedido
     await resetRateLimit(rateLimitKey);
 
+    // Gera o token JWT
     const token = await signToken({
       id: user.id,
       email: user.email,
@@ -129,11 +128,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Cookie seguro
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 8,
+      maxAge: 60 * 60 * 8, // 8 horas
       path: '/',
     });
 
@@ -141,6 +141,13 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error: any) {
+    // Tratamento de erro de validação do zod
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
     log('ERROR', 'AUTH', 'Erro interno no login', {
       error: error?.message,
       ip,
