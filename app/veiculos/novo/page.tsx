@@ -2,9 +2,9 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { 
-  ChevronLeft, Save, Car, User, 
-  Search, Check, PenTool as Tool, Calendar, Activity, Loader2, Wrench
+import {
+  ChevronLeft, Save, User,
+  PenTool as Tool, Calendar, Activity, Loader2, Wrench
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -12,22 +12,69 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { maskPlaca } from '@/lib/masks';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
+// ============================================================
+// CONSTANTES
+// ============================================================
+const ANO_MIN = 1900;
+const ANO_MAX = new Date().getFullYear() + 1;
+
+const EQUIPAMENTOS = [
+  'RETROESCAVADEIRA',
+  'ESCAVADEIRA_HIDRAULICA',
+  'PA_CARREGADEIRA',
+  'MOTONIVELADORA',
+  'ROLO_COMPACTADOR',
+  'TRATOR_ESTEIRA',
+  'VIBROACABADORA',
+  'FRESADORA',
+  'USINA_ASFALTO',
+  'EMPILHADEIRA',
+  'GUINDASTE',
+  'PERFURATRIZ',
+  'TRATOR_AGRICOLA',
+  'CAMINHAO_PIPA',
+  'CAMINHAO_MUNCK',
+  'EQUIPAMENTO_ASFALTO',
+];
+
+// ============================================================
+// SCHEMA DE VALIDAÇÃO
+// ============================================================
 const veiculoSchema = z.object({
   cliente_id: z.string().min(1, 'Selecione um proprietário'),
-  placa: z.string().min(7, 'Placa inválida').max(8),
-  modelo: z.string().min(2, 'Modelo obrigatório'),
-  marca: z.string().min(2, 'Marca obrigatória'),
-  ano: z.string(),
-  cor: z.string().min(1, 'Cor obrigatória'),
-  chassi: z.string().optional(),
+  placa: z
+    .string()
+    .min(7, 'Placa inválida (mínimo 7 caracteres)')
+    .max(8, 'Placa inválida (máximo 8 caracteres)')
+    .transform((v) => v.toUpperCase().trim()),
+  modelo: z.string().min(2, 'Modelo obrigatório').max(200, 'Modelo muito longo').trim(),
+  marca: z.string().min(2, 'Marca obrigatória').max(100, 'Marca muito longa').trim(),
+  // ✅ NOVO: ano com validação numérica (espelha backend)
+  ano: z
+    .string()
+    .min(1, 'Ano obrigatório')
+    .refine(
+      (v) => {
+        const n = Number(v);
+        return !isNaN(n) && Number.isInteger(n) && n >= ANO_MIN && n <= ANO_MAX;
+      },
+      `Ano deve estar entre ${ANO_MIN} e ${ANO_MAX}`
+    ),
+  // ⚠️ Campos não persistidos no banco (ver comentário no topo).
+  //    Aceitamos como opcionais para não bloquear o submit,
+  //    mas são descartados silenciosamente pelo backend.
+  cor: z.string().max(50).optional().nullable(),
+  chassi: z.string().max(50).optional().nullable(),
   quilometragem: z.string().optional(),
   horimetro_atual: z.string().optional(),
   tipo: z.enum([
-    'CAVALO_MECANICO', 
-    'CARRETA', 
-    'ONIBUS', 
-    'UTILITARIO', 
+    'CAVALO_MECANICO',
+    'CARRETA',
+    'ONIBUS',
+    'UTILITARIO',
     'CAMINHAO_LEVE',
     'CAMINHAO_PESADO',
     'CAMINHONETE',
@@ -48,49 +95,34 @@ const veiculoSchema = z.object({
     'CAMINHAO_PIPA',
     'CAMINHAO_MUNCK',
     'EQUIPAMENTO_ASFALTO',
-    'OUTROS'
+    'OUTROS',
   ]),
 });
 
-const EQUIPAMENTOS = [
-  'RETROESCAVADEIRA',
-  'ESCAVADEIRA_HIDRAULICA',
-  'PA_CARREGADEIRA',
-  'MOTONIVELADORA',
-  'ROLO_COMPACTADOR',
-  'TRATOR_ESTEIRA',
-  'VIBROACABADORA',
-  'FRESADORA',
-  'USINA_ASFALTO',
-  'EMPILHADEIRA',
-  'GUINDASTE',
-  'PERFURATRIZ',
-  'TRATOR_AGRICOLA',
-  'CAMINHAO_PIPA',
-  'CAMINHAO_MUNCK',
-  'EQUIPAMENTO_ASFALTO'
-];
-
 type VeiculoFormData = z.infer<typeof veiculoSchema>;
 
+// ============================================================
+// COMPONENTE
+// ============================================================
 function NovoVeiculoForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState<any[]>([]);
+  const [clientesLoading, setClientesLoading] = useState(true);
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
-    formState: { errors }
+    formState: { errors },
   } = useForm<VeiculoFormData>({
     resolver: zodResolver(veiculoSchema),
     defaultValues: {
       tipo: 'CAVALO_MECANICO',
       cliente_id: searchParams.get('cliente_id') || '',
-    }
+    },
   });
 
   const cliente_id = watch('cliente_id');
@@ -98,35 +130,68 @@ function NovoVeiculoForm() {
   const tipoSelecionado = watch('tipo');
   const isEquipamento = EQUIPAMENTOS.includes(tipoSelecionado || '');
 
+  // ============================================================
+  // ✅ CORRIGIDO: limit=1000 + apiFetch + AbortController
+  // ============================================================
   useEffect(() => {
-    fetch('/api/clientes', { credentials: 'include' })
-      .then(r => r.json())
-      .then(data => {
+    const controller = new AbortController();
+
+    apiFetch<any>('/api/clientes?limit=1000', { signal: controller.signal })
+      .then((data) => {
         const lista = Array.isArray(data) ? data : (data.items || []);
         setClientes(lista);
       })
-      .catch(() => setClientes([]));
-  }, []);
-
-  const onSubmit = async (data: VeiculoFormData) => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/veiculos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+      .catch((err: any) => {
+        if (err.name === 'AbortError') return;
+        handleApiError(err, { defaultMessage: 'Erro ao carregar lista de clientes' });
+        setClientes([]);
+      })
+      .finally(() => {
+        setClientesLoading(false);
       });
 
-      const result = await res.json();
+    return () => controller.abort();
+  }, []);
 
-      if (res.ok) {
-        toast.success('Veículo vinculado com sucesso!');
-        router.push('/veiculos');
-      } else {
-        toast.error(result.error || 'Erro ao vincular veículo');
-      }
-    } catch (err) {
-      toast.error('Erro de conexão');
+  // ============================================================
+  // SUBMIT
+  // ============================================================
+  const onSubmit = async (data: VeiculoFormData) => {
+    // ✅ NOVO: validação de métrica mínima (espelha o refine do backend)
+    const km = Number(data.quilometragem) || 0;
+    const hor = Number(data.horimetro_atual) || 0;
+
+    if (km <= 0 && hor <= 0) {
+      toast.error('Informe ao menos uma métrica: quilometragem (KM) ou horímetro (h).');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // ✅ CORRIGIDO: converte strings para números e omite campos não persistidos
+      const payload = {
+        cliente_id: data.cliente_id,
+        placa: data.placa,
+        modelo: data.modelo,
+        marca: data.marca,
+        ano: Number(data.ano),
+        tipo: data.tipo,
+        quilometragem: km > 0 ? km : undefined,
+        horimetro_atual: hor > 0 ? hor : undefined,
+        // ⚠️ cor e chassi são descartados pelo backend (não há coluna no banco).
+        //    Se quiser persistir, adicione colunas ao schema.prisma + ajuste
+        //    o veiculoSchema do app/api/veiculos/route.ts.
+      };
+
+      await apiFetch('/api/veiculos', {
+        method: 'POST',
+        body: payload,
+      });
+
+      toast.success('Veículo vinculado com sucesso!');
+      router.push('/veiculos');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao vincular veículo' });
     } finally {
       setLoading(false);
     }
@@ -139,129 +204,190 @@ function NovoVeiculoForm() {
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8 pb-32 px-4 sm:px-6 overflow-hidden">
       <div className="flex items-center gap-4">
-        <Link href="/veiculos" className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer">
+        <Link
+          href="/veiculos"
+          className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+        >
           <ChevronLeft size={20} />
         </Link>
         <div className="space-y-0.5">
-          <h1 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter italic">Vincular Novo Ativo</h1>
-          <p className="text-[10px] text-zinc-650 font-black uppercase tracking-[0.3em]">Cadastro Técnico de Frota</p>
+          <h1 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter italic">
+            Vincular Novo Ativo
+          </h1>
+          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em]">
+            Cadastro Técnico de Frota
+          </p>
         </div>
       </div>
 
-      <form id="form-veiculo" onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-        
+      <form id="form-veiculo" onSubmit={handleSubmit(onSubmit)} className="space-y-8" noValidate>
+
         {/* Proprietário */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-3xl md:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl space-y-6 relative overflow-hidden group">
           <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-6">
-            <div className="p-3 bg-blue-600/10 text-blue-500 rounded-2xl"><User size={20} /></div>
+            <div className="p-3 bg-blue-600/10 text-blue-500 rounded-2xl">
+              <User size={20} />
+            </div>
             <div>
-              <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Proprietário do Veículo</h2>
-              <p className="text-[10px] text-zinc-655 font-black uppercase tracking-widest">Vincular dossiê de cliente</p>
+              <h2 className="text-sm font-black text-white uppercase italic tracking-widest">
+                Proprietário do Veículo
+              </h2>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">
+                Vincular dossiê de cliente
+              </p>
             </div>
           </div>
           <div className="relative">
-            <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 mb-3 block italic">Vincular Ativo ao Cliente</label>
-            <select 
-              value={cliente_id} 
-              onChange={e => setValue('cliente_id', e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-850 rounded-2xl p-4 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-wider shadow-inner appearance-none cursor-pointer min-h-[44px]"
+            <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 mb-3 block italic">
+              Vincular Ativo ao Cliente
+            </label>
+            <select
+              value={cliente_id}
+              onChange={(e) => setValue('cliente_id', e.target.value, { shouldValidate: true })}
+              disabled={clientesLoading}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-wider shadow-inner appearance-none cursor-pointer min-h-[44px] disabled:opacity-50"
             >
-              <option value="">Selecionar cliente...</option>
+              <option value="">
+                {clientesLoading ? 'Carregando clientes...' : 'Selecionar cliente...'}
+              </option>
               {clientes.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.nome} ({c.cpf_cnpj})</option>
+                <option key={c.id} value={c.id}>
+                  {c.nome} ({c.cpf_cnpj})
+                </option>
               ))}
             </select>
-            {errors.cliente_id && <p className="text-[9px] text-red-500 font-black mt-2 uppercase tracking-widest italic">{errors.cliente_id.message}</p>}
+            {errors.cliente_id && (
+              <p className="text-[9px] text-red-500 font-black mt-2 uppercase tracking-widest italic">
+                {errors.cliente_id.message}
+              </p>
+            )}
           </div>
         </section>
 
         {/* Especificações Técnicas */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-3xl md:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl space-y-10">
           <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-6">
-            <div className="p-3 bg-orange-600/10 text-orange-500 rounded-2xl"><Tool size={20} /></div>
+            <div className="p-3 bg-orange-600/10 text-orange-500 rounded-2xl">
+              <Tool size={20} />
+            </div>
             <div>
-              <h2 className="text-sm font-black text-white uppercase italic tracking-widest">Especificações Técnicas</h2>
-              <p className="text-[10px] text-zinc-655 font-black uppercase tracking-widest">Dados do veículo e motorização</p>
+              <h2 className="text-sm font-black text-white uppercase italic tracking-widest">
+                Especificações Técnicas
+              </h2>
+              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">
+                Dados do veículo e motorização
+              </p>
             </div>
           </div>
-          
-          {/* Responsive form fields grid */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            
+
             {/* Placa */}
             <div className="space-y-3">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">Placa de Identificação</label>
-              <input 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">
+                Placa de Identificação
+              </label>
+              <input
                 id="field-veiculo-placa"
-                {...register('placa')} 
-                onChange={(e) => setValue('placa', maskPlaca(e.target.value))} 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xl text-center text-white focus:border-orange-500 outline-none transition font-mono font-black tracking-[0.2em] uppercase shadow-lg border-b-4 border-b-zinc-800 active:border-b-0 min-h-[44px]" 
-                placeholder="PLACA" 
-                value={placaValue || ''} 
+                {...register('placa')}
+                onChange={(e) => setValue('placa', maskPlaca(e.target.value), { shouldValidate: true })}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xl text-center text-white focus:border-orange-500 outline-none transition font-mono font-black tracking-[0.2em] uppercase shadow-lg border-b-4 border-b-zinc-800 active:border-b-0 min-h-[44px]"
+                placeholder="PLACA"
+                value={placaValue || ''}
               />
-              {errors.placa && <p className="text-[9px] text-red-500 font-black uppercase italic">{errors.placa.message}</p>}
+              {errors.placa && (
+                <p className="text-[9px] text-red-500 font-black uppercase italic">
+                  {errors.placa.message}
+                </p>
+              )}
             </div>
 
             {/* Marca */}
             <div className="space-y-3">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1">Fabricante / Marca</label>
-              <input 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1">
+                Fabricante / Marca
+              </label>
+              <input
                 id="field-veiculo-marca"
-                {...register('marca')} 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black min-h-[44px]" 
-                placeholder="EX: SCANIA, VOLVO..." 
+                {...register('marca')}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black min-h-[44px]"
+                placeholder="EX: SCANIA, VOLVO..."
               />
-              {errors.marca && <p className="text-[9px] text-red-500 font-black uppercase">{errors.marca.message}</p>}
+              {errors.marca && (
+                <p className="text-[9px] text-red-500 font-black uppercase">
+                  {errors.marca.message}
+                </p>
+              )}
             </div>
 
             {/* Modelo */}
             <div className="space-y-3">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1">Modelo Comercial</label>
-              <input 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1">
+                Modelo Comercial
+              </label>
+              <input
                 id="field-veiculo-modelo"
-                {...register('modelo')} 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black min-h-[44px]" 
-                placeholder="EX: R440, FH460..." 
+                {...register('modelo')}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-black min-h-[44px]"
+                placeholder="EX: R440, FH460..."
               />
-              {errors.modelo && <p className="text-[9px] text-red-500 font-black uppercase">{errors.modelo.message}</p>}
+              {errors.modelo && (
+                <p className="text-[9px] text-red-500 font-black uppercase">
+                  {errors.modelo.message}
+                </p>
+              )}
             </div>
 
             {/* Ano */}
             <div className="space-y-3">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2"><Calendar size={12} /> Ano Fabricação</label>
-              <input 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2">
+                <Calendar size={12} /> Ano Fabricação
+              </label>
+              <input
                 id="field-veiculo-ano"
-                type="number" 
-                {...register('ano')} 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]" 
-                placeholder="YYYY" 
+                type="number"
+                min={ANO_MIN}
+                max={ANO_MAX}
+                {...register('ano')}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]"
+                placeholder="YYYY"
               />
-              {errors.ano && <p className="text-[9px] text-red-500 font-black uppercase">{errors.ano.message}</p>}
+              {errors.ano && (
+                <p className="text-[9px] text-red-500 font-black uppercase">
+                  {errors.ano.message}
+                </p>
+              )}
             </div>
 
             {/* Cor */}
             <div className="space-y-3">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2"><Activity size={12} /> Cor Predominante</label>
-              <input 
-                type="text" 
-                {...register('cor')} 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-black uppercase shadow-inner min-h-[44px]" 
-                placeholder="BRANCO, PRETO..." 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2">
+                <Activity size={12} /> Cor Predominante
+              </label>
+              <input
+                type="text"
+                {...register('cor')}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-black uppercase shadow-inner min-h-[44px]"
+                placeholder="BRANCO, PRETO..."
               />
-              {errors.cor && <p className="text-[9px] text-red-500 font-black uppercase">{errors.cor.message}</p>}
+              <p className="text-[8px] text-zinc-600 uppercase font-mono italic tracking-wider">
+                ⓘ Informativo — não é salvo no banco
+              </p>
             </div>
-            
+
             {/* KM / Horímetro */}
             {!isEquipamento ? (
               <div className="space-y-3">
                 <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2">
                   <Activity size={12} /> Quilometragem (KM)
                 </label>
-                <input 
-                  type="number" 
-                  {...register('quilometragem')} 
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]" 
-                  placeholder="000.000" 
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  {...register('quilometragem')}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]"
+                  placeholder="000.000"
                 />
               </div>
             ) : (
@@ -269,22 +395,25 @@ function NovoVeiculoForm() {
                 <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 flex items-center gap-2">
                   <Activity size={12} /> Horímetro Atual (Horas)
                 </label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
+                  min={0}
                   step="0.1"
-                  {...register('horimetro_atual')} 
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]" 
-                  placeholder="Ex: 1250.5" 
+                  {...register('horimetro_atual')}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition font-mono font-black shadow-inner min-h-[44px]"
+                  placeholder="Ex: 1250.5"
                 />
               </div>
             )}
 
             {/* Categoria Técnica */}
             <div className="space-y-3">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">Categoria Técnica</label>
-              <div className="relative">                      
-                <select 
-                  {...register('tipo')} 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">
+                Categoria Técnica
+              </label>
+              <div className="relative">
+                <select
+                  {...register('tipo')}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-[10px] text-white focus:border-orange-500 outline-none transition font-black uppercase tracking-widest appearance-none cursor-pointer min-h-[44px]"
                 >
                   <optgroup label="TRANSPORTE">
@@ -323,49 +452,64 @@ function NovoVeiculoForm() {
               </div>
             </div>
 
-            {/* Número do Chassi (Campo longo: col-span-full) */}
+            {/* Chassi */}
             <div className="space-y-3 col-span-full">
-              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">Número do Chassi</label>
-              <input 
-                {...register('chassi')} 
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-mono font-black shadow-inner min-h-[44px]" 
-                placeholder="9BW..." 
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em] px-1 italic">
+                Número do Chassi
+              </label>
+              <input
+                {...register('chassi')}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 px-6 text-xs text-white focus:border-orange-500 outline-none transition uppercase font-mono font-black shadow-inner min-h-[44px]"
+                placeholder="9BW..."
               />
+              <p className="text-[8px] text-zinc-600 uppercase font-mono italic tracking-wider">
+                ⓘ Informativo — não é salvo no banco
+              </p>
             </div>
-
           </div>
         </section>
 
-        {/* Desktop form action bar */}
+        {/* Ações Desktop */}
         <div className="hidden lg:flex items-center justify-end gap-6 pt-4">
-          <Link href="/veiculos" className="px-10 py-5 bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest transition-all hover:bg-zinc-900">DESCARTAR</Link>
-          <button 
-            type="submit" 
+          <Link
+            href="/veiculos"
+            className="px-10 py-5 bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest transition-all hover:bg-zinc-900"
+          >
+            DESCARTAR
+          </Link>
+          <button
+            type="submit"
             id="btn-salvar-veiculo"
-            disabled={loading} 
+            disabled={loading}
             className="px-14 py-6 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-[0.5em] rounded-full transition-all shadow-2xl flex items-center gap-4 active:scale-95 transform group"
           >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} className="group-hover:-rotate-6 transition-transform" />}
+            {loading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Save size={18} className="group-hover:-rotate-6 transition-transform" />
+            )}
             PROTOCOLAR ATIVO NO SISTEMA
           </button>
         </div>
       </form>
 
-      {/* DOCK FIXO MOBILE (BARRA MOBILE) */}
-      <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-zinc-950/95 border-t border-zinc-800 p-3.5 flex gap-2 z-45 backdrop-blur-md">
-        <Link 
-          href="/veiculos" 
+      {/* Dock Mobile */}
+      <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-zinc-950/95 border-t border-zinc-800 p-3.5 flex gap-2 z-40 backdrop-blur-md">
+        <Link
+          href="/veiculos"
           className="flex-1 min-h-[48px] bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer"
         >
           <ChevronLeft size={16} /> VOLTAR
         </Link>
-        <button 
+        <button
+          type="button"
           onClick={handleNovaOSWarning}
           className="flex-1 min-h-[48px] bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer"
         >
           <Wrench size={16} /> NOVA OS
         </button>
-        <button 
+        <button
+          type="button"
           onClick={handleSubmit(onSubmit)}
           id="btn-salvar-veiculo-mobile"
           disabled={loading}
@@ -374,19 +518,22 @@ function NovoVeiculoForm() {
           {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} SALVAR
         </button>
       </div>
-
     </div>
   );
 }
 
 export default function NovoVeiculoPage() {
   return (
-    <Suspense fallback={
-       <div className="max-w-4xl mx-auto p-20 flex flex-col items-center justify-center space-y-4">
-         <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-         <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Inicializando módulo de frota...</p>
-       </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="max-w-4xl mx-auto p-20 flex flex-col items-center justify-center space-y-4">
+          <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+            Inicializando módulo de frota...
+          </p>
+        </div>
+      }
+    >
       <NovoVeiculoForm />
     </Suspense>
   );
