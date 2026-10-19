@@ -6,19 +6,19 @@ import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
 import { notificarChecklistExecutado } from '@/lib/notificacoes';
+import { apiError } from '@/lib/api-error';
 
 const execucaoSchema = z.object({
   checklist_id: z.string().min(1, 'ID do checklist é obrigatório'),
   os_id: z.string().optional().nullable(),
   respostas: z.record(z.string(), z.any()),
   observacoes: z.string().max(2000).optional().nullable(),
-  // A23: `executado_por` não é mais aceito do cliente — usamos user.name.
-  // Campo mantido como opcional para compatibilidade de payload; será ignorado.
   executado_por: z.string().trim().optional(),
   fotos: z
     .array(
       z.object({
-        url: z.string().url(),
+        // Aceita URLs absolutas ou caminhos relativos (ex: /uploads/foto.jpg)
+        url: z.string().min(1, 'URL da foto é obrigatória'),
         item_id: z.string().optional().nullable(),
         legenda: z.string().max(500).optional().nullable(),
       })
@@ -173,9 +173,6 @@ export async function POST(request: Request) {
       { error: error?.message },
       'sistema'
     );
-    return NextResponse.json(
-      { error: 'Erro ao registrar execução do checklist' },
-      { status: 500 }
-    );
+    return apiError(error, 'CHECKLIST', 'Erro ao registrar execução do checklist');
   }
 }
