@@ -1,20 +1,32 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { memo, useState, useEffect, useCallback, useMemo } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import { 
   Search, Plus, FileText, 
   Eye, Edit, Printer, 
   Clock, Package, CheckCircle, List,
-  AlertTriangle, AlertCircle, Trash2, Inbox
+  AlertTriangle, Trash2, Loader2, X
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import Link from 'next/link';
-import { Pagination } from '@/components/Pagination';
 import { toast } from 'sonner';
+import { Pagination } from '@/components/Pagination';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 // Componente de Linha Memoizado
-const OSRow = memo(({ os, formatCurrency, handlePrint, handleDelete }: { os: any, formatCurrency: any, handlePrint: any, handleDelete: any }) => (
+const OSRow = memo(({ 
+  os, 
+  formatCurrency, 
+  handlePrint, 
+  handleDeleteClick 
+}: { 
+  os: any, 
+  formatCurrency: any, 
+  handlePrint: any, 
+  handleDeleteClick: any 
+}) => (
   <tr className="border-zinc-800 hover:bg-zinc-900/50 transition-all group">
     <td className="p-4 text-sm">
       <div className="flex flex-col gap-1.5">
@@ -35,10 +47,10 @@ const OSRow = memo(({ os, formatCurrency, handlePrint, handleDelete }: { os: any
     </td>
     <td className="p-4 text-sm">
       <div className="flex flex-col">
-        <p className="font-black text-white group-hover:text-orange-500 transition-colors uppercase tracking-tight italic truncate max-w-[200px]">{os.cliente.nome}</p>
+        <p className="font-black text-white group-hover:text-orange-500 transition-colors uppercase tracking-tight italic truncate max-w-[200px]">{os.cliente?.nome}</p>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[10px] bg-zinc-950 border border-zinc-800 py-0.5 px-2 rounded-full font-mono font-bold text-zinc-400">{os.veiculo.placa}</span>
-          <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest truncate max-w-[150px]">{os.veiculo.modelo}</span>
+          <span className="text-[10px] bg-zinc-950 border border-zinc-800 py-0.5 px-2 rounded-full font-mono font-bold text-zinc-400">{os.veiculo?.placa}</span>
+          <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest truncate max-w-[150px]">{os.veiculo?.modelo}</span>
         </div>
       </div>
     </td>
@@ -93,7 +105,7 @@ const OSRow = memo(({ os, formatCurrency, handlePrint, handleDelete }: { os: any
             <Printer size={14} />
           </button>
           <button 
-            onClick={() => handleDelete(os.id, os.numero)}
+            onClick={() => handleDeleteClick(os.id, os.numero)}
             className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-red-500 transition"
             title="Excluir OS"
           >
@@ -108,7 +120,7 @@ OSRow.displayName = 'OSRow';
 
 export default function OSListingPage() {
   const [stats, setStats] = useState<any>(null);
-  const [osData, setOsData] = useState<any>({ items: [], total: 0, totalPages: 0 });
+  const [osData, setOsData] = useState<any>({ items: [], total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [search, setSearch] = useState('');
@@ -116,6 +128,10 @@ export default function OSListingPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tipoFilter, setTipoFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
+
+  // Estado para exclusão
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; numero: number } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -140,10 +156,12 @@ export default function OSListingPage() {
 
   const fetchStats = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/ordens/stats', { signal });
-      if (res.ok) setStats(await res.json());
+      const data = await apiFetch('/api/ordens/stats', { signal });
+      setStats(data);
     } catch (err: any) {
-      if (err.name !== 'AbortError') console.error(err);
+      if (err.name !== 'AbortError') {
+        console.error('Erro ao buscar stats:', err);
+      }
     }
   }, []);
 
@@ -159,20 +177,15 @@ export default function OSListingPage() {
       if (statusFilter !== 'all') query.append('status', statusFilter);
       if (tipoFilter !== 'all') query.append('tipoOS', tipoFilter);
       
-      const res = await fetch(`/api/ordens?${query.toString()}`, { signal });
-      if (res.ok) {
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : (data.items || []);
-        const total = data.total || items.length;
-        const totalPages = data.totalPages || 1;
-        setOsData({ items, total, totalPages });
-      } else {
-        setError(true);
-      }
+      const data = await apiFetch(`/api/ordens?${query.toString()}`, { signal });
+      const items = Array.isArray(data) ? data : (data.items || []);
+      const total = typeof data.total === 'number' ? data.total : items.length;
+      const totalPages = Math.max(1, data.totalPages || 1);
+      setOsData({ items, total, totalPages });
     } catch (err: any) { 
       if (err.name !== 'AbortError') {
-        console.error(err);
         setError(true);
+        handleApiError(err, { defaultMessage: 'Erro ao buscar ordens de serviço' });
       }
     } finally {
       setLoading(false);
@@ -182,36 +195,34 @@ export default function OSListingPage() {
   useEffect(() => {
     const controller = new AbortController();
     fetchStats(controller.signal);
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [fetchStats]);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchOS(controller.signal);
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [fetchOS]);
 
-  const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const formatCurrency = (val: number) => (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-  const handleDelete = async (id: string, numero: number) => {
-    if (!confirm(`Tem certeza que deseja excluir a OS #${numero}? Esta ação é irreversível.`)) return;
-    
+  const handleDeleteClick = (id: string, numero: number) => {
+    setDeleteTarget({ id, numero });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/ordens/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success(`OS #${numero} excluída com sucesso.`);
-        fetchOS();
-        fetchStats();
-      } else {
-        toast.error('Erro ao excluir OS');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro de conexão ao excluir OS');
+      await apiFetch(`/api/ordens/${deleteTarget.id}`, { method: 'DELETE' });
+      toast.success(`OS #${deleteTarget.numero} excluída com sucesso.`);
+      setDeleteTarget(null);
+      fetchOS();
+      fetchStats();
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao excluir OS' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -333,7 +344,13 @@ export default function OSListingPage() {
                   </td>
                 </tr>
               ) : osData.items.length > 0 ? osData.items.map((os: any) => (
-                <OSRow key={os.id} os={os} formatCurrency={formatCurrency} handlePrint={handlePrint} handleDelete={handleDelete} />
+                <OSRow 
+                  key={os.id} 
+                  os={os} 
+                  formatCurrency={formatCurrency} 
+                  handlePrint={handlePrint} 
+                  handleDeleteClick={handleDeleteClick} 
+                />
               )) : (
                 <tr>
                   <td colSpan={7} className="p-20 text-center">
@@ -382,14 +399,14 @@ export default function OSListingPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-0.5 min-w-0">
                     <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest font-sans">Cliente</p>
-                    <p className="text-white font-black uppercase italic tracking-tight truncate group-hover:text-orange-500 transition-colors" title={os.cliente.nome}>
-                      {os.cliente.nome}
+                    <p className="text-white font-black uppercase italic tracking-tight truncate group-hover:text-orange-500 transition-colors" title={os.cliente?.nome}>
+                      {os.cliente?.nome}
                     </p>
                   </div>
                   <div className="space-y-0.5 min-w-0">
                     <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest font-sans">Veículo</p>
-                    <p className="text-zinc-300 font-bold uppercase truncate" title={`${os.veiculo.modelo} [${os.veiculo.placa}]`}>
-                      {os.veiculo.modelo} <span className="text-[9px] text-zinc-500 font-bold font-sans">[{os.veiculo.placa}]</span>
+                    <p className="text-zinc-300 font-bold uppercase truncate" title={`${os.veiculo?.modelo} [${os.veiculo?.placa}]`}>
+                      {os.veiculo?.modelo} <span className="text-[9px] text-zinc-500 font-bold font-sans">[{os.veiculo?.placa}]</span>
                     </p>
                   </div>
                 </div>
@@ -428,7 +445,7 @@ export default function OSListingPage() {
                 <button onClick={() => handlePrint(os.id)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Imprimir">
                   <Printer size={12} /> Imprimir
                 </button>
-                <button onClick={() => handleDelete(os.id, os.numero)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-red-500 text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Excluir">
+                <button onClick={() => handleDeleteClick(os.id, os.numero)} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-red-500 text-[9px] font-black uppercase tracking-widest transition cursor-pointer" title="Excluir">
                   <Trash2 size={12} /> Excluir
                 </button>
               </div>
@@ -455,6 +472,74 @@ export default function OSListingPage() {
           />
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* MODAL DE EXCLUSÃO */}
+      {/* ============================================================ */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800 bg-red-950/20 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight">Excluir OS #{deleteTarget.numero}</h3>
+                  <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Ação irreversível</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="p-2 bg-zinc-950 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente a Ordem de Serviço <strong className="text-white">#{deleteTarget.numero}</strong>?
+              </p>
+              <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 text-xs text-zinc-400 leading-relaxed">
+                <p className="font-bold text-red-400 uppercase text-[10px] tracking-widest mb-1">⚠️ Atenção</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>A exclusão é bloqueada se houver lançamentos financeiros ou movimentações de estoque vinculados.</li>
+                  <li>Para encerrar uma OS preservando o histórico, use <strong>Cancelar OS</strong> na tela de detalhes.</li>
+                </ul>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={isDeleting}
+                  className="flex-[2] px-6 py-4 bg-red-600 hover:bg-red-500 disabled:bg-red-900/30 disabled:text-zinc-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-950/20 flex items-center justify-center gap-3"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Confirmar Exclusão
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
