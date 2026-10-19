@@ -3,10 +3,32 @@ import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/api-auth';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
+import { z } from 'zod';
+
+// ============================================================
+// SCHEMA DE VALIDAÇÃO PARA FILTROS E PAGINAÇÃO
+// ============================================================
+const auditoriaQuerySchema = z.object({
+  modulo: z.string().optional().transform(v => v?.trim() || ''),
+  acao: z.string().optional().transform(v => v?.trim() || ''),
+  usuario: z.string().optional().transform(v => v?.trim().slice(0, 100) || ''),
+  entidade: z.string().optional().transform(v => v?.trim() || ''),
+  entidade_id: z.string().optional().transform(v => v?.trim() || ''),
+  data_inicio: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de início inválida' }
+  ),
+  data_fim: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de fim inválida' }
+  ),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(15),
+});
 
 // ============================================================
 // GET — Listar registros de auditoria (somente ADMIN)
-// Filtros: modulo, acao, usuario, entidade, entidade_id
+// Filtros: modulo, acao, usuario, entidade, entidade_id, data_inicio, data_fim
 // Paginação: page, limit (max 100)
 // ============================================================
 export async function GET(req: NextRequest) {
@@ -16,18 +38,24 @@ export async function GET(req: NextRequest) {
     if (error) return error;
 
     const { searchParams } = new URL(req.url);
-    const modulo = (searchParams.get('modulo') || '').trim();
-    const acao = (searchParams.get('acao') || '').trim();
-    const usuario = (searchParams.get('usuario') || '').trim().slice(0, 100);
-    const entidade = (searchParams.get('entidade') || '').trim();
-    const entidade_id = (searchParams.get('entidade_id') || '').trim();
+    
+    // Validação com zod de todos os parâmetros
+    const parsed = auditoriaQuerySchema.parse({
+      modulo: searchParams.get('modulo'),
+      acao: searchParams.get('acao'),
+      usuario: searchParams.get('usuario'),
+      entidade: searchParams.get('entidade'),
+      entidade_id: searchParams.get('entidade_id'),
+      data_inicio: searchParams.get('data_inicio'),
+      data_fim: searchParams.get('data_fim'),
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+    });
 
-    const rawPage = parseInt(searchParams.get('page') || '1', 10);
-    const rawLimit = parseInt(searchParams.get('limit') || '15', 10);
-    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-    const limit = isNaN(rawLimit) || rawLimit < 1 ? 15 : Math.min(rawLimit, 100);
+    const { modulo, acao, usuario, entidade, entidade_id, data_inicio, data_fim, page, limit } = parsed;
     const skip = (page - 1) * limit;
 
+    // Monta o where com isolamento de empresa (multi-tenancy)
     const where: any = {
       empresa_id: user.empresa_id,
     };
@@ -40,6 +68,20 @@ export async function GET(req: NextRequest) {
       where.usuario = { contains: usuario };
     }
 
+    // Filtro de período (data_inicio e data_fim)
+    if (data_inicio || data_fim) {
+      where.created_at = {};
+      if (data_inicio) {
+        where.created_at.gte = new Date(data_inicio);
+      }
+      if (data_fim) {
+        // Inclui o dia inteiro de data_fim (até 23:59:59)
+        const fim = new Date(data_fim);
+        fim.setUTCHours(23, 59, 59, 999);
+        where.created_at.lte = fim;
+      }
+    }
+
     const [items, total] = await Promise.all([
       prisma.auditLog.findMany({
         where,
@@ -50,8 +92,7 @@ export async function GET(req: NextRequest) {
       prisma.auditLog.count({ where }),
     ]);
 
-    // Os campos dados_antes/dados_depois são strings JSON no banco.
-    // A tela espera objetos para mostrar com JSON.stringify.
+    // Normaliza dados_antes e dados_depois (JSON string -> objeto)
     const itemsNormalizados = items.map((item) => {
       let dadosAntes: any = null;
       let dadosDepois: any = null;
@@ -79,6 +120,13 @@ export async function GET(req: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error: any) {
+    // Tratamento específico para erros de validação do zod
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
     return apiError(error, 'AUDITORIA', 'Erro ao listar registros de auditoria');
   }
 }
