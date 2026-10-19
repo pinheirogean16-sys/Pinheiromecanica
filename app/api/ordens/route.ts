@@ -57,7 +57,6 @@ const preprocessQuantidade = (val: any) => {
   return isNaN(n) ? 1 : n;
 };
 
-// ✅ NOVO: valida se uma string é um JSON válido
 const jsonString = (val: any, fallback: string) => {
   if (val === null || val === undefined || val === '') return fallback;
   if (typeof val !== 'string') return fallback;
@@ -157,12 +156,19 @@ const osSchema = z.object({
   preventiva_id: z.string().optional().nullable()
 });
 
+// ✅ CORRIGIDO: Blindagem do Zod para nulos/zeros e limite máximo de 1000
 const listarOSQuerySchema = z.object({
-  q: z.string().optional().transform(v => v?.slice(0, 100) || ''),
-  status: z.enum(STATUS_OS).optional(),
-  tipoOS: z.enum(TIPOS_OS).optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
+  q: z.string().nullish().transform(v => v?.slice(0, 100) || ''),
+  status: z.enum(STATUS_OS).nullish(),
+  tipoOS: z.enum(TIPOS_OS).nullish(),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
+    z.coerce.number().int().min(1).max(1000).default(10) // Aumentado para 1000
+  ),
 });
 
 // ============================================================
@@ -189,12 +195,14 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
+    
+    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarOSQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       status: searchParams.get('status') || undefined,
       tipoOS: searchParams.get('tipoOS') || undefined,
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { q, status, tipoOS, page, limit } = parsed;
@@ -301,7 +309,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
     }
 
-    // ✅ NOVO: valida que o mecânico pertence à empresa
     if (body.mecanico_id) {
       const mecanicoOk = await prisma.user.findFirst({
         where: { id: body.mecanico_id, empresa_id: empresaId },
@@ -312,7 +319,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // ✅ NOVO: valida que as preventivas pertencem à empresa
     const preventivasIds: string[] = [];
     if (Array.isArray(body.preventivas_ids)) {
       preventivasIds.push(...body.preventivas_ids);
@@ -604,7 +610,6 @@ export async function POST(request: Request) {
           );
           const totalMaoObraExterna = roundDecimal(body.mao_obra_externa_total || 0);
 
-          // ✅ CORRIGIDO: garante que o total nunca seja negativo
           const valor_total = roundDecimal(
             Math.max(0, (valor_servicos + valor_pecas + totalDeslocamento + totalDespesas + totalMaoObraExterna) - (body.desconto || 0))
           );
@@ -746,7 +751,6 @@ export async function POST(request: Request) {
   } catch (error: any) {
     log('ERROR', 'OS', 'Erro ao criar OS', { error: error?.message }, 'sistema');
 
-    // Erros de validação do zod
     if (error instanceof z.ZodError || error.name === 'ZodError') {
       return NextResponse.json(
         { error: error.issues ? error.issues[0]?.message : 'Dados inválidos' },
@@ -754,7 +758,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Erros de negócio conhecidos (mensagens controladas)
     const mensagensNegocio = [
       'não encontrada',
       'obrigatório',
@@ -770,7 +773,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // ✅ Erros internos NÃO vazam a mensagem real
     return apiError(error, 'OS', 'Erro ao criar ordem de serviço');
   }
 }
