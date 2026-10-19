@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { roundDecimal } from '@/lib/utils';
+import { z } from 'zod';
 
 // Cache em RAM para os agregados
 interface CacheEntry {
@@ -11,7 +12,19 @@ interface CacheEntry {
   timestamp: number;
 }
 const cacheRAM: Record<string, CacheEntry> = {};
-const CACHE_DURATION_MS = 30000; // 30 segundos cache RAM
+const CACHE_DURATION_MS = 30000; // 30 segundos
+
+// Schema de validação para filtros de data
+const centroCustosQuerySchema = z.object({
+  data_inicio: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de início inválida' }
+  ),
+  data_fim: z.string().optional().nullable().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Data de fim inválida' }
+  ),
+});
 
 export async function GET(request: Request) {
   try {
@@ -24,9 +37,18 @@ export async function GET(request: Request) {
     }
 
     const empresaId = user.empresa_id;
-    const cacheKey = `centro_custos_${empresaId}`;
 
-    // SWR / Cache RAM check
+    // Valida filtros de data
+    const { searchParams } = new URL(request.url);
+    const parsed = centroCustosQuerySchema.parse({
+      data_inicio: searchParams.get('data_inicio'),
+      data_fim: searchParams.get('data_fim'),
+    });
+    const { data_inicio, data_fim } = parsed;
+
+    // Chave do cache inclui filtros de data para evitar retornar dados errados
+    const cacheKey = `centro_custos_${empresaId}_${data_inicio || 'all'}_${data_fim || 'all'}`;
+
     const now = Date.now();
     if (cacheRAM[cacheKey] && (now - cacheRAM[cacheKey].timestamp < CACHE_DURATION_MS)) {
       return NextResponse.json({ ...cacheRAM[cacheKey].data, cached: true });
@@ -36,11 +58,26 @@ export async function GET(request: Request) {
       'OFICINA', 'CAMPO', 'RESGATE', 'MOTOR', 'CAIXA', 'DIFERENCIAL', 'ELETRICA', 'INJECAO', 'BORRACHARIA'
     ];
 
+    // Monta o where com filtros de data
+    const where: any = {
+      empresa_id: empresaId,
+      status: { not: 'CANCELADA' },
+    };
+
+    if (data_inicio || data_fim) {
+      where.data_entrada = {};
+      if (data_inicio) {
+        where.data_entrada.gte = new Date(data_inicio);
+      }
+      if (data_fim) {
+        const fim = new Date(data_fim);
+        fim.setUTCHours(23, 59, 59, 999);
+        where.data_entrada.lte = fim;
+      }
+    }
+
     const ordens = await prisma.ordemServico.findMany({
-      where: {
-        empresa_id: empresaId,
-        status: { not: 'CANCELADA' }
-      },
+      where,
       select: {
         id: true,
         numero: true,
@@ -154,6 +191,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json(responseData);
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0].message },
+        { status: 400 }
+      );
+    }
     log('ERROR', 'FINANCEIRO_CC', 'Erro ao processar agregados do centro de custos', { error: error?.message }, 'sistema');
     return NextResponse.json({ error: 'Erro ao processar agregados' }, { status: 500 });
   }
