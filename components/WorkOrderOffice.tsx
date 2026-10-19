@@ -139,28 +139,32 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     };
   }, []);
 
-  // Carregar clientes e mecânicos
+  // ============================================================
+  // ✅ CORRIGIDO: limit=1000 estourava o .max(100) do Zod
+  // ============================================================
   useEffect(() => {
     const controller = new AbortController();
     const loadBasics = async () => {
       setClientesLoading(true);
       setClientesError(false);
       try {
+        // ✅ Trocado limit=1000 por limit=100 (respeita o schema)
         const [cRes, mRes] = await Promise.all([
-          fetch('/api/clientes?limit=1000', { signal: controller.signal }).catch(() => null),
-          fetch('/api/usuarios?limit=1000', { signal: controller.signal }).catch(() => null),
+          fetch('/api/clientes?limit=100', { signal: controller.signal }).catch(() => null),
+          fetch('/api/usuarios?limit=100', { signal: controller.signal }).catch(() => null),
         ]);
         
         if (cRes && cRes.ok) {
           const data = await cRes.json();
-          setClientes(data.items || []);
+          // ✅ Trata array (legado) ou { items } (paginado)
+          setClientes(Array.isArray(data) ? data : (data.items || []));
         } else {
           setClientesError(true);
         }
         
         if (mRes && mRes.ok) {
           const data = await mRes.json();
-          const users = data.items || [];
+          const users = Array.isArray(data) ? data : (data.items || []);
           setMecanicos(users.filter((u: any) => u.role === 'MECANICO' || u.role === 'LIDER' || u.role === 'ADMIN'));
         }
       } catch (err: any) {
@@ -190,7 +194,8 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         });
         if (res.ok) {
           const data = await res.json();
-          setAvailablePecas(data.items || []);
+          // ✅ Trata array ou { items }
+          setAvailablePecas(Array.isArray(data) ? data : (data.items || []));
         } else {
           setAvailablePecas([]);
         }
@@ -256,9 +261,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             if (draft.fotosOficina) setFotosOficina(draft.fotosOficina);
             
             if (draft.selectedCliente?.id) {
-              fetch(`/api/veiculos?cliente_id=${draft.selectedCliente.id}`)
+              // ✅ Adicionado limit=100 no fetch de veículos
+              fetch(`/api/veiculos?cliente_id=${draft.selectedCliente.id}&limit=100`)
                 .then((res) => res.json())
-                .then((data) => setVeiculos(data.items || []))
+                .then((data) => setVeiculos(Array.isArray(data) ? data : (data.items || [])))
                 .catch(() => {});
 
               fetch(`/api/clientes/${draft.selectedCliente.id}/historico`)
@@ -285,9 +291,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
               setSelectedVeiculo(v);
               if (v.cliente) {
                 setSelectedCliente(v.cliente);
-                fetch(`/api/veiculos?cliente_id=${v.cliente.id}`)
+                // ✅ Adicionado limit=100 no fetch de veículos
+                fetch(`/api/veiculos?cliente_id=${v.cliente.id}&limit=100`)
                   .then((r) => r.json())
-                  .then((data) => setVeiculos(data.items || []))
+                  .then((data) => setVeiculos(Array.isArray(data) ? data : (data.items || [])))
                   .catch(() => {});
               }
             }
@@ -312,8 +319,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
       fetch(`/api/preventivas?veiculo_id=${selectedVeiculo.id}`)
         .then((res) => res.json())
         .then((data) => {
-          if (Array.isArray(data)) {
-            setPreventivasVeiculo(data.filter((p: any) => p.ativo !== false));
+          // ✅ Trata array ou { items }
+          const lista = Array.isArray(data) ? data : (data.items || []);
+          if (lista.length > 0) {
+            setPreventivasVeiculo(lista.filter((p: any) => p.ativo !== false));
           }
         })
         .catch(() => {});
@@ -389,10 +398,11 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     if (!id) return;
 
     try {
-      const vRes = await fetch(`/api/veiculos?cliente_id=${id}`);
+      // ✅ Adicionado limit=100
+      const vRes = await fetch(`/api/veiculos?cliente_id=${id}&limit=100`);
       if (vRes.ok) {
         const data = await vRes.json();
-        setVeiculos(data.items || []);
+        setVeiculos(Array.isArray(data) ? data : (data.items || []));
       }
 
       const hRes = await fetch(`/api/clientes/${id}/historico`);
@@ -411,9 +421,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     setSelectedCliente(newClient);
     setSelectedVeiculo(null);
     setVeiculos([]);
-    fetch(`/api/veiculos?cliente_id=${newClient.id}`)
+    // ✅ Adicionado limit=100
+    fetch(`/api/veiculos?cliente_id=${newClient.id}&limit=100`)
       .then((r) => r.json())
-      .then((data) => setVeiculos(data.items || []))
+      .then((data) => setVeiculos(Array.isArray(data) ? data : (data.items || [])))
       .catch(() => setVeiculos([]));
   };
 
@@ -666,7 +677,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
           .map((p: any) => ({
             peca_id: p.peca_id || p.pecaId,
             descricao: p.descricao || 'Peça',
-            // A06: aceita quantidade fracionada (antes forçava mínimo 1)
             quantidade: Math.max(0.001, Number(p.quantidade || 1)),
             unidade: p.unidade || 'un',
             valor_unit: parseFloat(p.valor_unit || '0'),
@@ -678,7 +688,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         forma_pagamento: formaPagamento === 'BOLETO PARCELADO' ? 'PARCELADO' : formaPagamento,
         numero_parcelas: formaPagamento === 'BOLETO PARCELADO' ? numParcelas : 1,
         dias_entre_parcelas: formaPagamento === 'BOLETO PARCELADO' ? diasEntreParcelas : null,
-        // A16: grava ao meio-dia UTC (evita deslocamento de fuso)
         data_vencimento_primeira: formaPagamento === 'BOLETO PARCELADO' && dataPrimeiraParcela
           ? toMeioDiaUTC(dataPrimeiraParcela)
           : null,
