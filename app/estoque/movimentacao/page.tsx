@@ -1,6 +1,7 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { 
   ArrowUpCircle, 
@@ -10,13 +11,14 @@ import {
   History,
   Package,
   FileText,
-  User,
   Clock,
-  Calendar,
   AlertCircle,
   RefreshCw,
   Loader2
 } from 'lucide-react';
+import { Pagination } from '@/components/Pagination';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 interface Peca {
   id: string;
@@ -51,57 +53,85 @@ interface Movimentacao {
 const MOTIVOS_ENTRADA = ['COMPRA', 'DEVOLUCAO', 'AJUSTE'];
 const MOTIVOS_SAIDA = ['VENDA', 'USO_INTERNO', 'OS', 'PERDA', 'AJUSTE'];
 
+const ITEMS_PER_PAGE_HIST = 10;
+
 export default function MovimentacaoEstoquePage() {
   // Estados do formulário
   const [tipo, setTipo] = useState<'ENTRADA' | 'SAIDA'>('ENTRADA');
   const [pecaId, setPecaId] = useState('');
   const [quantidade, setQuantidade] = useState('');
   const [motivo, setMotivo] = useState(MOTIVOS_ENTRADA[0]);
+  const [osId, setOsId] = useState('');
+  const [observacao, setObservacao] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Função para trocar tipo e resetar motivo
   const handleTipoChange = (novoTipo: 'ENTRADA' | 'SAIDA') => {
     setTipo(novoTipo);
     setMotivo(novoTipo === 'ENTRADA' ? MOTIVOS_ENTRADA[0] : MOTIVOS_SAIDA[0]);
+    setOsId(''); // limpa OS ao trocar tipo
   };
-
-  const [osId, setOsId] = useState('');
-  const [observacao, setObservacao] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
   // Estados de dados
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [ordens, setOrdens] = useState<OS[]>([]);
   const [historico, setHistorico] = useState<Movimentacao[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [searchPeca, setSearchPeca] = useState('');
+  
+  // Paginação do histórico
+  const [histPage, setHistPage] = useState(1);
+  const [histTotalPages, setHistTotalPages] = useState(1);
+  const [histTotal, setHistTotal] = useState(0);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  async function fetchData() {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(false);
     try {
-      setLoading(true);
-      const [pecasRes, osRes, histRes] = await Promise.all([
-        fetch('/api/pecas?limit=100'),
-        fetch('/api/ordens?status=ABERTA&status=EM_ANDAMENTO'),
-        fetch('/api/estoque/movimentacao')
+      const histParams = new URLSearchParams({
+        page: histPage.toString(),
+        limit: ITEMS_PER_PAGE_HIST.toString(),
+      });
+
+      const [pecasData, osData, histData] = await Promise.all([
+        apiFetch<any>('/api/pecas?limit=100', { signal }).catch(() => ({ items: [] })),
+        apiFetch<any>('/api/ordens?limit=100', { signal }).catch(() => ({ items: [] })),
+        apiFetch<any>(`/api/estoque/movimentacao?${histParams.toString()}`, { signal }),
       ]);
 
-      const pecasData = await pecasRes.json();
-      const osData = await osRes.json();
-      const histData = await histRes.json();
+      setPecas(Array.isArray(pecasData) ? pecasData : (pecasData.items || []));
+      
+      const ordensLista = Array.isArray(osData) ? osData : (osData.items || []);
+      // Filtra OS ativas (ABERTA, EM_DIAGNOSTICO, AGUARDANDO_PECAS, EM_EXECUCAO, AGUARDANDO_APROVACAO)
+      const ativas = ordensLista.filter((o: any) => 
+        ['ABERTA', 'EM_DIAGNOSTICO', 'AGUARDANDO_PECAS', 'EM_EXECUCAO', 'AGUARDANDO_APROVACAO'].includes(o.status)
+      );
+      setOrdens(ativas);
 
-      setPecas(pecasData.items || []);
-      setOrdens(osData.items || []);
-      setHistorico(Array.isArray(histData) ? histData : []);
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar dados');
+      // ✅ CORRIGIDO: tratando resposta paginada
+      const histItems = Array.isArray(histData) ? histData : (histData.items || []);
+      const histTotal = typeof histData?.total === 'number' ? histData.total : histItems.length;
+      const histTotalPages = Math.max(1, histData?.totalPages || 1);
+      
+      setHistorico(histItems);
+      setHistTotal(histTotal);
+      setHistTotalPages(histTotalPages);
+
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setError(true);
+      handleApiError(err, { defaultMessage: 'Erro ao carregar dados' });
     } finally {
       setLoading(false);
     }
-  }
+  }, [histPage]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    return () => controller.abort();
+  }, [fetchData]);
 
   async function handleSalvar(e: React.FormEvent) {
     e.preventDefault();
@@ -118,22 +148,17 @@ export default function MovimentacaoEstoquePage() {
 
     setIsSaving(true);
     try {
-      const res = await fetch('/api/estoque/movimentacao', {
+      await apiFetch('/api/estoque/movimentacao', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           peca_id: pecaId,
           tipo,
           quantidade: parseInt(quantidade),
           motivo,
           os_id: osId || null,
           observacao
-        })
+        }
       });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Erro ao salvar');
 
       toast.success('Movimentação registrada com sucesso!');
       
@@ -144,10 +169,11 @@ export default function MovimentacaoEstoquePage() {
       setObservacao('');
       setSearchPeca('');
       
-      // Atualizar lista
+      // Voltar para a primeira página e recarregar
+      setHistPage(1);
       fetchData();
     } catch (error: any) {
-      toast.error(error.message);
+      handleApiError(error, { defaultMessage: 'Erro ao registrar movimentação' });
     } finally {
       setIsSaving(false);
     }
@@ -160,7 +186,10 @@ export default function MovimentacaoEstoquePage() {
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8 overflow-hidden">
-      {/* Formulário */}
+      
+      {/* ============================================================ */}
+      {/* FORMULÁRIO (1/3) */}
+      {/* ============================================================ */}
       <div className="w-full lg:w-1/3">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
           <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center gap-2">
@@ -262,7 +291,7 @@ export default function MovimentacaoEstoquePage() {
                 <select
                   value={osId}
                   onChange={(e) => setOsId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/50 transition-colors appearance-none cursor-pointer border-orange-500/30"
+                  className="w-full bg-zinc-950 border border-orange-500/30 rounded-xl py-2 px-3 text-sm text-zinc-200 focus:outline-none focus:border-orange-500 transition-colors appearance-none cursor-pointer"
                 >
                   <option value="">Selecione a OS...</option>
                   {ordens.map(o => (
@@ -287,7 +316,7 @@ export default function MovimentacaoEstoquePage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20 active:scale-[0.98]"
+              className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/20 active:scale-[0.98] cursor-pointer"
             >
               {isSaving ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -300,7 +329,9 @@ export default function MovimentacaoEstoquePage() {
         </div>
       </div>
 
-      {/* Histórico */}
+      {/* ============================================================ */}
+      {/* HISTÓRICO (2/3) */}
+      {/* ============================================================ */}
       <div className="flex-1">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl h-full flex flex-col">
           <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
@@ -309,9 +340,9 @@ export default function MovimentacaoEstoquePage() {
               <h2 className="font-bold text-zinc-100 uppercase tracking-wider text-sm">Histórico Recente</h2>
             </div>
             <button 
-              onClick={fetchData}
+              onClick={() => fetchData()}
               disabled={loading}
-              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-50"
+              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
               title="Recarregar"
             >
               <RefreshCw className={`w-4 h-4 text-zinc-500 ${loading ? 'animate-spin' : ''}`} />
@@ -319,14 +350,30 @@ export default function MovimentacaoEstoquePage() {
           </div>
 
           <div className="flex-1 overflow-auto">
-            {historico.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                <p className="text-sm font-medium text-zinc-500">Sincronizando histórico...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <AlertCircle className="w-12 h-12 text-red-500/60" />
+                <p className="text-sm font-medium text-zinc-500">Falha na sincronização</p>
+                <button 
+                  onClick={() => fetchData()}
+                  className="text-orange-500 text-xs font-black uppercase tracking-widest hover:underline"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            ) : historico.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-zinc-600 gap-3">
                 <AlertCircle className="w-12 h-12 opacity-40" />
                 <p className="text-sm font-medium text-zinc-500">Nenhuma movimentação encontrada</p>
               </div>
             ) : (
               <>
-                {/* HISTÓRICO DESKTOP (TABELA COMPLETE) */}
+                {/* HISTÓRICO DESKTOP (TABELA) */}
                 <div className="hidden md:block w-full overflow-x-auto rounded-xl">
                   <table className="w-full min-w-[700px] text-left border-collapse">
                     <thead>
@@ -363,11 +410,11 @@ export default function MovimentacaoEstoquePage() {
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <div className="flex flex-col">
-                              <span className="text-zinc-200 font-medium truncate max-w-[150px] lg:max-w-xs" title={item.peca.descricao}>
-                                {item.peca.descricao}
+                              <span className="text-zinc-200 font-medium truncate max-w-[150px] lg:max-w-xs" title={item.peca?.descricao}>
+                                {item.peca?.descricao || '---'}
                               </span>
                               <span className="text-[10px] text-zinc-500 font-mono">
-                                {item.peca.codigo}
+                                {item.peca?.codigo || '---'}
                               </span>
                             </div>
                           </td>
@@ -375,7 +422,7 @@ export default function MovimentacaoEstoquePage() {
                             {item.quantidade}
                           </td>
                           <td className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase">
-                            {item.motivo.replace('_', ' ')}
+                            {item.motivo?.replace('_', ' ')}
                           </td>
                           <td className="px-4 py-3 text-sm">
                             {item.os ? (
@@ -393,7 +440,7 @@ export default function MovimentacaoEstoquePage() {
                   </table>
                 </div>
 
-                {/* HISTÓRICO MOBILE (TIMELINE COMPACTA/PREMIUM) */}
+                {/* HISTÓRICO MOBILE (TIMELINE COMPACTA) */}
                 <div className="block md:hidden divide-y divide-zinc-800/40 w-full max-w-full overflow-hidden min-w-0">
                   {historico.map((item) => (
                     <div key={item.id} className="p-4 space-y-3.5 hover:bg-zinc-900/10 transition-all min-w-0">
@@ -412,11 +459,11 @@ export default function MovimentacaoEstoquePage() {
                       </div>
 
                       <div className="space-y-0.5 min-w-0">
-                        <h4 className="text-[13px] font-black text-white uppercase italic leading-snug truncate" title={item.peca.descricao}>
-                          {item.peca.descricao}
+                        <h4 className="text-[13px] font-black text-white uppercase italic leading-snug truncate" title={item.peca?.descricao}>
+                          {item.peca?.descricao || '---'}
                         </h4>
                         <p className="text-[9px] font-mono font-bold text-zinc-500 uppercase">
-                          Ref Cod: {item.peca.codigo}
+                          Ref Cod: {item.peca?.codigo || '---'}
                         </p>
                       </div>
 
@@ -429,7 +476,7 @@ export default function MovimentacaoEstoquePage() {
                         </div>
                         <div className="space-y-0.5 min-w-0">
                           <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Motivação</p>
-                          <p className="text-zinc-300 font-bold uppercase truncate">{item.motivo.replace('_', ' ')}</p>
+                          <p className="text-zinc-300 font-bold uppercase truncate">{item.motivo?.replace('_', ' ')}</p>
                         </div>
                       </div>
 
@@ -454,6 +501,22 @@ export default function MovimentacaoEstoquePage() {
               </>
             )}
           </div>
+
+          {/* ✅ NOVO: Paginação do histórico */}
+          {!loading && !error && historico.length > 0 && histTotalPages > 1 && (
+            <div className="p-4 border-t border-zinc-800 bg-zinc-950/20">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+                <p className="text-[9px] font-mono text-zinc-500 uppercase font-bold tracking-widest text-center md:text-left">
+                  Mostrando {(histPage - 1) * ITEMS_PER_PAGE_HIST + 1} a {Math.min(histPage * ITEMS_PER_PAGE_HIST, histTotal)} de {histTotal}
+                </p>
+                <Pagination 
+                  page={histPage} 
+                  totalPages={histTotalPages} 
+                  onPageChange={setHistPage} 
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
