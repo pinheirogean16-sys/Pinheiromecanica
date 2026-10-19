@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
+import { checkPermission } from '@/lib/rbac';
+import { log } from '@/lib/logger';
+import { apiError } from '@/lib/api-error';
 import { getCachedAtividades } from '@/lib/dashboard-cache';
 
 export async function GET() {
@@ -7,13 +10,17 @@ export async function GET() {
     const { error, user } = await requireAuth();
     if (error) return error;
 
+    // ✅ NOVO: exige permissão para visualizar o dashboard
+    if (!checkPermission(user, 'dashboard', 'visualizar')) {
+      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
     const empresa_id = user.empresa_id;
     const atividades = await getCachedAtividades(empresa_id);
 
     return NextResponse.json(atividades);
-  } catch (error) {
-    console.error('Activities error:', error);
-    return NextResponse.json({ error: 'Erro ao buscar atividades recentes' }, { status: 500 });
+  } catch (error: any) {
+    // ✅ NOVO: tratamento de erro padronizado
+    return apiError(error, 'DASHBOARD', 'Erro ao buscar atividades recentes');
   }
 }
-
