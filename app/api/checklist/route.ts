@@ -37,12 +37,19 @@ const createChecklistSchema = z.object({
 // ============================================================
 // SCHEMA DE VALIDAÇÃO PARA FILTROS E PAGINAÇÃO DO GET
 // ============================================================
+// ✅ CORRIGIDO: Blindagem para não quebrar com nulos/zeros e limite de 1000
 const listarChecklistsQuerySchema = z.object({
-  ativo: z.enum(['true', 'false']).optional(),
-  categoria: z.string().optional(),
-  q: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  ativo: z.enum(['true', 'false']).nullish(),
+  categoria: z.string().nullish(),
+  q: z.string().nullish(),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 50 : val),
+    z.coerce.number().int().min(1).max(1000).default(50)
+  ),
 });
 
 // ============================================================
@@ -75,12 +82,14 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
+    
+    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarChecklistsQuerySchema.parse({
-      ativo: searchParams.get('ativo'),
-      categoria: searchParams.get('categoria'),
-      q: searchParams.get('q'),
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      ativo: searchParams.get('ativo') || undefined,
+      categoria: searchParams.get('categoria') || undefined,
+      q: searchParams.get('q') || undefined,
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { ativo, categoria, q, page, limit } = parsed;
