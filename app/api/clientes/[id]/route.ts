@@ -5,20 +5,80 @@ import { checkPermission } from '@/lib/rbac';
 import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 
+// ============================================================
+// A12: validação real de CPF/CNPJ (dígitos verificadores)
+// ============================================================
+function validarCPF(cpf: string): boolean {
+  const nums = cpf.replace(/\D/g, '');
+  if (nums.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(nums)) return false;
+
+  let soma = 0;
+  for (let i = 0; i < 9; i++) soma += parseInt(nums[i]) * (10 - i);
+  let resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(nums[9])) return false;
+
+  soma = 0;
+  for (let i = 0; i < 10; i++) soma += parseInt(nums[i]) * (11 - i);
+  resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(nums[10])) return false;
+
+  return true;
+}
+
+function validarCNPJ(cnpj: string): boolean {
+  const nums = cnpj.replace(/\D/g, '');
+  if (nums.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(nums)) return false;
+
+  const calcularDigito = (base: string, pesos: number[]) => {
+    const soma = base.split('').reduce((acc, d, i) => acc + parseInt(d) * pesos[i], 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+
+  const pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+  const dig1 = calcularDigito(nums.slice(0, 12), pesos1);
+  if (dig1 !== parseInt(nums[12])) return false;
+
+  const dig2 = calcularDigito(nums.slice(0, 13), pesos2);
+  if (dig2 !== parseInt(nums[13])) return false;
+
+  return true;
+}
+
+function validarCpfCnpj(valor: string): boolean {
+  const nums = valor.replace(/\D/g, '');
+  if (nums.length === 11) return validarCPF(nums);
+  if (nums.length === 14) return validarCNPJ(nums);
+  return false;
+}
+
+// ============================================================
+// SCHEMA DE VALIDAÇÃO PARA UPDATE
+// ============================================================
 const updateClienteSchema = z.object({
   tipo: z.enum(['PF', 'PJ']).optional(),
-  tipo_pessoa: z.string().optional(),
+  tipo_pessoa: z.enum(['FISICA', 'JURIDICA']).optional(), // 👈 ENUM
   nome: z.string().min(3).trim().optional(),
   razao_social: z.string().optional().nullable(),
   nome_fantasia: z.string().optional().nullable(),
-  cpf_cnpj: z.string().min(11).trim().optional(),
+  cpf_cnpj: z.string().min(11).trim().optional().refine(
+    (v) => !v || validarCpfCnpj(v), // 👈 Validação real
+    'CPF/CNPJ inválido (dígitos verificadores não conferem)'
+  ),
   inscricao_estadual: z.string().optional().nullable(),
   telefone: z.string().min(8).trim().optional(),
   telefone_secundario: z.string().optional().nullable(),
   contato: z.string().optional().nullable(),
   email: z.string().email().optional().nullable().or(z.literal('')),
-  status: z.string().optional(),
+  status: z.enum(['ATIVO', 'INATIVO']).optional(), // 👈 ENUM
   cep: z.string().optional().nullable(),
   endereco: z.string().optional().nullable(),
   numero: z.string().optional().nullable(),
@@ -32,6 +92,9 @@ const updateClienteSchema = z.object({
   ativo: z.boolean().optional(),
 });
 
+// ============================================================
+// GET — Buscar cliente por ID
+// ============================================================
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -87,12 +150,14 @@ export async function GET(
     };
 
     return NextResponse.json(cliente);
-  } catch (error) {
-    log('ERROR', 'CLIENTE', 'Erro ao buscar cliente', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao buscar cliente' }, { status: 500 });
+  } catch (error: any) {
+    return apiError(error, 'CLIENTE', 'Erro ao buscar cliente');
   }
 }
 
+// ============================================================
+// PUT — Atualizar cliente
+// ============================================================
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -101,7 +166,8 @@ export async function PUT(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    if (!checkPermission(user, 'cliente', 'editar')) {
+    // ✅ CORRIGIDO: 'clientes' (plural)
+    if (!checkPermission(user, 'clientes', 'editar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
@@ -117,9 +183,10 @@ export async function PUT(
     if (!antes) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
 
     if (body.cpf_cnpj) {
+      const cpfCnpjLimpo = body.cpf_cnpj.replace(/\D/g, '');
       const existing = await prisma.cliente.findFirst({
         where: {
-          cpf_cnpj: body.cpf_cnpj,
+          cpf_cnpj: cpfCnpjLimpo,
           empresa_id: user.empresa_id,
           id: { not: id }
         }
@@ -131,14 +198,17 @@ export async function PUT(
     }
 
     const cliente = await prisma.cliente.update({
-      where: { id },
+      where: { 
+        id,
+        empresa_id: user.empresa_id // 👈 Redundância de segurança
+      },
       data: {
         tipo: body.tipo,
         tipo_pessoa: body.tipo_pessoa,
         nome: body.nome,
         razao_social: body.razao_social,
         nome_fantasia: body.nome_fantasia,
-        cpf_cnpj: body.cpf_cnpj,
+        cpf_cnpj: body.cpf_cnpj ? body.cpf_cnpj.replace(/\D/g, '') : undefined, // Normaliza
         inscricao_estadual: body.inscricao_estadual,
         telefone: body.telefone,
         telefone_secundario: body.telefone_secundario,
@@ -166,6 +236,7 @@ export async function PUT(
       entidade: 'Cliente',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id, // 👈 Adicionado
       dados_antes: antes,
       dados_depois: cliente
     });
@@ -173,15 +244,17 @@ export async function PUT(
     log('INFO', 'CLIENTE', 'Cliente atualizado', { id }, user?.name);
 
     return NextResponse.json(cliente);
-  } catch (error) {
-    log('ERROR', 'CLIENTE', 'Erro ao atualizar cliente', { error }, 'sistema');
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Erro ao atualizar cliente' }, { status: 500 });
+    return apiError(error, 'CLIENTE', 'Erro ao atualizar cliente');
   }
 }
 
+// ============================================================
+// DELETE — Excluir cliente
+// ============================================================
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -190,7 +263,8 @@ export async function DELETE(
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    if (!checkPermission(user, 'cliente', 'excluir')) {
+    // ✅ CORRIGIDO: 'clientes' (plural)
+    if (!checkPermission(user, 'clientes', 'excluir')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
@@ -205,8 +279,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
     }
     
+    // Redundância de segurança: empresa_id no where
     await prisma.cliente.delete({
-      where: { id }
+      where: { 
+        id,
+        empresa_id: user.empresa_id // 👈 Redundância de segurança
+      }
     });
 
     await createAuditLog({
@@ -215,14 +293,14 @@ export async function DELETE(
       entidade: 'Cliente',
       entidade_id: id,
       usuario: user?.name || user?.email || 'Sistema',
+      empresa_id: user.empresa_id, // 👈 Adicionado
       dados_antes: antes
     });
 
     log('INFO', 'CLIENTE', 'Cliente excluído', { id }, user?.name);
     
     return NextResponse.json({ success: true });
-  } catch (error) {
-    log('ERROR', 'CLIENTE', 'Erro ao excluir cliente', { error }, 'sistema');
-    return NextResponse.json({ error: 'Erro ao excluir cliente. Verifique se não há OS vinculadas.' }, { status: 500 });
+  } catch (error: any) {
+    return apiError(error, 'CLIENTE', 'Erro ao excluir cliente. Verifique se não há OS vinculadas.');
   }
 }
