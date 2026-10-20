@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ChevronLeft, Save, Package, Tag, 
@@ -14,23 +14,31 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { LISTA_UNIDADES } from '@/lib/unidades';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
+// ============================================================
+// SCHEMA DE VALIDAÇÃO
+// ============================================================
 const pecaSchema = z.object({
-  codigo: z.string().min(3, 'Código muito curto'),
-  descricao: z.string().min(5, 'Descrição detalhada necessária'),
-  referencia: z.string().optional(),
-  fabricante: z.string().optional(),
-  fornecedor: z.string().optional(),
+  codigo: z.string().min(3, 'Código muito curto').max(100, 'Código muito longo'),
+  descricao: z.string().min(5, 'Descrição detalhada necessária').max(500, 'Descrição muito longa'),
+  referencia: z.string().max(100).optional().nullable(),
+  fabricante: z.string().max(200).optional().nullable(),
+  fornecedor: z.string().max(200).optional().nullable(),
   categoria: z.string().min(1, 'Selecione uma categoria'),
   quantidade: z.preprocess((val) => Number(val), z.number().min(0, 'Quantidade não pode ser negativa')),
   estoque_minimo: z.preprocess((val) => Number(val), z.number().min(0, 'Estoque mínimo não pode ser negativo')),
-  localizacao: z.string().optional(),
+  localizacao: z.string().max(200).optional().nullable(),
   preco_custo: z.preprocess((val) => Number(val), z.number().min(0.01, 'Custo deve ser maior que zero')),
   preco_venda: z.preprocess((val) => Number(val), z.number().min(0.01, 'Venda deve ser maior que zero')),
   unidadeMedida: z.string().default('un'),
   unidadeCompra: z.string().default('un'),
   fatorConversao: z.preprocess((val) => Number(val), z.number().min(0.0001, 'Fator de conversão deve ser positivo').default(1)),
   permiteFracionado: z.boolean().default(false),
+}).refine((data) => data.preco_venda >= data.preco_custo, {
+  message: 'Preço de venda não pode ser menor que o custo',
+  path: ['preco_venda'],
 });
 
 type PecaFormData = z.infer<typeof pecaSchema>;
@@ -39,6 +47,7 @@ export default function NovoItemEstoquePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [categorias, setCategorias] = useState<string[]>([]);
+  const [catLoading, setCatLoading] = useState(true);
 
   const {
     register,
@@ -64,39 +73,46 @@ export default function NovoItemEstoquePage() {
   const permiteFracionado = watch('permiteFracionado');
   const margem = precoCusto > 0 && precoVenda > 0 ? ((precoVenda / precoCusto - 1) * 100).toFixed(1) : '0.0';
 
+  // ✅ CORRIGIDO: fetch de categorias com AbortController + apiFetch
   useEffect(() => {
-    fetch('/api/pecas/categorias')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setCategorias(data))
-      .catch(() => setCategorias(['OUTROS']));
-  }, []);
-
-  const onSubmit = async (data: PecaFormData) => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/pecas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    const controller = new AbortController();
+    
+    apiFetch<any>('/api/pecas/categorias', { signal: controller.signal })
+      .then((data) => {
+        setCategorias(Array.isArray(data) ? data : []);
+      })
+      .catch((err: any) => {
+        if (err.name === 'AbortError') return;
+        setCategorias(['OUTROS']);
+      })
+      .finally(() => {
+        setCatLoading(false);
       });
 
-      const result = await res.json();
+    return () => controller.abort();
+  }, []);
 
-      if (res.ok) {
-        toast.success('Novo item protocolado no almoxarifado!');
-        router.push('/estoque');
-      } else {
-        toast.error(result.error || 'Erro ao cadastrar item');
-      }
-    } catch (err) {
-      toast.error('Erro de conexão com o terminal');
+  // ✅ CORRIGIDO: onSubmit com apiFetch + handleApiError + useCallback
+  const onSubmit = useCallback(async (data: PecaFormData) => {
+    setLoading(true);
+    try {
+      await apiFetch('/api/pecas', {
+        method: 'POST',
+        body: data,
+      });
+
+      toast.success('Novo item protocolado no almoxarifado!');
+      router.push('/estoque');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao cadastrar item' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 space-y-8 pb-20 overflow-hidden">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/estoque" className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group">
           <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
@@ -107,11 +123,11 @@ export default function NovoItemEstoquePage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8" noValidate>
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           <div className="xl:col-span-2 space-y-8">
+            {/* Especificações Básicas */}
             <section className="bg-zinc-900 border border-zinc-800 rounded-2xl sm:rounded-[2.5rem] p-5 sm:p-10 shadow-2xl relative overflow-hidden group">
-               
                <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-6 mb-10">
                   <div className="p-3 bg-orange-600/10 text-orange-500 rounded-2xl">
                     <Package size={20} />
@@ -163,8 +179,16 @@ export default function NovoItemEstoquePage() {
                     <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1 italic">Grupo / Categoria</label>
                     <div className="relative">
                       <Layers size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 pointer-events-none" />
-                      <select {...register('categoria')} className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-10 text-[10px] text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest appearance-none cursor-pointer">
-                        {categorias.map(cat => <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>)}
+                      <select 
+                        {...register('categoria')} 
+                        disabled={catLoading}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl py-4 pl-12 pr-10 text-[10px] text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest appearance-none cursor-pointer disabled:opacity-50"
+                      >
+                        {catLoading ? (
+                          <option value="">Carregando...</option>
+                        ) : (
+                          categorias.map(cat => <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>)
+                        )}
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
                     </div>
@@ -180,6 +204,7 @@ export default function NovoItemEstoquePage() {
                </div>
             </section>
 
+            {/* Unidades de Medida */}
             <section className="bg-zinc-900 border border-zinc-800 rounded-2xl sm:rounded-[2.5rem] p-5 sm:p-10 shadow-2xl relative overflow-hidden">
                <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-6 mb-10">
                   <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-2xl">
@@ -230,6 +255,7 @@ export default function NovoItemEstoquePage() {
                </div>
             </section>
 
+            {/* Níveis de Inventário */}
             <section className="bg-zinc-900 border border-zinc-800 rounded-2xl sm:rounded-[2.5rem] p-5 sm:p-10 shadow-2xl">
                <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-6 mb-10">
                   <div className="p-3 bg-blue-600/10 text-blue-500 rounded-2xl"><BarChart3 size={20} /></div>
@@ -264,8 +290,8 @@ export default function NovoItemEstoquePage() {
           </div>
 
           <div className="space-y-8">
+            {/* Matriz de Preços */}
             <section className="bg-zinc-900 border border-zinc-800 rounded-2xl sm:rounded-[3rem] p-5 sm:p-10 shadow-2xl space-y-10 relative overflow-hidden">
-               
                <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-6 mb-10">
                   <div className="p-3 bg-green-600/10 text-green-500 rounded-2xl"><DollarSign size={20} /></div>
                   <div>
@@ -289,6 +315,9 @@ export default function NovoItemEstoquePage() {
                         <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xs font-black text-orange-800 italic">R$</span>
                         <input type="number" step="0.01" {...register('preco_venda')} className="w-full bg-zinc-950 border border-orange-500/20 rounded-3xl p-6 pl-14 text-xl font-black text-orange-500 font-mono outline-none focus:border-orange-500 transition shadow-lg shadow-orange-900/10 placeholder:text-zinc-700" placeholder="0,00" />
                      </div>
+                     {errors.preco_venda && (
+                       <p className="text-[10px] text-red-500 font-bold italic px-1">{errors.preco_venda.message}</p>
+                     )}
                   </div>
 
                   <div className="p-7 bg-zinc-950 border border-zinc-800 rounded-[2.5rem] flex flex-col items-center text-center space-y-2 border-dashed">
