@@ -38,11 +38,10 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // 1. Tenta pegar o token para saber quem é o usuário
   const token = (await cookies()).get('auth-token')?.value;
   let isBlocked = false;
+  let isAuthenticated = !!token;
 
-  // 2. Se tiver token, verifica se a empresa está bloqueada
   if (token) {
     try {
       const payload = await verifyTokenEdge(token);
@@ -53,17 +52,18 @@ export default async function RootLayout({
           select: { status: true }
         });
         
-        // Se a empresa não existir ou estiver bloqueada
         if (!empresa || empresa.status === 'BLOQUEADO') {
           isBlocked = true;
         }
       }
     } catch (error) {
       console.error("Erro ao validar status da empresa:", error);
+      // Se o token for inválido, trata como não autenticado
+      isAuthenticated = false;
     }
   }
 
-  // 3. Se estiver bloqueada, renderiza a tela de bloqueio no lugar do sistema
+  // 1. Tela de Bloqueio
   if (isBlocked) {
     return (
       <html lang="pt-BR" className="dark">
@@ -91,10 +91,23 @@ export default async function RootLayout({
     );
   }
 
-  // 4. Se estiver tudo certo (ou for a tela de login), renderiza o sistema normal
+  // 2. Se NÃO estiver autenticado (tela de login, register, recuperar senha)
+  if (!isAuthenticated) {
+    return (
+      <html lang="pt-BR" className="dark">
+        <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden">
+          {children}
+          <Toaster theme="dark" position="top-right" richColors />
+        </body>
+      </html>
+    );
+  }
+
+  // 3. Se estiver autenticado (Sistema completo)
   return (
     <html lang="pt-BR" className="dark">
       <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden">
+        {/* O Tour agora só é renderizado se o usuário estiver logado */}
         <OnboardingTour /> 
         
         <DiagnosticsOverlay />
