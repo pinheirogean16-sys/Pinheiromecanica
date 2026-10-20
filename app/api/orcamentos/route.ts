@@ -11,7 +11,8 @@ import { roundDecimal } from '@/lib/utils';
 // ============================================================
 // CONSTANTES
 // ============================================================
-const STATUS_CRIACAO_VALIDOS = ['RASCUNHO'] as const;
+// ✅ CORRIGIDO: Agora aceita ENVIADO na criação
+const STATUS_CRIACAO_VALIDOS = ['RASCUNHO', 'ENVIADO'] as const;
 
 const STATUS_FILTRO_VALIDOS = [
   'RASCUNHO', 'ENVIADO', 'APROVADO', 'REPROVADO', 'CONVERTIDO',
@@ -69,7 +70,7 @@ const listarOrcamentosQuerySchema = z.object({
   ),
   limit: z.preprocess(
     (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
-    z.coerce.number().int().min(1).max(1000).default(10) // Aumentado para 1000
+    z.coerce.number().int().min(1).max(1000).default(10)
   ),
 });
 
@@ -107,7 +108,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     
-    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
     const parsed = listarOrcamentosQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       status: searchParams.get('status') || undefined,
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
     }
 
-    // ✅ NOVO: valida que todas as peças (se informadas) pertencem à empresa
+    // Valida que todas as peças (se informadas) pertencem à empresa
     const pecaIds = body.pecas
       .map((p) => p.peca_id)
       .filter((id): id is string => !!id);
@@ -248,7 +248,8 @@ export async function POST(request: NextRequest) {
           cliente_id: body.cliente_id,
           veiculo_id: body.veiculo_id,
           data_validade: body.data_validade ? new Date(body.data_validade) : null,
-          status: 'RASCUNHO',
+          // ✅ CORRIGIDO: Salva o status enviado pelo usuário (RASCUNHO ou ENVIADO)
+          status: body.status || 'RASCUNHO',
           desconto: roundDecimal(body.desconto),
           valor_servicos,
           valor_pecas,
@@ -310,7 +311,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    // ✅ NÃO vaza error.message (evita expor detalhes do Prisma)
     return apiError(error, 'ORCAMENTO', 'Erro ao criar orçamento');
   }
 }
