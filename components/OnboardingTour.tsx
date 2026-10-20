@@ -9,6 +9,7 @@ export default function OnboardingTour() {
   const router = useRouter();
   const [showIntro, setShowIntro] = useState(false);
 
+  // 1. Verifica se deve mostrar a introdução (apenas no dashboard e se nunca viu)
   useEffect(() => {
     const done = localStorage.getItem('@vehlox:tour_done');
     const step = localStorage.getItem('@vehlox:tour_step');
@@ -28,6 +29,7 @@ export default function OnboardingTour() {
     setShowIntro(false);
   };
 
+  // 2. Engine do Driver.js
   useEffect(() => {
     if (showIntro) return; 
     if (localStorage.getItem('@vehlox:tour_done')) return;
@@ -35,14 +37,30 @@ export default function OnboardingTour() {
     const currentStep = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
     if (currentStep < 2) return; 
 
+    // ✅ Mapeamento de qual rota cada step espera estar
+    const stepRoutes: Record<number, string> = {
+      2: '/dashboard', 3: '/clientes', 4: '/clientes', 5: '/clientes',
+      6: '/clientes', 7: '/clientes', 8: '/veiculos/novo',
+      9: '/veiculos/novo', 10: '/veiculos/novo', 11: '/veiculos/novo',
+      12: '/veiculos/novo', 13: '/os/nova', 14: '/os/nova',
+      15: '/os/nova', 16: '/os/nova',
+    };
+
+    // ✅ Se a rota atual não for a esperada para o step, cancela o tour.
+    const expectedRoute = stepRoutes[currentStep];
+    if (expectedRoute && pathname !== expectedRoute && !pathname.startsWith(expectedRoute + '/')) {
+      // O usuário saiu do fluxo do tour. Marca como concluído para não incomodar mais.
+      localStorage.setItem('@vehlox:tour_done', 'true');
+      localStorage.setItem('@vehlox:tour_step', '0');
+      return;
+    }
+
     let driverInstance: any = null;
 
-    // 👇 FUNÇÃO DE LIMPEZA FORÇADA DO DRIVER.JS
     const forceCleanupDriver = (instance: any) => {
       if (instance) {
         try { instance.destroy(); } catch {}
       }
-      // Remove qualquer resquício visual do Driver.js
       document.body.style.overflow = '';
       document.body.classList.remove('driver-active');
       document.documentElement.classList.remove('driver-active');
@@ -53,7 +71,6 @@ export default function OnboardingTour() {
       });
     };
 
-    // CSS Premium do Modal
     const styleId = 'vehlox-driver-custom-css';
     if (!document.getElementById(styleId)) {
       const style = document.createElement('style');
@@ -204,7 +221,6 @@ export default function OnboardingTour() {
               forceCleanupDriver(opts.driver);
               window.dispatchEvent(new Event('vehlox:close-client-modal'));
               
-              // Delay para limpar a tela antes de navegar
               setTimeout(() => {
                 router.push('/dashboard');
               }, 300);
@@ -240,7 +256,6 @@ export default function OnboardingTour() {
               localStorage.setItem('@vehlox:tour_done', 'true');
               localStorage.setItem('@vehlox:tour_step', '0');
               
-              // Delay para o Driver.js limpar a tela antes de redirecionar
               setTimeout(() => {
                 if (route) router.push(route);
               }, 300);
