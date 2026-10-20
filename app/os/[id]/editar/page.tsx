@@ -16,6 +16,18 @@ import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
 import QuickPartModal, { QuickPartSuccessData } from '@/components/QuickPartModal';
 import PreventivaVinculoSelector from '@/components/PreventivaVinculoSelector';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
+
+// ============================================================
+// HELPERS
+// ============================================================
+function formatDateSafe(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 16);
+}
 
 function sanitizeWorkOrderPayload(payload: any) {
   const servicosValidos = (payload.servicos || [])
@@ -73,21 +85,15 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
-  // C13/A37: autosave removido. Só salvamos no botão explícito.
-  // Não há mais lastRequestId/isLoadedRef porque não há autosave.
-
-  // Dados fundamentais
   const [mecanicos, setMecanicos] = useState<any[]>([]);
   const [availablePecas, setAvailablePecas] = useState<any[]>([]);
   const [pecasLoading, setPecasLoading] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isQuickPartModalOpen, setIsQuickPartModalOpen] = useState(false);
   
-  // Dados da OS
   const [ordem, setOrdem] = useState<any>(null);
   const [loadError, setLoadError] = useState(false);
   
-  // Formulário
   const [status, setStatus] = useState('');
   const [diagnostico, setDiagnostico] = useState('');
   const [previsao, setPrevisao] = useState('');
@@ -95,7 +101,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [selectedMecanico, setSelectedMecanico] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
-  // Campos estruturais
   const [tipoOS, setTipoOS] = useState<'OFICINA' | 'CAMPO'>('OFICINA');
 
   // Atributos Específicos de Oficina
@@ -122,11 +127,9 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [fotosCampo, setFotosCampo] = useState<string[]>([]);
   const [assinaturaCampo, setAssinaturaCampo] = useState('');
 
-  // Canvas Ref para Desenho de Assinatura
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawing = useRef(false);
 
-  // Campos de Atendimento Externo e Logística de Campo
   const [tipoAtendimento, setTipoAtendimento] = useState('OFICINA');
   const [kmSaida, setKmSaida] = useState(0);
   const [kmRetorno, setKmRetorno] = useState(0);
@@ -149,7 +152,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
   const [localEstado, setLocalEstado] = useState('');
   const [localGps, setLocalGps] = useState('');
 
-  // Manutenção Preventiva & Leituras
   const [preventivasVeiculo, setPreventivasVeiculo] = useState<any[]>([]);
   const [selectedPreventivas, setSelectedPreventivas] = useState<string[]>([]);
   const [preventivasExecutadas, setPreventivasExecutadas] = useState<any[]>([]);
@@ -223,7 +225,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     setAssinaturaCampo('');
   };
 
-  // Carregamento de Inicialização de Assinatura se houver ativa
   useEffect(() => {
     if (assinaturaCampo && canvasRef.current) {
       const img = new Image();
@@ -239,7 +240,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     }
   }, [assinaturaCampo]);
 
-  // Gestão de Fotos em Campo
   const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArr = Array.from(e.target.files);
@@ -259,16 +259,13 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     setFotosCampo((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // Campos Financeiros
   const [formaPagamento, setFormaPagamento] = useState('DINHEIRO');
   const [numParcelas, setNumParcelas] = useState(1);
   const [diasEntreParcelas, setDiasEntreParcelas] = useState(28);
   const [dataPrimeiraParcela, setDataPrimeiraParcela] = useState(new Date().toISOString().split('T')[0]);
 
-  // Itens
   const [servicos, setServicos] = useState<any[]>([]);
   const [pecas, setPecas] = useState<any[]>([]);
-
   const [pecaSearchTerm, setPecaSearchTerm] = useState('');
 
   // Carregamento inicial
@@ -277,33 +274,29 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
 
     const loadBasics = async () => {
       try {
-        const [mRes, oRes] = await Promise.all([
-          fetch('/api/usuarios?limit=1000', { signal: controller.signal }),
-          fetch(`/api/ordens/${id}`, { signal: controller.signal })
+        const [mData, oData] = await Promise.all([
+          apiFetch<any>('/api/usuarios?limit=1000', { signal: controller.signal }).catch(() => ({ items: [] })),
+          apiFetch<any>(`/api/ordens/${id}`, { signal: controller.signal })
         ]);
 
-        if (mRes.ok) {
-          const data = await mRes.json();
-          const users = data.items || [];
-          setMecanicos(users.filter((u: any) => u.role === 'MECANICO' || u.role === 'LIDER' || u.role === 'ADMIN'));
-        }
+        const users = mData.items || [];
+        setMecanicos(users.filter((u: any) => u.role === 'MECANICO' || u.role === 'LIDER' || u.role === 'ADMIN'));
         
-        if (oRes.ok) {
-          const data = await oRes.json();
-          setOrdem(data);
-          setStatus(data.status || 'ABERTA');
-          setDiagnostico(data.diagnostico || '');
-          setPrevisao(data.data_previsao ? new Date(data.data_previsao).toISOString().slice(0, 16) : '');
-          setDesconto(data.desconto || 0);
-          setSelectedMecanico(data.mecanico_id || '');
-          setObservacoes(data.observacoes || '');
+        if (oData) {
+          setOrdem(oData);
+          setStatus(oData.status || 'ABERTA');
+          setDiagnostico(oData.diagnostico || '');
+          setPrevisao(oData.data_previsao ? new Date(oData.data_previsao).toISOString().slice(0, 16) : '');
+          setDesconto(oData.desconto || 0);
+          setSelectedMecanico(oData.mecanico_id || '');
+          setObservacoes(oData.observacoes || '');
 
-          const tOS = data.tipoOS || (data.tipo_atendimento === 'CAMPO' ? 'CAMPO' : 'OFICINA');
+          const tOS = oData.tipoOS || (oData.tipo_atendimento === 'CAMPO' ? 'CAMPO' : 'OFICINA');
           setTipoOS(tOS);
 
-          if (data.observacoes) {
+          if (oData.observacoes) {
             try {
-              const meta = JSON.parse(data.observacoes);
+              const meta = JSON.parse(oData.observacoes);
               if (meta && typeof meta === 'object') {
                 if (meta.boxElevador) setBoxElevador(meta.boxElevador);
                 if (meta.prioridade) setPrioridade(meta.prioridade);
@@ -323,68 +316,66 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
           }
 
           setTipoAtendimento(tOS);
-          setKmSaida(data.km_saida || 0);
-          setKmRetorno(data.km_retorno || 0);
-          setValorKm(data.valor_km || 0);
+          setKmSaida(oData.km_saida || 0);
+          setKmRetorno(oData.km_retorno || 0);
+          setValorKm(oData.valor_km || 0);
           
-          setDespesaPedagio(data.despesa_pedagio || 0);
-          setDespesaCombustivel(data.despesa_combustivel || 0);
-          setDespesaHospedagem(data.despesa_hospedagem || 0);
-          setDespesaAlimentacao(data.despesa_alimentacao || 0);
-          setDespesaDiariaTecnica(data.despesa_diaria_tecnica || 0);
-          setDespesaGuincho(data.despesa_guincho || 0);
-          setDespesaOutros(data.despesa_outros || 0);
+          setDespesaPedagio(oData.despesa_pedagio || 0);
+          setDespesaCombustivel(oData.despesa_combustivel || 0);
+          setDespesaHospedagem(oData.despesa_hospedagem || 0);
+          setDespesaAlimentacao(oData.despesa_alimentacao || 0);
+          setDespesaDiariaTecnica(oData.despesa_diaria_tecnica || 0);
+          setDespesaGuincho(oData.despesa_guincho || 0);
+          setDespesaOutros(oData.despesa_outros || 0);
           
-          setMaoObraExternaHoras(data.mao_obra_externa_horas || 0);
-          setMaoObraExternaValor(data.mao_obra_externa_valor || 0);
+          setMaoObraExternaHoras(oData.mao_obra_externa_horas || 0);
+          setMaoObraExternaValor(oData.mao_obra_externa_valor || 0);
           
           let parsedEquipe: any[] = [];
           try {
-            parsedEquipe = typeof data.mao_obra_equipe === 'string' 
-              ? JSON.parse(data.mao_obra_equipe || '[]') 
-              : (data.mao_obra_equipe || []);
+            parsedEquipe = typeof oData.mao_obra_equipe === 'string' 
+              ? JSON.parse(oData.mao_obra_equipe || '[]') 
+              : (oData.mao_obra_equipe || []);
           } catch {
             parsedEquipe = [];
           }
           setMecanicosAdicionaisInput(parsedEquipe.map((p: any) => typeof p === 'object' ? p.nome || p.role : p).join(', '));
           
-          setLocalAtendimento(data.local_atendimento || '');
-          setLocalCidade(data.local_cidade || '');
-          setLocalEstado(data.local_estado || '');
-          setLocalGps(data.local_gps || '');
+          setLocalAtendimento(oData.local_atendimento || '');
+          setLocalCidade(oData.local_cidade || '');
+          setLocalEstado(oData.local_estado || '');
+          setLocalGps(oData.local_gps || '');
           
-          const fp = data.forma_pagamento === 'PARCELADO' ? 'BOLETO PARCELADO' : (data.forma_pagamento || 'DINHEIRO');
+          const fp = oData.forma_pagamento === 'PARCELADO' ? 'BOLETO PARCELADO' : (oData.forma_pagamento || 'DINHEIRO');
           setFormaPagamento(fp);
-          setNumParcelas(data.numero_parcelas || 1);
-          setDiasEntreParcelas(data.dias_entre_parcelas || 28);
-          if (data.data_vencimento_primeira) {
-            setDataPrimeiraParcela(new Date(data.data_vencimento_primeira).toISOString().split('T')[0]);
+          setNumParcelas(oData.numero_parcelas || 1);
+          setDiasEntreParcelas(oData.dias_entre_parcelas || 28);
+          if (oData.data_vencimento_primeira) {
+            setDataPrimeiraParcela(new Date(oData.data_vencimento_primeira).toISOString().split('T')[0]);
           }
 
-          if (Array.isArray(data.preventivas_ids)) {
-            setSelectedPreventivas(data.preventivas_ids);
+          if (Array.isArray(oData.preventivas_ids)) {
+            setSelectedPreventivas(oData.preventivas_ids);
           }
-          if (Array.isArray(data.preventivas_execucoes)) {
-            setPreventivasExecutadas(data.preventivas_execucoes);
+          if (Array.isArray(oData.preventivas_execucoes)) {
+            setPreventivasExecutadas(oData.preventivas_execucoes);
           }
-          if (data.veiculo?.quilometragem) {
-            setKmVeiculo(String(data.veiculo.quilometragem));
+          if (oData.veiculo?.quilometragem) {
+            setKmVeiculo(String(oData.veiculo.quilometragem));
           }
-          if (data.veiculo?.horimetro_atual) {
-            setHorimetroVeiculo(String(data.veiculo.horimetro_atual));
+          if (oData.veiculo?.horimetro_atual) {
+            setHorimetroVeiculo(String(oData.veiculo.horimetro_atual));
           }
-          if (data.veiculo_id) {
-            fetch(`/api/preventivas?veiculo_id=${data.veiculo_id}`)
-              .then(res => res.json())
+          if (oData.veiculo_id) {
+            apiFetch<any>(`/api/preventivas?veiculo_id=${oData.veiculo_id}`, { signal: controller.signal })
               .then(pList => {
-                if (Array.isArray(pList)) {
-                  setPreventivasVeiculo(pList.filter((p: any) => p.ativo !== false));
-                }
+                const list = Array.isArray(pList) ? pList : (pList.items || []);
+                setPreventivasVeiculo(list.filter((p: any) => p.ativo !== false));
               })
               .catch(() => {});
           }
           
-          setServicos((data.servicos || []).map((s: any) => ({
+          setServicos((oData.servicos || []).map((s: any) => ({
             id: s.id || crypto.randomUUID(),
             descricao: s.descricao,
             tipo_cobranca: s.tipo_cobranca || 'HORA',
@@ -394,7 +385,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
             valor_total: s.valor_total || 0
           })));
           
-          const rawPecas = data.pecas || data.pecas_aplicadas || data.itens || [];
+          const rawPecas = oData.pecas || oData.pecas_aplicadas || oData.itens || [];
           
           const apiPecasMapped = rawPecas.map((p: any) => {
             const defaultUnit = p.unidade || p.peca?.unidadeMedida || 'un';
@@ -422,7 +413,7 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
       } catch (err: any) { 
         if (err.name !== 'AbortError') {
           setLoadError(true);
-          toast.error('Erro de conexão com o servidor');
+          handleApiError(err, { defaultMessage: 'Erro ao carregar Ordem de Serviço' });
         }
       } finally {
         setFetching(false);
@@ -445,15 +436,10 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     const timeoutId = setTimeout(async () => {
       setPecasLoading(true);
       try {
-        const res = await fetch(`/api/pecas?onlySearch=true&q=${encodeURIComponent(pecaSearchTerm.trim())}`, {
+        const data = await apiFetch<any>(`/api/pecas?onlySearch=true&q=${encodeURIComponent(pecaSearchTerm.trim())}`, {
           signal: controller.signal
         });
-        if (res.ok) {
-          const data = await res.json();
-          setAvailablePecas(data.items || []);
-        } else {
-          setAvailablePecas([]);
-        }
+        setAvailablePecas(data.items || []);
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           setAvailablePecas([]);
@@ -702,9 +688,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
 
     setLoading(true);
     try {
-      // C12: só envia os campos que a tela controla.
-      // Campos como assinatura_hash, timeline_viagem, ferramentas_levadas,
-      // despesas_comprovantes não são enviados — o backend não vai sobrescrever.
       const rawPayload = {
         status,
         cliente_id: ordem.cliente_id,
@@ -788,27 +771,21 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
 
       const sanitizedPayload = sanitizeWorkOrderPayload(rawPayload);
 
-      const res = await fetch(`/api/ordens/${id}`, {
+      await apiFetch(`/api/ordens/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sanitizedPayload)
+        body: sanitizedPayload
       });
       
-      if (res.ok) {
-        toast.success('Ordem de Serviço atualizada com sucesso!');
-        router.push(`/os/${id}`);
-      } else {
-        const error = await res.json().catch(() => ({ error: 'Falha ao atualizar OS' }));
-        toast.error(`Erro: ${error.error || 'Falha ao atualizar OS'}`);
-      }
-    } catch { 
-      toast.error('Erro de rede ao tentar salvar');
+      toast.success('Ordem de Serviço atualizada com sucesso!');
+      router.push(`/os/${id}`);
+    } catch (err: any) { 
+      handleApiError(err, { defaultMessage: 'Erro ao tentar salvar a OS' });
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = useCallback((val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), []);
+  const formatCurrency = useCallback((val: number) => (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), []);
 
   if (fetching) {
     return (
@@ -819,7 +796,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
     );
   }
 
-  // A37: bloqueia edição se OS não carregou
   if (loadError || !ordem) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4">
@@ -853,7 +829,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* C13: autosave removido — o usuário salva explicitamente */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/5 border border-amber-500/20 rounded-xl h-10">
             <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
             <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest font-mono">Alterações não salvas</span>
@@ -1405,7 +1380,6 @@ export default function EditarOSPage({ params }: { params: Promise<{ id: string 
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 pt-1">
                         {fotosCampo.map((f, idx) => (
                           <div key={idx} className="relative aspect-square bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden group">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={f} alt="Campo" className="w-full h-full object-cover rounded-xl" />
                             <button 
                               type="button" 
