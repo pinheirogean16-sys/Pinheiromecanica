@@ -8,7 +8,7 @@ import {
   ShieldCheck, Wrench, Briefcase, UserCheck, Package,
   Building2, Landmark, FileText,
   ChevronRight, History, Upload, Eye, EyeOff, Loader2,
-  X, RefreshCw
+  X, RefreshCw, Rocket
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
@@ -150,16 +150,16 @@ export default function ConfiguracoesPage() {
   const [showToken, setShowToken] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
 
-  const fetchCompanyData = useCallback(async () => {
+  const fetchCompanyData = useCallback(async (signal?: AbortSignal) => {
     setCompanyLoading(true);
     try {
-      const data = await apiFetch<any>('/api/configuracoes/empresa');
+      const data = await apiFetch<any>('/api/configuracoes/empresa', { signal });
       if (data && data.id) {
         setCompanyData((prev: any) => ({ ...prev, ...data }));
         if (data.logo_url) setLogoPreview(data.logo_url);
       }
     } catch (err: any) {
-      // Se for 404/vazio, mantém defaults (não é erro crítico)
+      if (err.name === 'AbortError') return;
       if (err?.status !== 404) {
         handleApiError(err, { defaultMessage: 'Erro ao carregar dados da empresa.' });
       }
@@ -169,12 +169,12 @@ export default function ConfiguracoesPage() {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
+    const controller = new AbortController();
     const timeout = setTimeout(() => {
-      if (mounted) fetchCompanyData();
+      fetchCompanyData(controller.signal);
     }, 0);
     return () => {
-      mounted = false;
+      controller.abort();
       clearTimeout(timeout);
     };
   }, [fetchCompanyData]);
@@ -204,15 +204,17 @@ export default function ConfiguracoesPage() {
       });
       const data = await res.json();
 
-      if (res.ok && data.url) {
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao enviar a logo.');
+      }
+
+      if (data.url) {
         setLogoPreview(data.url);
         setCompanyData((prev: any) => ({ ...prev, logo_url: data.url }));
         toast.success('Logo carregada! Clique em Salvar para confirmar.');
-      } else {
-        toast.error(data.error || 'Erro ao enviar a logo.');
       }
-    } catch {
-      toast.error('Erro de conexão ao enviar a logo.');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao enviar a logo.' });
     } finally {
       setUploadingLogo(false);
     }
@@ -236,21 +238,21 @@ export default function ConfiguracoesPage() {
   // ============================================================
   // USUÁRIOS
   // ============================================================
-  // ✅ CORRIGIDO: totalPages inicia em 1
   const [usersData, setUsersData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [usersPage, setUsersPage] = useState(1);
   const [usersLoading, setUsersLoading] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (signal?: AbortSignal) => {
     if (currentUser?.role !== 'ADMIN') return;
     setUsersLoading(true);
     try {
-      const data = await apiFetch<any>(`/api/usuarios?page=${usersPage}&limit=10`);
+      const data = await apiFetch<any>(`/api/usuarios?page=${usersPage}&limit=10`, { signal });
       const items = Array.isArray(data) ? data : (data.items || []);
       const total = typeof data.total === 'number' ? data.total : items.length;
       const totalPages = Math.max(1, data.totalPages || 1);
       setUsersData({ items, total, totalPages });
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       handleApiError(err, { defaultMessage: 'Erro ao carregar usuários' });
     } finally {
       setUsersLoading(false);
@@ -260,13 +262,12 @@ export default function ConfiguracoesPage() {
   // ============================================================
   // LOGS
   // ============================================================
-  // ✅ CORRIGIDO: totalPages inicia em 1
   const [logsData, setLogsData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [logsPage, setLogsPage] = useState(1);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsFiltroModulo, setLogsFiltroModulo] = useState('TODOS');
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (signal?: AbortSignal) => {
     if (currentUser?.role !== 'ADMIN') return;
     setLogsLoading(true);
     try {
@@ -275,19 +276,19 @@ export default function ConfiguracoesPage() {
         limit: '20',
         modulo: logsFiltroModulo,
       });
-      const data = await apiFetch<any>(`/api/logs?${params.toString()}`);
+      const data = await apiFetch<any>(`/api/logs?${params.toString()}`, { signal });
       const items = Array.isArray(data) ? data : (data.items || []);
       const total = typeof data.total === 'number' ? data.total : items.length;
       const totalPages = Math.max(1, data.totalPages || 1);
       setLogsData({ items, total, totalPages });
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       handleApiError(err, { defaultMessage: 'Erro ao carregar logs de auditoria' });
     } finally {
       setLogsLoading(false);
     }
   }, [currentUser, logsPage, logsFiltroModulo]);
 
-  // Reset da página ao trocar filtro
   useEffect(() => {
     setLogsPage(1);
   }, [logsFiltroModulo]);
@@ -304,19 +305,20 @@ export default function ConfiguracoesPage() {
   });
   const [profileSaving, setProfileSaving] = useState(false);
 
-  const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await apiFetch<any>('/api/usuario');
+      const data = await apiFetch<any>('/api/usuario', { signal });
       setCurrentUser(data);
       setProfileFormData(prev => ({ ...prev, name: data.name, email: data.email }));
       if (data.role !== 'ADMIN') setActiveTab('perfil');
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       handleApiError(err, { defaultMessage: 'Erro ao carregar perfil' });
     }
   }, []);
 
   // ============================================================
-  // MODAIS (usuários e reset de senha)
+  // MODAIS
   // ============================================================
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -330,11 +332,9 @@ export default function ConfiguracoesPage() {
   });
   const [savingUser, setSavingUser] = useState(false);
 
-  // ✅ NOVO: modal de exclusão (substitui confirm nativo)
   const [deleteUserTarget, setDeleteUserTarget] = useState<any>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
 
-  // ✅ NOVO: modal de reset de senha (substitui confirm nativo)
   const [resetPasswordTarget, setResetPasswordTarget] = useState<any>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
@@ -342,24 +342,30 @@ export default function ConfiguracoesPage() {
   // EFFECTS DE CARREGAMENTO
   // ============================================================
   useEffect(() => {
+    const controller = new AbortController();
     const init = async () => {
       setLoading(true);
-      await fetchProfile();
+      await fetchProfile(controller.signal);
       setLoading(false);
     };
     init();
+    return () => controller.abort();
   }, [fetchProfile]);
 
   useEffect(() => {
+    const controller = new AbortController();
     if (currentUser?.role === 'ADMIN' && activeTab === 'usuarios') {
-      fetchUsers();
+      fetchUsers(controller.signal);
     }
+    return () => controller.abort();
   }, [currentUser, activeTab, fetchUsers]);
 
   useEffect(() => {
+    const controller = new AbortController();
     if (currentUser?.role === 'ADMIN' && activeTab === 'logs') {
-      fetchLogs();
+      fetchLogs(controller.signal);
     }
+    return () => controller.abort();
   }, [currentUser, activeTab, fetchLogs]);
 
   // ============================================================
@@ -400,10 +406,6 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  const handleDeleteUserClick = (user: any) => {
-    setDeleteUserTarget(user);
-  };
-
   const confirmDeleteUser = async () => {
     if (!deleteUserTarget) return;
     setIsDeletingUser(true);
@@ -417,10 +419,6 @@ export default function ConfiguracoesPage() {
     } finally {
       setIsDeletingUser(false);
     }
-  };
-
-  const handleResetPasswordClick = (user: any) => {
-    setResetPasswordTarget(user);
   };
 
   const confirmResetPassword = async () => {
@@ -441,7 +439,7 @@ export default function ConfiguracoesPage() {
   };
 
   // ============================================================
-  // HANDLER — PERFIL
+  // HANDLER — PERFIL & TOUR
   // ============================================================
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -487,6 +485,15 @@ export default function ConfiguracoesPage() {
     } finally {
       setProfileSaving(false);
     }
+  };
+
+  const handleReiniciarTour = () => {
+    localStorage.removeItem('@vehlox:tour_done');
+    localStorage.removeItem('@vehlox:tour_step');
+    toast.success('Tour reiniciado! Redirecionando para o painel...');
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 1000);
   };
 
   // ============================================================
@@ -588,10 +595,7 @@ export default function ConfiguracoesPage() {
         </aside>
 
         <main className="flex-1">
-
-          {/* ============================================================ */}
           {/* ABA USUÁRIOS */}
-          {/* ============================================================ */}
           {activeTab === 'usuarios' && currentUser?.role === 'ADMIN' && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -640,8 +644,8 @@ export default function ConfiguracoesPage() {
                             currentUser={currentUser} 
                             roleConfigs={roleConfigs} 
                             handleOpenUserModal={handleOpenUserModal} 
-                            handleResetPasswordClick={handleResetPasswordClick} 
-                            handleDeleteUserClick={handleDeleteUserClick} 
+                            handleResetPasswordClick={setResetPasswordTarget} 
+                            handleDeleteUserClick={setDeleteUserTarget} 
                           />
                         ))
                       )}
@@ -660,9 +664,7 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* ============================================================ */}
           {/* ABA EMPRESA */}
-          {/* ============================================================ */}
           {activeTab === 'empresa' && currentUser?.role === 'ADMIN' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -860,9 +862,7 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* ============================================================ */}
           {/* ABA PERFIL */}
-          {/* ============================================================ */}
           {activeTab === 'perfil' && (
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 sm:p-10 shadow-2xl relative overflow-hidden animate-in fade-in">
               <div className="absolute top-0 right-0 p-8 opacity-5">
@@ -954,13 +954,30 @@ export default function ConfiguracoesPage() {
                     </button>
                   </div>
                 </form>
+
+                {/* ✅ NOVO: BOTÃO PARA REINICIAR O TOUR */}
+                <div className="pt-10 mt-6 border-t border-zinc-800/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                      <Rocket className="w-4 h-4 text-orange-500" />
+                      Tour Guiado
+                    </h3>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1">Precisa de ajuda novamente? Reveja o passo a passo do sistema.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleReiniciarTour}
+                    className="w-full sm:w-auto px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-black/20"
+                  >
+                    Reiniciar Tour
+                  </button>
+                </div>
+
               </div>
             </div>
           )}
 
-          {/* ============================================================ */}
-          {/* ✅ NOVO: ABA LOGS DE AUDITORIA (implementada) */}
-          {/* ============================================================ */}
+          {/* ABA LOGS DE AUDITORIA */}
           {activeTab === 'logs' && currentUser?.role === 'ADMIN' && (
             <div className="space-y-6 animate-in fade-in">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -969,7 +986,7 @@ export default function ConfiguracoesPage() {
                   <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Rastreamento completo de ações no sistema</p>
                 </div>
                 <button 
-                  onClick={fetchLogs}
+                  onClick={() => fetchLogs()}
                   disabled={logsLoading}
                   className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 shadow-xl active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
@@ -1051,9 +1068,7 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* ============================================================ */}
           {/* ABA SISTEMA (placeholder) */}
-          {/* ============================================================ */}
           {activeTab === 'sistema' && currentUser?.role === 'ADMIN' && (
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-12 text-center shadow-2xl">
               <Settings className="w-16 h-16 mx-auto mb-4 text-zinc-700" />
@@ -1063,13 +1078,10 @@ export default function ConfiguracoesPage() {
               </p>
             </div>
           )}
-
         </main>
       </div>
 
-      {/* ============================================================ */}
       {/* MODAL: NOVO / EDITAR USUÁRIO */}
-      {/* ============================================================ */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
@@ -1127,9 +1139,7 @@ export default function ConfiguracoesPage() {
         </div>
       )}
 
-      {/* ============================================================ */}
       {/* MODAL: EXCLUIR USUÁRIO */}
-      {/* ============================================================ */}
       {deleteUserTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
@@ -1166,9 +1176,7 @@ export default function ConfiguracoesPage() {
         </div>
       )}
 
-      {/* ============================================================ */}
       {/* MODAL: RESETAR SENHA */}
-      {/* ============================================================ */}
       {resetPasswordTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-orange-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
