@@ -1,15 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { Printer, ChevronLeft } from 'lucide-react';
+import { Printer, ChevronLeft, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { formatHoras } from '@/lib/utils';
 import { BRANDING } from '@/lib/branding';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 // ============================================================
-// HELPER — Número por extenso
+// HELPERS
 // ============================================================
+function formatCurrency(val: number | null | undefined): string {
+  return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatDateTimeSafe(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('pt-BR');
+}
+
 function numeroPorExtenso(valor: number): string {
   const unidades = ['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove'];
   const dezenas = ['','dez','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
@@ -70,9 +83,6 @@ function numeroPorExtenso(valor: number): string {
   return texto;
 }
 
-// ============================================================
-// HELPER — Extrai observações úteis (ignora JSON interno)
-// ============================================================
 function extrairObservacoes(obs: any): string | null {
   if (!obs || typeof obs !== 'string') return null;
   const trimmed = obs.trim();
@@ -81,71 +91,82 @@ function extrairObservacoes(obs: any): string | null {
   return trimmed;
 }
 
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function ImprimirOSPage() {
   const params = useParams();
   const id = params?.id;
+  
   const [os, setOs] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [company, setCompany] = useState<any>(null);
 
-  useEffect(() => {
-    const fetchCompany = async () => {
-      try {
-        const res = await fetch('/api/configuracoes/empresa/publico');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Object.keys(data).length > 0) setCompany(data);
-        }
-      } catch {}
-    };
-    fetchCompany();
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(false);
+    try {
+      const compData = await apiFetch<any>('/api/configuracoes/empresa/publico', { signal }).catch(() => null);
+      if (compData && Object.keys(compData).length > 0) {
+        setCompany(compData);
+      }
 
-    const fetchOS = async () => {
-      if (!id) return;
-      try {
-        const res = await fetch(`/api/ordens/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setOs(data);
-        }
-      } catch {}
-      finally { setLoading(false); }
-    };
-    fetchOS();
+      if (!id) throw new Error('ID inválido');
+
+      const osData = await apiFetch<any>(`/api/ordens/${id}`, { signal });
+      setOs(osData);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setError(true);
+      handleApiError(err, { defaultMessage: 'Erro ao carregar OS' });
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
-  const formatCurrency = (val: number) => {
-    if (typeof val !== 'number') return 'R$ 0,00';
-    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  };
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    return () => controller.abort();
+  }, [fetchData]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-10">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-zinc-900"></div>
+          <Loader2 className="w-10 h-10 text-zinc-900 animate-spin" />
           <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">Carregando Ordem de Serviço...</p>
         </div>
       </div>
     );
   }
 
-  if (!os) {
+  if (error || !os) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center text-zinc-900 p-10 gap-6">
-        <h1 className="text-xl font-black uppercase tracking-tighter">ORDEM DE SERVIÇO NÃO ENCONTRADA</h1>
-        <Link href="/os" className="px-6 py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">
-          Voltar para Listagem
-        </Link>
+        <AlertTriangle className="w-12 h-12 text-red-500" />
+        <h1 className="text-xl font-black uppercase tracking-tighter text-center">
+          {error ? 'Erro de Conexão ou Permissão' : 'ORDEM DE SERVIÇO NÃO ENCONTRADA'}
+        </h1>
+        <p className="text-sm text-zinc-500 text-center max-w-md">Não foi possível carregar os dados desta OS. Verifique se ela existe e tente novamente.</p>
+        <div className="flex gap-4 mt-2">
+          <button onClick={() => fetchData()} className="flex items-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition">
+            <RefreshCw size={14} /> Tentar Novamente
+          </button>
+          <Link href="/os" className="px-6 py-3 border border-zinc-300 text-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition">
+            Voltar para Listagem
+          </Link>
+        </div>
       </div>
     );
   }
 
-  const logo = company?.logo_url || BRANDING.logo.url;
+  const logo = company?.logo_url || BRANDING?.logo?.url || null;
   const totalServicos = os.servicos?.reduce((acc: number, s: any) => acc + (s.valor_total || 0), 0) || 0;
   const totalPecas = os.pecas_aplicadas?.reduce((acc: number, p: any) => acc + (p.valor_total || 0), 0) || 0;
   const desconto = os.desconto || 0;
-  const valorTotal = os.valor_total || (totalServicos + totalPecas - desconto);
+  const valorTotal = os.valor_total !== undefined ? os.valor_total : (totalServicos + totalPecas - desconto);
 
   const dataFormatada = new Date().toLocaleDateString('pt-BR', {
     day: 'numeric', month: 'long', year: 'numeric'
@@ -184,7 +205,7 @@ export default function ImprimirOSPage() {
 
       <div className="max-w-4xl mx-auto bg-white shadow-2xl p-8 print:shadow-none print:p-0 print-container">
         
-        {/* CABEÇALHO PREMIUM */}
+        {/* CABEÇALHO */}
         <div className="flex items-center gap-6 border-b-4 border-black pb-6 mb-6 avoid-break">
           <div className="w-32 h-32 flex-shrink-0 flex items-center justify-center">
             {logo ? (
@@ -267,8 +288,8 @@ export default function ImprimirOSPage() {
                 <tr key={s.id} className="border-b border-black/20 even:bg-zinc-50">
                   <td className="p-2 border-r border-black uppercase">{s.descricao || '—'}</td>
                   <td className="p-2 border-r border-black text-center">{formatHoras(s.horas || 0)}</td>
-                  <td className="p-2 border-r border-black text-right">{formatCurrency(s.valor_hora || 0)}</td>
-                  <td className="p-2 text-right font-bold">{formatCurrency(s.valor_total || 0)}</td>
+                  <td className="p-2 border-r border-black text-right">{formatCurrency(s.valor_hora)}</td>
+                  <td className="p-2 text-right font-bold">{formatCurrency(s.valor_total)}</td>
                 </tr>
               )) : (
                 <tr><td colSpan={4} className="p-4 text-center italic text-zinc-500 uppercase">Nenhum serviço registrado.</td></tr>
@@ -299,8 +320,8 @@ export default function ImprimirOSPage() {
                   <td className="p-2 border-r border-black font-bold uppercase">{p.peca?.codigo || p.peca?.codigo_interno || '—'}</td>
                   <td className="p-2 border-r border-black uppercase">{p.peca?.descricao || p.descricao || '—'}</td>
                   <td className="p-2 border-r border-black text-center">{p.quantidade || 0} {p.unidade || p.peca?.unidadeMedida || ''}</td>
-                  <td className="p-2 border-r border-black text-right">{formatCurrency(p.valor_unit || 0)}</td>
-                  <td className="p-2 text-right font-bold">{formatCurrency(p.valor_total || 0)}</td>
+                  <td className="p-2 border-r border-black text-right">{formatCurrency(p.valor_unit)}</td>
+                  <td className="p-2 text-right font-bold">{formatCurrency(p.valor_total)}</td>
                 </tr>
               )) : (
                 <tr><td colSpan={5} className="p-4 text-center italic text-zinc-500 uppercase">Nenhuma peça aplicada.</td></tr>
@@ -338,7 +359,7 @@ export default function ImprimirOSPage() {
         {/* DATAS E RESPONSÁVEIS */}
         <div className="grid grid-cols-3 border-2 border-black mb-4 divide-x-2 divide-black text-xs avoid-break">
           <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">MECÂNICO RESPONSÁVEL</p><p className="font-black uppercase truncate">{os.mecanico?.name || 'NÃO ESPECIFICADO'}</p></div>
-          <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">DATA DE ABERTURA</p><p className="font-black">{os.data_abertura ? new Date(os.data_abertura).toLocaleString('pt-BR') : (os.created_at ? new Date(os.created_at).toLocaleString('pt-BR') : '—')}</p></div>
+          <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">DATA DE ABERTURA</p><p className="font-black">{formatDateTimeSafe(os.data_abertura || os.created_at)}</p></div>
           <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">FORMA DE PAGAMENTO</p><p className="font-black uppercase truncate">{os.forma_pagamento || 'A RECEBER / EM ABERTO'}{os.numero_parcelas > 1 ? ` (${os.numero_parcelas}x)` : ''}</p></div>
         </div>
 
@@ -347,7 +368,7 @@ export default function ImprimirOSPage() {
           <div className="border-2 border-black p-3 mb-4 text-[10px] avoid-break">
             <p className="font-bold uppercase text-zinc-500 mb-1">DOCUMENTO ASSINADO DIGITALMENTE</p>
             <p className="break-all font-mono">HASH SHA-256: {os.assinatura_hash}</p>
-            {os.assinatura_timestamp && <p className="mt-1"><span className="font-bold">Data da assinatura:</span> {new Date(os.assinatura_timestamp).toLocaleString('pt-BR')}</p>}
+            {os.assinatura_timestamp && <p className="mt-1"><span className="font-bold">Data da assinatura:</span> {formatDateTimeSafe(os.assinatura_timestamp)}</p>}
           </div>
         )}
 
