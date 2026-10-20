@@ -7,10 +7,10 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, Clock, CheckCircle, AlertTriangle, 
-  ArrowUpRight, ArrowDownRight, ArrowDownLeft, Wallet, Hammer,
-  FileText, Package, LayoutDashboard, ChevronRight, RefreshCw,
-  PlusCircle, Users, Truck, Wrench, ShieldAlert, BadgeInfo,
-  Calendar, CheckSquare, Settings, Activity, Sparkles, Inbox, Play, AlertCircle,
+  ArrowDownLeft, Wallet, Hammer,
+  FileText, Package, ChevronRight, RefreshCw,
+  PlusCircle, Users, Truck, Wrench, ShieldAlert, 
+  Calendar, CheckSquare, Activity, Sparkles, Inbox, Play, AlertCircle,
   Crown, Zap, XCircle
 } from 'lucide-react';
 import Link from 'next/link';
@@ -99,7 +99,6 @@ LazyModule.displayName = 'LazyModule';
 export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [loadingUser, setLoadingUser] = useState(true);
   const [planoData, setPlanoData] = useState<any>(null);
 
   const [stats, setStats] = useState<any>(null);
@@ -158,16 +157,15 @@ export default function DashboardPage() {
   }, [mounted]);
 
   const loadUser = useCallback(async () => {
-    setLoadingUser(true);
     try {
-      const data = await apiFetch('/api/auth/session', { priority: 'high', ttl: 60000 });
+      const data = await apiFetch<any>('/api/auth/session', { priority: 'high', ttl: 60000 });
       if (data) setUser(data.user || data);
-    } catch {} finally { setLoadingUser(false); }
+    } catch {}
   }, []);
 
   const loadPlano = useCallback(async () => {
     try {
-      const data = await apiFetch('/api/dashboard/plano', { ttl: 30000 });
+      const data = await apiFetch<any>('/api/dashboard/plano', { ttl: 30000 });
       if (data) setPlanoData(data);
     } catch {}
   }, []);
@@ -175,7 +173,7 @@ export default function DashboardPage() {
   const loadStats = useCallback(async () => {
     setLoadingStats(true); setStatsError(false);
     try {
-      const data = await apiFetch('/api/dashboard/stats', { ttl: 20000 });
+      const data = await apiFetch<any>('/api/dashboard/stats', { ttl: 20000 });
       if (data) setStats(data);
     } catch { setStatsError(true); } finally { setLoadingStats(false); }
   }, []);
@@ -183,7 +181,7 @@ export default function DashboardPage() {
   const loadResumoFinanceiro = useCallback(async () => {
     setLoadingResumo(true); setResumoError(false);
     try {
-      const data = await apiFetch('/api/dashboard/resumo-financeiro', { ttl: 30000 });
+      const data = await apiFetch<any>('/api/dashboard/resumo-financeiro', { ttl: 30000 });
       if (data) setResumoFinanceiro(data);
     } catch { setResumoError(true); } finally { setLoadingResumo(false); }
   }, []);
@@ -191,7 +189,7 @@ export default function DashboardPage() {
   const loadVeiculoStats = useCallback(async () => {
     setLoadingVeiculoStats(true); setVeiculoStatsError(false);
     try {
-      const data = await apiFetch('/api/veiculos/stats', { ttl: 30000 });
+      const data = await apiFetch<any>('/api/veiculos/stats', { ttl: 30000 });
       if (data) setVeiculoStats(data);
     } catch { setVeiculoStatsError(true); } finally { setLoadingVeiculoStats(false); }
   }, []);
@@ -199,7 +197,7 @@ export default function DashboardPage() {
   const loadFaturamento = useCallback(async () => {
     setLoadingFaturamentoData(true); setFaturamentoDataError(false);
     try {
-      const data = await apiFetch('/api/dashboard/faturamento-mensal', { ttl: 60000 });
+      const data = await apiFetch<any>('/api/dashboard/faturamento-mensal', { ttl: 60000 });
       if (data) setFaturamentoData(Array.isArray(data) ? data : (data.items || []));
     } catch { setFaturamentoDataError(true); } finally { setLoadingFaturamentoData(false); }
   }, []);
@@ -207,15 +205,15 @@ export default function DashboardPage() {
   const loadOsPorStatus = useCallback(async () => {
     setLoadingOsPorStatus(true);
     try {
-      const data = await apiFetch('/api/dashboard/os-por-status', { ttl: 20000 });
-      if (Array.isArray(data)) setOsPorStatus(data);
+      const data = await apiFetch<any>('/api/dashboard/os-por-status', { ttl: 20000 });
+      if (data) setOsPorStatus(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingOsPorStatus(false); }
   }, []);
 
   const loadServices = useCallback(async () => {
     setLoadingServices(true); setServicesError(false);
     try {
-      const data = await apiFetch('/api/dashboard/servicos-mais-realizados', { ttl: 60000 });
+      const data = await apiFetch<any>('/api/dashboard/servicos-mais-realizados', { ttl: 60000 });
       if (data) setTopServices(Array.isArray(data) ? data : (data.items || []));
     } catch { setServicesError(true); } finally { setLoadingServices(false); }
   }, []);
@@ -223,7 +221,7 @@ export default function DashboardPage() {
   const loadActivities = useCallback(async () => {
     setLoadingActivities(true); setActivitiesError(false);
     try {
-      const data = await apiFetch('/api/dashboard/atividades', { ttl: 20000 });
+      const data = await apiFetch<any>('/api/dashboard/atividades', { ttl: 20000 });
       if (data) setRecentActivities(data);
     } catch { setActivitiesError(true); } finally { setLoadingActivities(false); }
   }, []);
@@ -231,16 +229,18 @@ export default function DashboardPage() {
   const loadPreventivas = useCallback(async () => {
     setLoadingPreventivas(true);
     try {
-      const data = await apiFetch('/api/preventivas', { ttl: 30000 });
-      if (Array.isArray(data)) setPreventivas(data);
+      const data = await apiFetch<any>('/api/preventivas', { ttl: 30000 });
+      // ✅ CORRIGIDO: fallback para paginação
+      if (data) setPreventivas(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingPreventivas(false); }
   }, []);
 
   const loadPecas = useCallback(async () => {
     setLoadingPecas(true);
     try {
-      const data = await apiFetch('/api/pecas?limit=30', { ttl: 30000 });
-      if (data && Array.isArray(data.items)) setPecas(data.items);
+      const data = await apiFetch<any>('/api/pecas?limit=30', { ttl: 30000 });
+      // ✅ CORRIGIDO: fallback para paginação
+      if (data) setPecas(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingPecas(false); }
   }, []);
 
@@ -250,8 +250,9 @@ export default function DashboardPage() {
       const hoje = new Date();
       const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString();
       const end = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59, 999).toISOString();
-      const data = await apiFetch(`/api/agenda?start=${start}&end=${end}`, { ttl: 25000 });
-      if (Array.isArray(data)) setAgendaEvents(data);
+      const data = await apiFetch<any>(`/api/agenda?start=${start}&end=${end}`, { ttl: 25000 });
+      // ✅ CORRIGIDO: fallback para paginação
+      if (data) setAgendaEvents(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingAgenda(false); }
   }, []);
 
@@ -264,7 +265,8 @@ export default function DashboardPage() {
     loadVeiculoStats();
     loadAgenda();
     loadOsPorStatus();
-  }, [loadUser, loadPlano, loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda, loadOsPorStatus]);
+    loadPreventivas();
+  }, [loadUser, loadPlano, loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda, loadOsPorStatus, loadPreventivas]);
 
   const computedAlerts = useMemo(() => {
     const list: { type: 'CRITICAL' | 'ATTENTION' | 'NORMAL'; message: string; sub: string }[] = [];
