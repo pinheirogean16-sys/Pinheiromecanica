@@ -1,12 +1,12 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { memo, useState, useEffect, useCallback, useMemo } from 'react';
+import { memo, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { 
-  FileText, Plus, Search, ArrowRight, 
+  FileText, Plus, Search, 
   Clock, CheckCircle2, XCircle, Send, FileCode2,
-  Edit, Eye, AlertCircle, ExternalLink
+  Edit, Eye, ExternalLink
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Pagination } from '@/components/Pagination';
