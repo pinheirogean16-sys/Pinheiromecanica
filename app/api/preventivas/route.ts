@@ -34,7 +34,13 @@ const preventivaSchema = z.object({
   componente: z.string().max(100).optional().nullable().default('REVISAO'),
   descricao: z.string().max(1000).optional().nullable().default(''),
   observacoes: z.string().max(2000).optional().nullable().default(''),
-  tipo_controle: z.enum(TIPOS_CONTROLE).optional().default('KM'),
+  
+  // ✅ CORRIGIDO: Aceita 'COMBINADO' do frontend e transforma em 'MISTO' para o banco
+  tipo_controle: z.preprocess(
+    (val) => (val === 'COMBINADO' ? 'MISTO' : val),
+    z.enum(TIPOS_CONTROLE).optional().default('KM')
+  ),
+  
   intervalo_dias: z.preprocess(
     (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
     z.number().int().positive().optional().nullable()
@@ -94,10 +100,6 @@ const listarPreventivasQuerySchema = z.object({
 
 // ============================================================
 // GET — Listar preventivas
-//
-// IMPORTANTE: o GET NÃO dispara mais notificações (isso é feito por cron
-// em POST /api/preventivas/notificar). O status é recalculado e atualizado
-// em BATCH (uma query por status distinto), não mais N+1 updates.
 // ============================================================
 export async function GET(request: NextRequest) {
   try {
@@ -135,13 +137,11 @@ export async function GET(request: NextRequest) {
     });
 
     const evaluatedPreventivas: any[] = [];
-    // ✅ NOVO: agrupa IDs por status divergente para updateMany em batch
     const statusUpdates: Record<string, string[]> = {};
 
     for (const p of preventivas) {
       const avaliacao = avaliarStatusPreventiva(p);
 
-      // Recalcula status em memória (não faz update individual)
       if (avaliacao.status !== p.status) {
         if (!statusUpdates[avaliacao.status]) statusUpdates[avaliacao.status] = [];
         statusUpdates[avaliacao.status].push(p.id);
@@ -178,14 +178,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // ✅ NOVO: atualiza status em batch (uma query por status distinto)
-    // Isso reduz N+1 para no máximo 3-4 queries (quantos status existirem).
+    // Atualiza status em batch
     for (const [novoStatus, ids] of Object.entries(statusUpdates)) {
       try {
         await prisma.preventiva.updateMany({
           where: {
             id: { in: ids },
-            empresa_id: user.empresa_id, // redundância de segurança
+            empresa_id: user.empresa_id,
           },
           data: { status: novoStatus },
         });
@@ -232,7 +231,6 @@ export async function POST(request: NextRequest) {
     const kmAtual = veiculo.quilometragem || 0;
     const horimetroAtual = veiculo.horimetro_atual || 0;
 
-    // ✅ NOVO: parse seguro de datas
     let proximaData: Date | null = null;
     if (body.proxima_data) {
       proximaData = parseDate(body.proxima_data);
