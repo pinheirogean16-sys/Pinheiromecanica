@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Save, User, Building2, Phone, Mail, MapPin } from 'lucide-react';
+import { ChevronLeft, Save, User, Building2, Phone, Mail, MapPin, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -15,6 +15,8 @@ import {
   validarTelefone,
   validarCEP,
 } from '@/lib/masks';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 
 export default function NovoClientePage() {
   const router = useRouter();
@@ -44,8 +46,12 @@ export default function NovoClientePage() {
     return formData.tipo === 'PF' ? maskCPF(valor) : maskCNPJ(valor);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Se o botão estiver desabilitado ou em loading, aborta
+    if (loading) return;
+    
     setLoading(true);
 
     try {
@@ -56,7 +62,6 @@ export default function NovoClientePage() {
           formData.tipo === 'PF' ? 'CPF inválido' : 'CNPJ inválido',
           { description: 'Verifique o número digitado.' }
         );
-        setLoading(false);
         return;
       }
 
@@ -64,7 +69,6 @@ export default function NovoClientePage() {
         toast.error('Telefone inválido', {
           description: 'Digite DDD + número (10 ou 11 dígitos).',
         });
-        setLoading(false);
         return;
       }
 
@@ -72,7 +76,6 @@ export default function NovoClientePage() {
         toast.error('CEP inválido', {
           description: 'O CEP deve ter 8 dígitos.',
         });
-        setLoading(false);
         return;
       }
 
@@ -83,26 +86,19 @@ export default function NovoClientePage() {
         cep: apenasNumeros(formData.cep),
       };
 
-      const res = await fetch('/api/clientes', {
+      await apiFetch('/api/clientes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadLimpo),
-        credentials: 'include'
+        body: payloadLimpo,
       });
 
-      if (res.ok) {
-        toast.success('Cliente cadastrado com sucesso!');
-        router.push('/clientes');
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Falha na validação do registro');
-      }
-    } catch (error) {
-      toast.error('Interrupção na rede de dados');
+      toast.success('Cliente cadastrado com sucesso!');
+      router.push('/clientes');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao cadastrar cliente' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, loading, router]);
 
   return (
     <div className="w-full max-w-[1000px] mx-auto px-4 sm:px-6 space-y-10 pb-24 overflow-hidden">
@@ -127,7 +123,7 @@ export default function NovoClientePage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-8" noValidate>
         {/* Tipo (PF/PJ) e Status */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="grid grid-cols-2 gap-4 p-2 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl">
@@ -477,7 +473,7 @@ export default function NovoClientePage() {
             className="flex-[2] bg-orange-600 hover:bg-orange-500 text-white font-black uppercase text-xs tracking-[0.2em] py-6 rounded-2xl transition-all shadow-xl shadow-orange-950/20 disabled:opacity-50 flex items-center justify-center gap-3 italic transform active:scale-95 cursor-pointer"
           >
             {loading ? (
-              <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Save size={18} />
             )}
@@ -509,7 +505,7 @@ export default function NovoClientePage() {
             className="flex-[2] min-h-[50px] bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? (
-              <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Save size={14} />
             )}
