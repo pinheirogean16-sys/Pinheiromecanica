@@ -1,27 +1,35 @@
-// app/api/cron/verificar-trials/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { log } from '@/lib/logger';
 
 export async function GET(request: Request) {
-  // 1. Medida de segurança: Verifica se a chamada é do seu Cron Job
+  // 1. Medida de segurança: aceita o segredo via URL ou via Header
+  const { searchParams } = new URL(request.url);
+  const secretViaUrl = searchParams.get('secret');
   const authHeader = request.headers.get('authorization');
+  const headerCron = request.headers.get('x-cron-secret');
+  
   const cronSecret = process.env.CRON_SECRET;
 
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  const isAuthorized = 
+    (secretViaUrl && secretViaUrl === cronSecret) ||
+    (authHeader === `Bearer ${cronSecret}`) || 
+    (headerCron === cronSecret);
+
+  if (!cronSecret || !isAuthorized) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   try {
     const agora = new Date();
 
-    // 2. Encontra todas as empresas que estão no trial, o trial expirou e ainda estão ativas
+    // 2. Encontra todas as empresas com trial expirado que ainda estão ativas
     const empresasParaBloquear = await prisma.empresa.findMany({
       where: {
         plano: 'TRIAL',
         status: 'ATIVO',
         trial_ends_at: {
-          lt: agora, // A data de término do trial é menor que agora (já passou)
+          lt: agora,
         },
       },
     });
@@ -30,7 +38,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Nenhum trial expirado para bloquear.' });
     }
 
-    // 3. Atualiza o status de todas as empresas encontradas para 'BLOQUEADO'
+    // 3. Atualiza o status
     const resultado = await prisma.empresa.updateMany({
       where: {
         id: { in: empresasParaBloquear.map((e) => e.id) },
@@ -51,6 +59,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       message: `${resultado.count} empresa(s) bloqueada(s) com sucesso.`,
+      empresas: empresasParaBloquear.map(e => e.nome)
     });
   } catch (error: any) {
     log('ERROR', 'CRON_TRIAL', 'Erro ao verificar trials', { error: error?.message }, 'SISTEMA');
