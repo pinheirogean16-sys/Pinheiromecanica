@@ -5,16 +5,14 @@ import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 
-// Configura o Cloudinary com as credenciais do .env
-cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+// ✅ O SDK já pega as credenciais automaticamente da variável CLOUDINARY_URL
+// Não precisa mais do cloudinary.config() aqui!
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-// (Função detectFileType permanece a mesma)
+// ============================================================
+// VALIDAÇÃO POR MAGIC BYTES
+// ============================================================
 type TipoDetectado = {
   ext: 'pdf' | 'jpg' | 'png' | 'webp';
   mime: string;
@@ -22,21 +20,32 @@ type TipoDetectado = {
 
 function detectFileType(buffer: Buffer): TipoDetectado | null {
   if (buffer.length < 12) return null;
+
   if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
     return { ext: 'pdf', mime: 'application/pdf' };
   }
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return { ext: 'jpg', mime: 'image/jpeg' };
   }
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 && buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a) {
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) {
     return { ext: 'png', mime: 'image/png' };
   }
-  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) {
     return { ext: 'webp', mime: 'image/webp' };
   }
+
   return null;
 }
 
+// ============================================================
+// POST — Upload de documento para o Cloudinary
+// ============================================================
 export async function POST(request: Request) {
   try {
     const { error, user } = await requireAuth();
@@ -79,12 +88,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ UPLOAD PARA O CLOUDINARY (em vez de gravar no disco)
+    // ✅ UPLOAD PARA O CLOUDINARY
     const uploadResult = await new Promise<any>((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          folder: `vehlox/${user.empresa_id}`, // Pasta isolada por empresa
-          resource_type: 'auto', // Detecta automaticamente imagens/PDFs
+          folder: `vehlox/${user.empresa_id}`,
+          resource_type: 'auto',
+          public_id: `${Date.now()}-${globalThis.crypto.randomUUID()}`,
         },
         (error, result) => {
           if (error) reject(error);
@@ -94,7 +104,6 @@ export async function POST(request: Request) {
       uploadStream.end(buffer);
     });
 
-    // ✅ Retorna a URL segura e permanente do Cloudinary
     const url = uploadResult.secure_url;
 
     log(
@@ -112,10 +121,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      url, // Ex: "https://res.cloudinary.com/seu-cloud/image/upload/v.../foto.jpg"
+      url,
       tipo: detected.mime,
     });
   } catch (error: any) {
+    log('ERROR', 'UPLOAD', 'Erro ao processar upload', { error: error?.message }, 'SISTEMA');
     return apiError(error, 'UPLOAD', 'Erro ao processar upload');
   }
 }
