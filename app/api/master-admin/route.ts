@@ -11,6 +11,7 @@ import { z } from 'zod';
 // ============================================================
 const PRECO_PRO = 149.90;
 const PRECO_BASICO = 89.90;
+const DIAS_TRIAL = 14;
 
 const PLANOS_VALIDOS = ['TRIAL', 'BASICO', 'PRO'] as const;
 const STATUS_VALIDOS = ['ATIVO', 'BLOQUEADO', 'CANCELADO'] as const;
@@ -21,9 +22,16 @@ const patchMasterSchema = z.object({
   plano: z.enum(PLANOS_VALIDOS).optional(),
 });
 
+// ✅ CORRIGIDO: preprocess para nunca quebrar com null/0
 const getMasterQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined || val === 0 ? 50 : val),
+    z.coerce.number().int().min(1).max(100).default(50)
+  ),
 });
 
 // ============================================================
@@ -36,6 +44,13 @@ function isSuperAdmin(email: string): boolean {
     return false;
   }
   return email === superAdminEmail;
+}
+
+// ============================================================
+// HELPER: calcula data de término do trial
+// ============================================================
+function calcularFimTrial(): Date {
+  return new Date(Date.now() + DIAS_TRIAL * 24 * 60 * 60 * 1000);
 }
 
 // ==========================================
@@ -52,14 +67,24 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
+
+    // ✅ CORRIGIDO: `|| undefined` para o .default() funcionar
     const { page, limit } = getMasterQuerySchema.parse({
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
     const skip = (page - 1) * limit;
 
-    // ✅ NOVO: paginação + contagens em paralelo
-    const [empresas, totalEmpresas, totalUsuarios, totalOS, logsRecentes] = await Promise.all([
+    // ✅ NOVO: contagem global de planos (para MRR correto, independente da paginação)
+    const [
+      empresas,
+      totalEmpresas,
+      totalUsuarios,
+      totalOS,
+      logsRecentes,
+      countPro,
+      countBasico,
+    ] = await Promise.all([
       prisma.empresa.findMany({
         include: {
           _count: { select: { User: true } },
@@ -75,14 +100,13 @@ export async function GET(request: Request) {
         orderBy: { created_at: 'desc' },
         take: 10,
       }),
+      // ✅ MRR correto: conta TODAS as empresas do plano, não só as da página
+      prisma.empresa.count({ where: { plano: 'PRO' } }),
+      prisma.empresa.count({ where: { plano: 'BASICO' } }),
     ]);
 
-    // MRR baseado nas constantes (não hardcoded)
-    let mrr = 0;
-    empresas.forEach((emp) => {
-      if (emp.plano === 'PRO') mrr += PRECO_PRO;
-      if (emp.plano === 'BASICO') mrr += PRECO_BASICO;
-    });
+    // ✅ MRR global (não depende da paginação)
+    const mrr = countPro * PRECO_PRO + countBasico * PRECO_BASICO;
 
     return NextResponse.json({
       stats: {
@@ -90,6 +114,8 @@ export async function GET(request: Request) {
         totalUsuarios,
         totalOS,
         mrr,
+        empresasPro: countPro,
+        empresasBasico: countBasico,
       },
       empresas,
       paginacao: {
@@ -134,7 +160,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // ✅ NOVO: verifica se a empresa existe antes de atualizar
+    // ✅ Verifica se a empresa existe antes de atualizar
     const empresaAntes = await prisma.empresa.findUnique({
       where: { id: empresa_id },
     });
@@ -143,16 +169,34 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Empresa não encontrada.' }, { status: 404 });
     }
 
+    // ✅ NOVO: monta o objeto de atualização incluindo trial_ends_at
+    const updateData: any = {};
+
+    if (status) updateData.status = status;
+
+    if (plano) {
+      updateData.plano = plano;
+
+      // Se o plano virou TRIAL, define 14 dias a partir de agora
+      if (plano === 'TRIAL') {
+        updateData.trial_ends_at = calcularFimTrial();
+        // Se estava bloqueado, desbloqueia (novo trial)
+        if (!status && empresaAntes.status === 'BLOQUEADO') {
+          updateData.status = 'ATIVO';
+        }
+      } else {
+        // PRO ou BASICO: limpa a data de trial (não é mais necessária)
+        updateData.trial_ends_at = null;
+      }
+    }
+
     // Atualiza a empresa
     const updated = await prisma.empresa.update({
       where: { id: empresa_id },
-      data: {
-        ...(status && { status }),
-        ...(plano && { plano }),
-      },
+      data: updateData,
     });
 
-    // ✅ NOVO: auditoria da alteração
+    // ✅ Auditoria da alteração
     await createAuditLog({
       modulo: 'MASTER',
       acao: 'EDITAR',
@@ -163,10 +207,12 @@ export async function PATCH(request: Request) {
       dados_antes: {
         status: empresaAntes.status,
         plano: empresaAntes.plano,
+        trial_ends_at: empresaAntes.trial_ends_at?.toISOString() || null,
       },
       dados_depois: {
         status: updated.status,
         plano: updated.plano,
+        trial_ends_at: updated.trial_ends_at?.toISOString() || null,
       },
     });
 
@@ -174,7 +220,12 @@ export async function PATCH(request: Request) {
       'INFO',
       'MASTER',
       'Empresa atualizada pelo super admin',
-      { empresa_id, status, plano },
+      {
+        empresa_id,
+        status: updated.status,
+        plano: updated.plano,
+        trial_ends_at: updated.trial_ends_at?.toISOString() || null,
+      },
       user.email
     );
 
