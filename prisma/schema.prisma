@@ -128,9 +128,6 @@ model Cliente {
   @@index([empresa_id])
 }
 
-// ============================================================
-// ✅ CORRIGIDO: id com UUID + empresa_id UNIQUE (1 config por empresa)
-// ============================================================
 model ConfiguracaoEmpresa {
   id                   String   @id @default(uuid())
   empresa_id           String   @unique
@@ -163,8 +160,8 @@ model Empresa {
   id            String    @id
   nome          String
   cnpj          String?   @unique
-  status        String    @default("ATIVO") // ATIVO, BLOQUEADO, CANCELADO
-  plano         String    @default("TRIAL") // TRIAL, BASICO, PRO
+  status        String    @default("ATIVO")
+  plano         String    @default("TRIAL")
   trial_ends_at DateTime?
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
@@ -512,6 +509,10 @@ model Preventiva {
   notificado         Boolean   @default(false)
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
+  
+  // ✅ NOVO: Campo para guardar o caminho da imagem/foto
+  foto_url           String?   @db.Text
+  
   Veiculo            Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
 
   @@index([veiculo_id])
