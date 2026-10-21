@@ -3,9 +3,10 @@
 import { useState, useMemo } from 'react';
 import { 
   X, Wrench, Clock, ShieldCheck, Save, 
-  Camera, Upload, Loader2, TrendingUp 
+  Camera, Loader2, TrendingUp 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { CldUploadWidget } from 'next-cloudinary'; // ✅ Import do Widget do Cloudinary
 
 interface PreventivaModalProps {
   isOpen: boolean;
@@ -91,9 +92,8 @@ export default function PreventivaModal({
 
   const [ativo, setAtivo] = useState(preventivaToEdit?.ativo !== false);
   
-  // ✅ MUDANÇA: Agora o estado é um array de fotos
+  // ✅ Estado das fotos
   const [fotos, setFotos] = useState<string[]>(preventivaToEdit?.fotos || []);
-  const [uploadingFoto, setUploadingFoto] = useState(false);
   
   const [submitting, setSubmitting] = useState(false);
 
@@ -105,47 +105,6 @@ export default function PreventivaModal({
   
   const projecaoKm = intervaloKm ? baseKm + Number(intervaloKm) : null;
   const projecaoHoras = intervaloHoras ? baseHorimetro + Number(intervaloHoras) : null;
-
-  // ✅ UPLOAD DE MÚLTIPLAS FOTOS
-  const handleFotosUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploadingFoto(true);
-    let uploadedCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`A foto ${file.name} passou de 5MB e foi ignorada.`);
-        continue;
-      }
-
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          try { throw new Error(JSON.parse(text).error); } catch { throw new Error('Erro ao subir imagem'); }
-        }
-
-        const data = await res.json();
-        setFotos(prev => [...prev, data.url]);
-        uploadedCount++;
-      } catch (err: any) {
-        toast.error(`Falha no upload de ${file.name}`);
-      }
-    }
-
-    if (uploadedCount > 0) toast.success(`${uploadedCount} foto(s) anexada(s)!`);
-    setUploadingFoto(false);
-  };
 
   const removerFoto = (index: number) => {
     setFotos(prev => prev.filter((_, i) => i !== index));
@@ -194,7 +153,7 @@ export default function PreventivaModal({
         antecedencia_km: antecedenciaKm ? parseInt(antecedenciaKm, 10) : 1500,
         antecedencia_horas: antecedenciaHoras ? parseFloat(antecedenciaHoras) : 50,
         ativo,
-        fotos // ✅ Envia o array de fotos
+        fotos // ✅ Envia o array de fotos para o banco de dados
       };
 
       const url = isEditing ? `/api/preventivas/${preventivaToEdit.id}` : '/api/preventivas';
@@ -433,25 +392,30 @@ export default function PreventivaModal({
                     </div>
                   ))}
                   
-                  {/* Botão de Adicionar Foto (sempre visível) */}
-                  <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-zinc-800 hover:border-orange-500/50 bg-zinc-950 rounded-xl cursor-pointer transition-colors">
-                    {uploadingFoto ? (
-                      <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
-                    ) : (
-                      <>
-                        <Upload className="w-6 h-6 text-zinc-600 mb-1" />
-                        <span className="text-[9px] font-black uppercase text-zinc-500 text-center px-2">Anexar Fotos</span>
-                      </>
-                    )}
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      multiple
-                      className="hidden" 
-                      onChange={handleFotosUpload} 
-                      disabled={uploadingFoto}
-                    />
-                  </label>
+                  {/* ✅ WIDGET DO CLOUDINARY: Upload direto para a nuvem sem passar pelo servidor */}
+                  <CldUploadWidget 
+                    uploadPreset="vehlox_preset"
+                    options={{ multiple: true, maxFiles: 5 }}
+                    onSuccess={(result: any) => {
+                      if (result?.info?.secure_url) {
+                        setFotos(prev => [...prev, result.info.secure_url]);
+                        toast.success('Foto anexada com sucesso!');
+                      }
+                    }}
+                  >
+                    {({ open }) => {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => open()}
+                          className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-zinc-800 hover:border-orange-500/50 bg-zinc-950 rounded-xl cursor-pointer transition-colors"
+                        >
+                          <Camera className="w-6 h-6 text-zinc-600 mb-1" />
+                          <span className="text-[9px] font-black uppercase text-zinc-500 text-center px-2">Anexar Fotos</span>
+                        </button>
+                      );
+                    }}
+                  </CldUploadWidget>
                 </div>
               </div>
 
