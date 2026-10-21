@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
-import Header from '@/components/Header';
 import { Toaster } from 'sonner';
 import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
 import { BRANDING } from '@/lib/branding';
@@ -11,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import { ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+import LayoutWrapper from '@/components/LayoutWrapper'; // <--- IMPORT ADICIONADO
 
 export const metadata: Metadata = {
   title: {
@@ -58,7 +57,6 @@ export default async function RootLayout({
       }
     } catch (error) {
       console.error("Erro ao validar status da empresa:", error);
-      // Se o token for inválido, trata como não autenticado
       isAuthenticated = false;
     }
   }
@@ -107,19 +105,15 @@ export default async function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden">
-        {/* O Tour agora só é renderizado se o usuário estiver logado */}
         <OnboardingTour /> 
         
         <DiagnosticsOverlay />
-        <div className="flex w-full h-screen overflow-hidden">
-          <Sidebar />
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <Header />
-            <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-6 bg-zinc-950">
-              {children}
-            </main>
-          </div>
-        </div>
+        
+        {/* ✅ AQUI ESTÁ A MÁGICA: O LayoutWrapper decide se mostra a Sidebar */}
+        <LayoutWrapper>
+          {children}
+        </LayoutWrapper>
+        
         <Toaster theme="dark" position="top-right" richColors />
       </body>
     </html>
