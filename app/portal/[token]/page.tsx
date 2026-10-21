@@ -168,18 +168,18 @@ export default function PortalClientePage() {
   const { empresa, veiculo, cliente } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
-  // ✅ LÓGICA ESTRITA: Baseada apenas no tipo_controle da preventiva
-  const tipo = (data.tipo_controle || '').toUpperCase();
+  // ✅ LÓGICA ESTRITA DE EXIBIÇÃO
+  const tipo = (data.tipo_controle || 'KM').toUpperCase();
   
-  const isKm = tipo === 'KM' || tipo === 'MISTO' || tipo === 'COMBINADO';
-  const isHoras = tipo === 'HORAS' || tipo === 'MISTO' || tipo === 'COMBINADO';
+  // Só mostra KM se for do tipo KM/MISTO/COMBINADO ou se (não tiver tipo e tiver dados de KM)
+  const showKm = tipo === 'KM' || tipo === 'MISTO' || tipo === 'COMBINADO' || (!data.tipo_controle && !!data.intervalo_km);
+  
+  // Só mostra Horas se for do tipo HORAS/MISTO/COMBINADO ou se (não tiver tipo e tiver dados de Horas)
+  const showHoras = tipo === 'HORAS' || tipo === 'MISTO' || tipo === 'COMBINADO' || (!data.tipo_controle && !!data.intervalo_horas);
 
-  // Fallback para preventivas antigas que não tinham tipo_controle salvo
-  const hasKmData = data.proximo_km || data.intervalo_km;
-  const hasHorasData = data.proximo_horimetro || data.intervalo_horas;
-  
-  const showKm = isKm || (!tipo && hasKmData);
-  const showHoras = isHoras || (!tipo && hasHorasData);
+  // ✅ CÁLCULO INTELIGENTE DO ALVO (Se não tiver salvo no banco, calcula com base no KM atual)
+  const alvoKm = data.proximo_km || (veiculo.km && data.intervalo_km ? veiculo.km + data.intervalo_km : null);
+  const alvoHoras = data.proximo_horimetro || (veiculo.horimetro && data.intervalo_horas ? veiculo.horimetro + data.intervalo_horas : null);
 
   return (
     <div className="min-h-screen bg-zinc-100 py-6 px-3 sm:px-6 lg:px-8 font-sans text-zinc-900 pb-20 w-full overflow-x-hidden">
@@ -201,7 +201,6 @@ export default function PortalClientePage() {
           </div>
         </div>
 
-        {/* GRID PRINCIPAL: 1 coluna no celular, 2 colunas no PC/Tablet */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* COLUNA ESQUERDA (Dados e Serviço) */}
@@ -219,6 +218,7 @@ export default function PortalClientePage() {
                 <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-1 break-words">Proprietário: {cliente.nome}</p>
               </div>
               
+              {/* ✅ MOSTRA APENAS O QUE É RELEVANTE */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2">
                 {showKm && (
                   <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
@@ -262,8 +262,8 @@ export default function PortalClientePage() {
               )}
               
               <div className="flex flex-col gap-3 pt-2 w-full">
-                {/* ✅ BLOCO PRÓXIMA TROCA KM */}
-                {showKm && (data.proximo_km || data.intervalo_km) && (
+                {/* ✅ BLOCO PRÓXIMA TROCA KM (Calcula o alvo se não estiver no banco) */}
+                {showKm && (alvoKm || data.intervalo_km) && (
                   <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
                     <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
                       <TrendingUp size={18} />
@@ -271,7 +271,7 @@ export default function PortalClientePage() {
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Próxima Troca (KM)</span>
                       <span className="text-sm font-bold text-zinc-700 truncate">
-                        Alvo: {data.proximo_km ? `${data.proximo_km.toLocaleString('pt-BR')} KM` : 'A definir'}
+                        Alvo: {alvoKm ? `${alvoKm.toLocaleString('pt-BR')} KM` : 'A definir'}
                         {data.intervalo_km ? ` (a cada ${data.intervalo_km.toLocaleString('pt-BR')} KM)` : ''}
                       </span>
                     </div>
@@ -279,7 +279,7 @@ export default function PortalClientePage() {
                 )}
 
                 {/* ✅ BLOCO PRÓXIMA TROCA HORAS */}
-                {showHoras && (data.proximo_horimetro || data.intervalo_horas) && (
+                {showHoras && (alvoHoras || data.intervalo_horas) && (
                   <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
                     <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
                       <TrendingUp size={18} />
@@ -287,7 +287,7 @@ export default function PortalClientePage() {
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Próxima Troca (Horas)</span>
                       <span className="text-sm font-bold text-zinc-700 truncate">
-                        Alvo: {data.proximo_horimetro ? `${data.proximo_horimetro} h` : 'A definir'}
+                        Alvo: {alvoHoras ? `${alvoHoras} h` : 'A definir'}
                         {data.intervalo_horas ? ` (a cada ${data.intervalo_horas} h)` : ''}
                       </span>
                     </div>
