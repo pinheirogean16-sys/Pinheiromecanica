@@ -33,73 +33,59 @@ export async function GET(
 
     const empresa = await prisma.configuracaoEmpresa.findUnique({
       where: { empresa_id: preventiva.empresa_id },
-      select: {
-        nome_fantasia: true,
-        razao_social: true,
-        logo_url: true,
-        telefone: true,
-        endereco: true,
-      },
+      select: { nome_fantasia: true, razao_social: true, logo_url: true, telefone: true, endereco: true },
     });
 
-    // 1. Busca o histórico de execuções (Timeline)
     const historico = await prisma.preventivaExecucao.findMany({
-      where: { 
-        preventiva_id: preventiva.id,
-        empresa_id: preventiva.empresa_id
-      },
+      where: { preventiva_id: preventiva.id, empresa_id: preventiva.empresa_id },
       orderBy: { data_conclusao: 'desc' },
       take: 10,
     });
 
-    // 2. Busca as peças utilizadas
     let pecasUsadas: any[] = [];
-    let osIdParaBuscarPecas = null;
+    let debugInfo: any = { tentativas: [] };
+    const osIdsParaTentar: string[] = [];
 
-    // Se tem histórico, pega a OS da última execução
+    // 1. Adiciona a OS do histórico (se existir)
     if (historico.length > 0 && historico[0].os_id) {
-      osIdParaBuscarPecas = historico[0].os_id;
-    } else {
-      // FALLBACK: Se não achou no histórico, busca a última OS finalizada do veículo
-      const ultimaOs = await prisma.ordemServico.findFirst({
-        where: { 
-          veiculo_id: preventiva.veiculo_id,
-          empresa_id: preventiva.empresa_id,
-          status: 'FINALIZADA'
-        },
-        orderBy: { data_finalizada: 'desc' }
-      });
-      if (ultimaOs) {
-        osIdParaBuscarPecas = ultimaOs.id;
-      }
+      osIdsParaTentar.push(historico[0].os_id);
     }
 
-    if (osIdParaBuscarPecas) {
+    // 2. Adiciona a última OS FINALIZADA do veículo
+    const ultimaOs = await prisma.ordemServico.findFirst({
+      where: { veiculo_id: preventiva.veiculo_id, empresa_id: preventiva.empresa_id, status: 'FINALIZADA' },
+      orderBy: { data_finalizada: 'desc' }
+    });
+    if (ultimaOs && !osIdsParaTentar.includes(ultimaOs.id)) {
+      osIdsParaTentar.push(ultimaOs.id);
+    }
+
+    debugInfo.osIds_verificados = osIdsParaTentar;
+
+    // 3. Loop para achar peças em qualquer uma das OSs
+    for (const osId of osIdsParaTentar) {
       const pecas = await prisma.pecaAplicada.findMany({
-        where: { os_id: osIdParaBuscarPecas },
-        include: { 
-          Peca: { 
-            select: { descricao: true, codigo: true, unidadeMedida: true } 
-          } 
-        }
+        where: { os_id: osId },
+        include: { Peca: { select: { descricao: true, codigo: true, unidadeMedida: true } } }
       });
-      
-      pecasUsadas = pecas.map(p => ({
-        id: p.id,
-        descricao: p.Peca?.descricao || 'Peça aplicada',
-        codigo: p.Peca?.codigo,
-        quantidade: p.quantidade,
-        unidade: p.unidade || p.Peca?.unidadeMedida || 'un',
-      }));
+
+      if (pecas.length > 0) {
+        pecasUsadas = pecas.map(p => ({
+          id: p.id,
+          descricao: p.Peca?.descricao || 'Peça aplicada',
+          codigo: p.Peca?.codigo,
+          quantidade: p.quantidade,
+          unidade: p.unidade || p.Peca?.unidadeMedida || 'un',
+        }));
+        debugInfo.achou_pecas_na_os = osId;
+        debugInfo.total = pecasUsadas.length;
+        break; // Achou as peças, para de procurar
+      }
     }
 
     let fotosArray: string[] = [];
     if (preventiva.fotos) {
-      try {
-        fotosArray = JSON.parse(preventiva.fotos);
-      } catch {
-        fotosArray = [];
-      }
+      try { fotosArray = JSON.parse(preventiva.fotos); } catch { fotosArray = []; }
     }
 
     return NextResponse.json({
@@ -107,14 +93,12 @@ export async function GET(
       nome: preventiva.nome || preventiva.servico || preventiva.componente,
       descricao: preventiva.descricao,
       status: preventiva.status,
-      
       tipo_controle: preventiva.tipo_controle,
       proximo_km: preventiva.proximo_km,
       proxima_data: preventiva.proxima_data,
       proximo_horimetro: preventiva.proximo_horimetro,
       intervalo_km: preventiva.intervalo_km,
       intervalo_horas: preventiva.intervalo_horas,
-
       fotos: fotosArray,
       veiculo: {
         placa: preventiva.Veiculo.placa,
@@ -123,15 +107,12 @@ export async function GET(
         km: preventiva.Veiculo.quilometragem,
         horimetro: preventiva.Veiculo.horimetro_atual,
       },
-      cliente: {
-        nome: preventiva.Veiculo.Cliente.nome,
-      },
+      cliente: { nome: preventiva.Veiculo.Cliente.nome },
       empresa: empresa || null,
       assinatura_cliente: preventiva.assinatura_cliente,
       data_assinatura: preventiva.data_assinatura,
-      
       pecasUsadas,
-
+      debugInfo,
       historico: historico.map(h => ({
         id: h.id,
         data_conclusao: h.data_conclusao,
@@ -147,14 +128,9 @@ export async function GET(
   }
 }
 
-const assinarSchema = z.object({
-  assinatura_base64: z.string().min(10, 'Assinatura inválida.'),
-});
+const assinarSchema = z.object({ assinatura_base64: z.string().min(10, 'Assinatura inválida.') });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ token: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params;
     const body = await request.json();
@@ -165,27 +141,17 @@ export async function POST(
       select: { id: true, assinatura_cliente: true, empresa_id: true },
     });
 
-    if (!preventiva) {
-      return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 });
-    }
-
-    if (preventiva.assinatura_cliente) {
-      return NextResponse.json({ error: 'Este documento já foi assinado.' }, { status: 400 });
-    }
+    if (!preventiva) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 });
+    if (preventiva.assinatura_cliente) return NextResponse.json({ error: 'Este documento já foi assinado.' }, { status: 400 });
 
     await prisma.preventiva.update({
       where: { id: preventiva.id },
-      data: {
-        assinatura_cliente: parsed.assinatura_base64,
-        data_assinatura: new Date(),
-      },
+      data: { assinatura_cliente: parsed.assinatura_base64, data_assinatura: new Date() },
     });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
-    }
+    if (error instanceof z.ZodError) return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     return apiError(error, 'PORTAL', 'Erro ao salvar assinatura.');
   }
 }
