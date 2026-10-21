@@ -42,6 +42,16 @@ export async function GET(
       },
     });
 
+    // ✅ BATE NO BANCO PARA BUSCAR O HISTÓRICO
+    const historico = await prisma.preventivaExecucao.findMany({
+      where: { 
+        preventiva_id: preventiva.id,
+        empresa_id: preventiva.empresa_id
+      },
+      orderBy: { data_conclusao: 'desc' },
+      take: 10, // Busca as últimas 10
+    });
+
     let fotosArray: string[] = [];
     if (preventiva.fotos) {
       try {
@@ -57,7 +67,6 @@ export async function GET(
       descricao: preventiva.descricao,
       status: preventiva.status,
       
-      // ✅ CAMPOS ESSENCIAIS PARA O FRONTEND
       tipo_controle: preventiva.tipo_controle,
       proximo_km: preventiva.proximo_km,
       proxima_data: preventiva.proxima_data,
@@ -79,6 +88,16 @@ export async function GET(
       empresa: empresa || null,
       assinatura_cliente: preventiva.assinatura_cliente,
       data_assinatura: preventiva.data_assinatura,
+      
+      // ✅ ENVIA O HISTÓRICO PARA O FRONTEND
+      historico: historico.map(h => ({
+        id: h.id,
+        data_conclusao: h.data_conclusao,
+        km_conclusao: h.km_conclusao,
+        horimetro_conclusao: h.horimetro_conclusao,
+        os_id: h.os_id,
+        observacoes: h.observacoes
+      }))
     });
   } catch (error: any) {
     log('ERROR', 'PORTAL_PUBLICO', 'Erro ao carregar preventiva pública', { error: error?.message }, 'SISTEMA');
