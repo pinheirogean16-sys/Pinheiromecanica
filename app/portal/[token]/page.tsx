@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Wrench, Maximize2, ShieldAlert, Sparkles, ChevronRight, Check
+  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Wrench, Maximize2, ShieldAlert, Sparkles, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -224,17 +224,24 @@ export default function PortalClientePage() {
         
         <div className="max-w-5xl mx-auto w-full space-y-6 sm:space-y-8">
           
-          {/* CABEÇALHO IMERSIVO (DARK MODE PREMIUM) - LOGO MAIOR */}
+          {/* CABEÇALHO IMERSIVO (LOGO COM REDIMENSIONAMENTO INTELIGENTE) */}
           <div className="bg-zinc-950 rounded-[2.5rem] p-8 sm:p-12 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] relative overflow-hidden w-full flex flex-col items-center justify-center text-center">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-lg bg-orange-500/20 rounded-full blur-[100px] pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-64 h-64 bg-zinc-800 rounded-full blur-[80px] pointer-events-none" />
             
-            <div className="relative z-10 flex flex-col items-center space-y-5">
+            <div className="relative z-10 flex flex-col items-center space-y-6">
               {logo ? (
-                <div className="bg-white/5 p-5 sm:p-6 rounded-3xl backdrop-blur-xl border border-white/10 shadow-2xl">
-                  {/* ✅ LOGO AUMENTADA */}
-                  <img src={logo} alt={empresa?.nome_fantasia} className="h-20 sm:h-28 object-contain drop-shadow-md" />
-                </div>
+                /* 
+                 * ✅ REDIMENSIONAMENTO INTELIGENTE
+                 * - max-h-[100px] e max-w-[250px]: define a caixa limite.
+                 * - w-auto h-auto: garante que a proporção original seja mantida.
+                 * - object-contain: encaixa a imagem sem cortar.
+                 */
+                <img 
+                  src={logo} 
+                  alt={empresa?.nome_fantasia || 'Logo'} 
+                  className="max-h-[100px] sm:max-h-[140px] w-auto max-w-[250px] sm:max-w-[320px] object-contain drop-shadow-[0_10px_25px_rgba(0,0,0,0.6)]" 
+                />
               ) : (
                 <h1 className="text-2xl sm:text-4xl font-black uppercase text-white tracking-tighter">{empresa?.nome_fantasia || BRANDING.name}</h1>
               )}
@@ -257,55 +264,56 @@ export default function PortalClientePage() {
             {/* COLUNA ESQUERDA */}
             <div className="lg:col-span-7 space-y-6 sm:space-y-8 w-full">
               
-              {/* DADOS DO VEÍCULO (PLACA E KM LADO A LADO) */}
-              <div className="bg-white rounded-[2rem] p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
-                <div className="flex flex-col gap-1">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Identificação do Veículo</p>
-                  <p className="text-xl sm:text-2xl font-black text-zinc-900 uppercase break-words leading-tight">{veiculo.marca} {veiculo.modelo}</p>
-                  <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-1 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                    {cliente.nome}
-                  </p>
+              {/* DADOS DO VEÍCULO (COMPACTO E LADO A LADO) */}
+              <div className="bg-white rounded-[2rem] p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
+                
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div>
+                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Veículo Identificado</p>
+                    <p className="text-xl sm:text-2xl font-black text-zinc-900 uppercase leading-tight">{veiculo.marca} {veiculo.modelo}</p>
+                    <p className="text-xs text-zinc-500 font-medium mt-1 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      {cliente.nome}
+                    </p>
+                  </div>
                 </div>
                 
-                {/* ✅ PLACA E KM/HORAS LADO A LADO (FLEX) */}
-                <div className="flex flex-wrap sm:flex-nowrap items-stretch gap-2.5 w-full pt-5 mt-5 border-t border-zinc-100">
+                {/* PLACA E KM LADO A LADO (COMPACTOS) */}
+                <div className="flex items-stretch gap-2.5 w-full">
                   
-                  {/* PLACA MERCOSUL REDUZIDA */}
-                  <div className="inline-flex flex-col min-w-[100px] border border-zinc-300 rounded-lg overflow-hidden bg-white shadow-sm flex-shrink-0">
+                  {/* PLACA MERCOSUL */}
+                  <div className="inline-flex flex-col w-28 sm:w-32 border border-zinc-300 rounded-lg overflow-hidden bg-white shadow-sm flex-shrink-0">
                     <div className="bg-[#003399] text-[6px] text-white font-black tracking-[0.2em] px-2 py-0.5 flex items-center justify-between uppercase">
                       <span>Brasil</span>
                       <span className="w-1.5 h-1 bg-yellow-400 rounded-[1px]" />
                     </div>
-                    <div className="bg-white text-zinc-900 font-black font-mono text-base text-center py-1.5 px-3 tracking-[0.1em] border-t border-zinc-200">
+                    <div className="bg-white text-zinc-900 font-black font-mono text-base text-center py-1 tracking-[0.05em] border-t border-zinc-200">
                       {veiculo.placa}
                     </div>
                   </div>
 
-                  {/* CARD DE KM REDUZIDO */}
+                  {/* CARD DE KM OU HORAS */}
                   {showKm && (
-                    <div className="bg-zinc-50 rounded-xl px-3 py-1.5 flex-1 border border-zinc-100 flex flex-col justify-center min-w-[100px]">
+                    <div className="bg-zinc-50 rounded-xl px-3 flex-1 border border-zinc-100 flex flex-col justify-center min-w-0">
                       <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">
                         <Gauge size={10} /> Quilometragem
                       </span>
-                      <span className="font-mono font-black text-sm text-zinc-800 mt-0.5">
+                      <span className="font-mono font-black text-sm sm:text-base text-zinc-800 mt-0.5 truncate">
                         {veiculo.km ? veiculo.km.toLocaleString('pt-BR') : '---'} <span className="text-[10px] text-zinc-400 font-sans">km</span>
                       </span>
                     </div>
                   )}
 
-                  {/* CARD DE HORAS REDUZIDO */}
                   {showHoras && (
-                    <div className="bg-zinc-50 rounded-xl px-3 py-1.5 flex-1 border border-zinc-100 flex flex-col justify-center min-w-[100px]">
+                    <div className="bg-zinc-50 rounded-xl px-3 flex-1 border border-zinc-100 flex flex-col justify-center min-w-0">
                       <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">
                         <Clock size={10} /> Horímetro
                       </span>
-                      <span className="font-mono font-black text-sm text-zinc-800 mt-0.5">
+                      <span className="font-mono font-black text-sm sm:text-base text-zinc-800 mt-0.5 truncate">
                         {veiculo.horimetro ? veiculo.horimetro : '0'} <span className="text-[10px] text-zinc-400 font-sans">h</span>
                       </span>
                     </div>
                   )}
-                  
                 </div>
               </div>
 
