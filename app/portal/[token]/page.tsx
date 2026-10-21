@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock
+  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -19,6 +19,9 @@ export default function PortalClientePage() {
   const [isSigning, setIsSigning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [assinaturaFeita, setAssinaturaFeita] = useState(false);
+  
+  // ✅ Novo estado para o Lightbox de fotos
+  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawing = useRef(false);
@@ -168,248 +171,302 @@ export default function PortalClientePage() {
   const { empresa, veiculo, cliente } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
-  // ✅ LÓGICA ESTRITA DE EXIBIÇÃO
+  // ✅ LÓGICA DE EXIBIÇÃO
   const tipo = (data.tipo_controle || 'KM').toUpperCase();
-  
-  // Só mostra KM se for do tipo KM/MISTO/COMBINADO ou se (não tiver tipo e tiver dados de KM)
   const showKm = tipo === 'KM' || tipo === 'MISTO' || tipo === 'COMBINADO' || (!data.tipo_controle && !!data.intervalo_km);
-  
-  // Só mostra Horas se for do tipo HORAS/MISTO/COMBINADO ou se (não tiver tipo e tiver dados de Horas)
   const showHoras = tipo === 'HORAS' || tipo === 'MISTO' || tipo === 'COMBINADO' || (!data.tipo_controle && !!data.intervalo_horas);
 
-  // ✅ CÁLCULO INTELIGENTE DO ALVO (Se não tiver salvo no banco, calcula com base no KM atual)
   const alvoKm = data.proximo_km || (veiculo.km && data.intervalo_km ? veiculo.km + data.intervalo_km : null);
   const alvoHoras = data.proximo_horimetro || (veiculo.horimetro && data.intervalo_horas ? veiculo.horimetro + data.intervalo_horas : null);
 
+  // ✅ CÁLCULO DO STATUS (Em Dia, Próximo, Vencido)
+  let statusCor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  let statusTexto = 'Em Dia';
+  
+  if (showKm && alvoKm && veiculo.km) {
+    const kmRestante = alvoKm - veiculo.km;
+    const margemAlerta = data.intervalo_km ? data.intervalo_km * 0.1 : 1000; // 10% do intervalo ou 1000km
+    
+    if (kmRestante <= 0) {
+      statusCor = 'bg-red-100 text-red-700 border-red-200';
+      statusTexto = 'Vencida';
+    } else if (kmRestante <= margemAlerta) {
+      statusCor = 'bg-amber-100 text-amber-700 border-amber-200';
+      statusTexto = 'Próxima';
+    }
+  } else if (showHoras && alvoHoras && veiculo.horimetro) {
+    const horasRestante = alvoHoras - veiculo.horimetro;
+    const margemAlerta = data.intervalo_horas ? data.intervalo_horas * 0.1 : 50; 
+    
+    if (horasRestante <= 0) {
+      statusCor = 'bg-red-100 text-red-700 border-red-200';
+      statusTexto = 'Vencida';
+    } else if (horasRestante <= margemAlerta) {
+      statusCor = 'bg-amber-100 text-amber-700 border-amber-200';
+      statusTexto = 'Próxima';
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-zinc-100 py-6 px-3 sm:px-6 lg:px-8 font-sans text-zinc-900 pb-20 w-full overflow-x-hidden">
-      
-      <div className="max-w-5xl mx-auto w-full space-y-6">
+    <>
+      <div className="min-h-screen bg-zinc-100 py-6 px-3 sm:px-6 lg:px-8 font-sans text-zinc-900 pb-20 w-full overflow-x-hidden">
         
-        {/* CABEÇALHO */}
-        <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-sm border border-zinc-200 text-center space-y-3 relative overflow-hidden w-full">
-          <div className="absolute top-0 left-0 w-full h-2 bg-orange-600" />
+        <div className="max-w-5xl mx-auto w-full space-y-6">
           
-          {logo ? (
-            <img src={logo} alt={empresa?.nome_fantasia} className="h-14 sm:h-20 mx-auto object-contain" />
-          ) : (
-            <h1 className="text-xl sm:text-3xl font-black uppercase">{empresa?.nome_fantasia || BRANDING.name}</h1>
-          )}
-          <div>
-            <h2 className="text-base sm:text-2xl font-black uppercase tracking-tight text-zinc-800">Relatório de Serviço</h2>
-            <p className="text-[10px] sm:text-sm text-zinc-500 font-mono mt-1">Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
-          {/* COLUNA ESQUERDA (Dados e Serviço) */}
-          <div className="lg:col-span-7 space-y-6 w-full">
+          {/* CABEÇALHO */}
+          <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-sm border border-zinc-200 text-center space-y-3 relative overflow-hidden w-full">
+            <div className="absolute top-0 left-0 w-full h-2 bg-orange-600" />
             
-            {/* DADOS DO VEÍCULO */}
-            <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
-              <div className="flex flex-wrap items-center justify-between border-b border-zinc-100 pb-3 gap-2">
-                <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Veículo</span>
-                <span className="bg-zinc-900 text-white px-3 py-1 rounded text-xs sm:text-sm font-bold font-mono tracking-widest">{veiculo.placa}</span>
-              </div>
-              
-              <div className="w-full">
-                <p className="text-lg sm:text-xl font-black text-zinc-900 uppercase break-words leading-tight">{veiculo.marca} {veiculo.modelo}</p>
-                <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-1 break-words">Proprietário: {cliente.nome}</p>
-              </div>
-              
-              {/* ✅ MOSTRA APENAS O QUE É RELEVANTE */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2">
-                {showKm && (
-                  <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2">
-                      <Gauge size={18} className="text-zinc-400" />
-                      <span className="text-[10px] sm:text-xs font-bold text-zinc-500 uppercase">KM Atual</span>
-                    </div>
-                    <span className="font-mono font-black text-sm sm:text-base text-zinc-800">
-                      {veiculo.km ? `${veiculo.km.toLocaleString('pt-BR')} KM` : '---'}
-                    </span>
-                  </div>
-                )}
-                
-                {showHoras && (
-                  <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2">
-                      <Clock size={18} className="text-zinc-400" />
-                      <span className="text-[10px] sm:text-xs font-bold text-zinc-500 uppercase">Horímetro</span>
-                    </div>
-                    <span className="font-mono font-black text-sm sm:text-base text-zinc-800">
-                      {veiculo.horimetro ? `${veiculo.horimetro} h` : '0 h'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* SERVIÇO REALIZADO */}
-            <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
-              <div className="flex items-center gap-2 text-orange-600">
-                <ShieldCheck size={22} className="flex-shrink-0" />
-                <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest">Serviço Executado</span>
-              </div>
-              
-              <h3 className="text-lg sm:text-2xl font-black uppercase leading-tight break-words">{data.nome}</h3>
-              
-              {data.descricao && (
-                <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed bg-zinc-50 p-4 rounded-xl border border-zinc-100 italic break-words">
-                  "{data.descricao}"
-                </p>
-              )}
-              
-              <div className="flex flex-col gap-3 pt-2 w-full">
-                {/* ✅ BLOCO PRÓXIMA TROCA KM (Calcula o alvo se não estiver no banco) */}
-                {showKm && (alvoKm || data.intervalo_km) && (
-                  <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
-                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
-                      <TrendingUp size={18} />
-                    </div>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Próxima Troca (KM)</span>
-                      <span className="text-sm font-bold text-zinc-700 truncate">
-                        Alvo: {alvoKm ? `${alvoKm.toLocaleString('pt-BR')} KM` : 'A definir'}
-                        {data.intervalo_km ? ` (a cada ${data.intervalo_km.toLocaleString('pt-BR')} KM)` : ''}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* ✅ BLOCO PRÓXIMA TROCA HORAS */}
-                {showHoras && (alvoHoras || data.intervalo_horas) && (
-                  <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
-                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
-                      <TrendingUp size={18} />
-                    </div>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Próxima Troca (Horas)</span>
-                      <span className="text-sm font-bold text-zinc-700 truncate">
-                        Alvo: {alvoHoras ? `${alvoHoras} h` : 'A definir'}
-                        {data.intervalo_horas ? ` (a cada ${data.intervalo_horas} h)` : ''}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* DATA PREVISTA */}
-                <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
-                  <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
-                    <Calendar size={18} />
-                  </div>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Data Prevista</span>
-                    <span className="text-sm font-bold text-zinc-700 truncate">
-                      {data.proxima_data ? new Date(data.proxima_data).toLocaleDateString('pt-BR') : 'A definir'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* COLUNA DIREITA (Fotos e Assinatura) */}
-          <div className="lg:col-span-5 space-y-6 w-full">
-            
-            {/* GALERIA DE FOTOS */}
-            {data.fotos && data.fotos.length > 0 && (
-              <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Registro Fotográfico</span>
-                  <span className="text-[10px] sm:text-xs font-bold bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full">{data.fotos.length} fotos</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3 w-full">
-                  {data.fotos.map((foto: string, idx: number) => (
-                    <a key={idx} href={foto} target="_blank" rel="noreferrer" className="relative aspect-square rounded-xl overflow-hidden border border-zinc-200 group block">
-                      <img src={foto} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                    </a>
-                  ))}
-                </div>
-              </div>
+            {logo ? (
+              <img src={logo} alt={empresa?.nome_fantasia} className="h-14 sm:h-20 mx-auto object-contain" />
+            ) : (
+              <h1 className="text-xl sm:text-3xl font-black uppercase">{empresa?.nome_fantasia || BRANDING.name}</h1>
             )}
+            <div>
+              <h2 className="text-base sm:text-2xl font-black uppercase tracking-tight text-zinc-800">Relatório de Serviço</h2>
+              <p className="text-[10px] sm:text-sm text-zinc-500 font-mono mt-1">Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
+          </div>
 
-            {/* ÁREA DE ASSINATURA */}
-            <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
-              <div className="text-center">
-                <h3 className="text-sm sm:text-base font-black uppercase tracking-widest text-zinc-800">Assinatura do Cliente</h3>
-                <p className="text-[11px] sm:text-xs text-zinc-500 mt-1">Assine abaixo para confirmar a entrega e aprovação do serviço.</p>
-              </div>
-
-              {assinaturaFeita ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-3 w-full">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-                  <h4 className="text-sm sm:text-base font-black text-emerald-700 uppercase">Documento Assinado</h4>
-                  <p className="text-xs text-emerald-600">A assinatura foi registrada e anexada com sucesso.</p>
-                  {data.assinatura_cliente && (
-                    <img src={data.assinatura_cliente} alt="Assinatura" className="max-h-24 mx-auto mix-blend-multiply opacity-80" />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            {/* COLUNA ESQUERDA */}
+            <div className="lg:col-span-7 space-y-6 w-full">
+              
+              {/* DADOS DO VEÍCULO */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
+                <div className="flex flex-wrap items-center justify-between border-b border-zinc-100 pb-3 gap-2">
+                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Veículo</span>
+                  <span className="bg-zinc-900 text-white px-3 py-1 rounded text-xs sm:text-sm font-bold font-mono tracking-widest">{veiculo.placa}</span>
+                </div>
+                
+                <div className="w-full">
+                  <p className="text-lg sm:text-xl font-black text-zinc-900 uppercase break-words leading-tight">{veiculo.marca} {veiculo.modelo}</p>
+                  <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-1 break-words">Proprietário: {cliente.nome}</p>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2">
+                  {showKm && (
+                    <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <Gauge size={18} className="text-zinc-400" />
+                        <span className="text-[10px] sm:text-xs font-bold text-zinc-500 uppercase">KM Atual</span>
+                      </div>
+                      <span className="font-mono font-black text-sm sm:text-base text-zinc-800">
+                        {veiculo.km ? `${veiculo.km.toLocaleString('pt-BR')} KM` : '---'}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {showHoras && (
+                    <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <Clock size={18} className="text-zinc-400" />
+                        <span className="text-[10px] sm:text-xs font-bold text-zinc-500 uppercase">Horímetro</span>
+                      </div>
+                      <span className="font-mono font-black text-sm sm:text-base text-zinc-800">
+                        {veiculo.horimetro ? `${veiculo.horimetro} h` : '0 h'}
+                      </span>
+                    </div>
                   )}
                 </div>
-              ) : isSigning ? (
-                <div className="space-y-3 animate-in fade-in zoom-in-95 duration-300 w-full">
-                  <div className="border-2 border-dashed border-zinc-300 rounded-2xl bg-zinc-50 relative overflow-hidden w-full">
-                    <canvas
-                      ref={canvasRef}
-                      width={400}
-                      height={250}
-                      className="w-full h-48 sm:h-56 touch-none cursor-crosshair bg-transparent relative z-10"
-                      onMouseDown={startDrawing}
-                      onMouseMove={draw}
-                      onMouseUp={stopDrawing}
-                      onMouseLeave={stopDrawing}
-                      onTouchStart={startDrawing}
-                      onTouchMove={draw}
-                      onTouchEnd={stopDrawing}
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 text-zinc-300 font-bold uppercase tracking-widest text-xs sm:text-sm text-center px-4">
-                      Assine com o dedo ou mouse aqui
+              </div>
+
+              {/* SERVIÇO REALIZADO E STATUS */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full relative">
+                
+                {/* ✅ SELO DE STATUS */}
+                <div className={`absolute top-5 right-5 px-3 py-1 rounded-full border text-[10px] sm:text-xs font-black uppercase tracking-wider ${statusCor}`}>
+                  {statusTexto}
+                </div>
+
+                <div className="flex items-center gap-2 text-orange-600">
+                  <ShieldCheck size={22} className="flex-shrink-0" />
+                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest">Serviço Executado</span>
+                </div>
+                
+                <h3 className="text-lg sm:text-2xl font-black uppercase leading-tight break-words pr-16">{data.nome}</h3>
+                
+                {data.descricao && (
+                  <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed bg-zinc-50 p-4 rounded-xl border border-zinc-100 italic break-words">
+                    "{data.descricao}"
+                  </p>
+                )}
+                
+                <div className="flex flex-col gap-3 pt-2 w-full">
+                  {showKm && (alvoKm || data.intervalo_km) && (
+                    <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
+                        <TrendingUp size={18} />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Próxima Troca (KM)</span>
+                        <span className="text-sm font-bold text-zinc-700 truncate">
+                          Alvo: {alvoKm ? `${alvoKm.toLocaleString('pt-BR')} KM` : 'A definir'}
+                          {data.intervalo_km ? ` (a cada ${data.intervalo_km.toLocaleString('pt-BR')} KM)` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {showHoras && (alvoHoras || data.intervalo_horas) && (
+                    <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
+                        <TrendingUp size={18} />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Próxima Troca (Horas)</span>
+                        <span className="text-sm font-bold text-zinc-700 truncate">
+                          Alvo: {alvoHoras ? `${alvoHoras} h` : 'A definir'}
+                          {data.intervalo_horas ? ` (a cada ${data.intervalo_horas} h)` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
+                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
+                      <Calendar size={18} />
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase">Data Prevista</span>
+                      <span className="text-sm font-bold text-zinc-700 truncate">
+                        {data.proxima_data ? new Date(data.proxima_data).toLocaleDateString('pt-BR') : 'A definir'}
+                      </span>
                     </div>
                   </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-2 w-full">
-                    <button
-                      type="button"
-                      onClick={handleConfirmarAssinatura}
-                      disabled={submitting}
-                      className="w-full sm:flex-1 py-3 px-4 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition shadow-lg shadow-orange-500/30 disabled:opacity-50"
-                    >
-                      {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                      {submitting ? 'Enviando...' : 'Confirmar Assinatura'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearSignature}
-                      className="w-full sm:w-auto py-3 px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition"
-                    >
-                      <Eraser size={16} /> Limpar
-                    </button>
+                </div>
+              </div>
+            </div>
+
+            {/* COLUNA DIREITA */}
+            <div className="lg:col-span-5 space-y-6 w-full">
+              
+              {/* GALERIA DE FOTOS */}
+              {data.fotos && data.fotos.length > 0 && (
+                <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Registro Fotográfico</span>
+                    <span className="text-[10px] sm:text-xs font-bold bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full">{data.fotos.length} fotos</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3 w-full">
+                    {data.fotos.map((foto: string, idx: number) => (
+                      // ✅ LIGHTBOX: Em vez de <a>, usamos button para abrir o modal
+                      <button 
+                        key={idx} 
+                        onClick={() => setFotoAmpliada(foto)}
+                        className="relative aspect-square rounded-xl overflow-hidden border border-zinc-200 group block w-full cursor-pointer hover:border-orange-500 transition-colors"
+                      >
+                        <img src={foto} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => setIsSigning(true)}
-                  className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition shadow-xl"
-                >
-                  <PenTool size={18} /> Assinar Documento
-                </button>
               )}
+
+              {/* ÁREA DE ASSINATURA */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
+                <div className="text-center">
+                  <h3 className="text-sm sm:text-base font-black uppercase tracking-widest text-zinc-800">Assinatura do Cliente</h3>
+                  <p className="text-[11px] sm:text-xs text-zinc-500 mt-1">Assine abaixo para confirmar a entrega e aprovação do serviço.</p>
+                </div>
+
+                {assinaturaFeita ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-3 w-full">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
+                    <h4 className="text-sm sm:text-base font-black text-emerald-700 uppercase">Documento Assinado</h4>
+                    <p className="text-xs text-emerald-600">A assinatura foi registrada e anexada com sucesso.</p>
+                    {data.assinatura_cliente && (
+                      <img src={data.assinatura_cliente} alt="Assinatura" className="max-h-24 mx-auto mix-blend-multiply opacity-80" />
+                    )}
+                  </div>
+                ) : isSigning ? (
+                  <div className="space-y-3 animate-in fade-in zoom-in-95 duration-300 w-full">
+                    <div className="border-2 border-dashed border-zinc-300 rounded-2xl bg-zinc-50 relative overflow-hidden w-full">
+                      <canvas
+                        ref={canvasRef}
+                        width={400}
+                        height={250}
+                        className="w-full h-48 sm:h-56 touch-none cursor-crosshair bg-transparent relative z-10"
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawing}
+                        onTouchMove={draw}
+                        onTouchEnd={stopDrawing}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 text-zinc-300 font-bold uppercase tracking-widest text-xs sm:text-sm text-center px-4">
+                        Assine com o dedo ou mouse aqui
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={handleConfirmarAssinatura}
+                        disabled={submitting}
+                        className="w-full sm:flex-1 py-3 px-4 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition shadow-lg shadow-orange-500/30 disabled:opacity-50"
+                      >
+                        {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                        {submitting ? 'Enviando...' : 'Confirmar Assinatura'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearSignature}
+                        className="w-full sm:w-auto py-3 px-4 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition"
+                      >
+                        <Eraser size={16} /> Limpar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsSigning(true)}
+                    className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition shadow-xl"
+                  >
+                    <PenTool size={18} /> Assinar Documento
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* RODAPÉ */}
-        <div className="text-center pt-8 pb-4 space-y-2 w-full">
-          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-            Gerado por {BRANDING.name}
-          </p>
-          <p className="text-[10px] text-zinc-400 font-mono break-words px-4">
-            {empresa?.telefone && `Tel: ${empresa.telefone}`}
-            {empresa?.endereco && ` • ${empresa.endereco}`}
-          </p>
-        </div>
+          {/* RODAPÉ */}
+          <div className="text-center pt-8 pb-4 space-y-2 w-full">
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+              Gerado por {BRANDING.name}
+            </p>
+            <p className="text-[10px] text-zinc-400 font-mono break-words px-4">
+              {empresa?.telefone && `Tel: ${empresa.telefone}`}
+              {empresa?.endereco && ` • ${empresa.endereco}`}
+            </p>
+          </div>
 
+        </div>
       </div>
-    </div>
+
+      {/* ✅ MODAL LIGHTBOX PARA AS FOTOS */}
+      {fotoAmpliada && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setFotoAmpliada(null)}
+        >
+          <button 
+            onClick={() => setFotoAmpliada(null)}
+            className="absolute top-4 right-4 p-3 bg-zinc-800/80 hover:bg-zinc-700 text-white rounded-full transition-colors z-[110]"
+          >
+            <X size={24} />
+          </button>
+          
+          <img 
+            src={fotoAmpliada} 
+            alt="Foto Ampliada" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" 
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
+    </>
   );
 }
