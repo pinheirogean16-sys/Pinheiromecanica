@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Wrench, Maximize2, ShieldAlert, Sparkles
+  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Wrench, Maximize2, ShieldAlert, Sparkles, ChevronRight, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -63,7 +63,7 @@ export default function PortalClientePage() {
     if (!ctx) return;
 
     ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -149,25 +149,27 @@ export default function PortalClientePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center gap-6 px-4">
-        <div className="w-16 h-16 rounded-3xl bg-white shadow-xl flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
+      <div className="min-h-screen bg-[#F5F5F7] flex flex-col items-center justify-center gap-6 px-4">
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full border-4 border-zinc-200 border-t-orange-500 animate-spin" />
+          <ShieldCheck className="absolute inset-0 m-auto text-orange-500 w-8 h-8 opacity-50" />
         </div>
-        <p className="text-xs font-black text-zinc-400 uppercase tracking-[0.3em] text-center animate-pulse">Abrindo documento seguro...</p>
+        <p className="text-[11px] font-black text-zinc-400 uppercase tracking-[0.4em] text-center animate-pulse">Validando Documento Seguro</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-6 text-center gap-6">
-        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center border border-red-100">
-          <ShieldAlert className="w-10 h-10 text-red-500" />
+      <div className="min-h-screen bg-[#F5F5F7] flex flex-col items-center justify-center p-6 text-center gap-6">
+        <div className="w-24 h-24 bg-red-50 rounded-[2rem] flex items-center justify-center border border-red-100 shadow-xl shadow-red-100/50">
+          <ShieldAlert className="w-12 h-12 text-red-500" />
         </div>
-        <div>
-          <h1 className="text-2xl font-black text-zinc-900 uppercase tracking-tight">Link Expirado</h1>
-          <p className="text-sm text-zinc-500 mt-2 max-w-xs mx-auto">Este link de acesso não é mais válido. Por favor, solicite um novo link à oficina.</p>
+        <div className="space-y-2">
+          <h1 className="text-3xl font-black text-zinc-900 uppercase tracking-tight">Acesso Negado</h1>
+          <p className="text-sm text-zinc-500 max-w-xs mx-auto font-medium">Este link é inválido, expirou ou o documento foi removido do sistema.</p>
         </div>
+        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-4">Solicite um novo link à oficina</p>
       </div>
     );
   }
@@ -191,9 +193,10 @@ export default function PortalClientePage() {
 
   // Configuração do Status Visual
   let statusConfig = {
-    bg: 'bg-emerald-50/80 border-emerald-200/50',
-    text: 'text-emerald-700',
-    icon: <CheckCircle2 size={16} />,
+    bg: 'bg-emerald-500/10 border-emerald-500/20',
+    text: 'text-emerald-600',
+    dot: 'bg-emerald-500',
+    icon: <CheckCircle2 size={14} className="text-emerald-500" />,
     label: 'Em Dia'
   };
   
@@ -201,41 +204,48 @@ export default function PortalClientePage() {
     const kmRestante = alvoKm - veiculo.km;
     const margemAlerta = data.intervalo_km ? data.intervalo_km * 0.1 : 1000;
     if (kmRestante <= 0) {
-      statusConfig = { bg: 'bg-red-50/80 border-red-200/50', text: 'text-red-700', icon: <AlertTriangle size={16} />, label: 'Vencida' };
+      statusConfig = { bg: 'bg-red-500/10 border-red-500/20', text: 'text-red-600', dot: 'bg-red-500', icon: <AlertTriangle size={14} className="text-red-500" />, label: 'Vencida' };
     } else if (kmRestante <= margemAlerta) {
-      statusConfig = { bg: 'bg-amber-50/80 border-amber-200/50', text: 'text-amber-700', icon: <Clock size={16} />, label: 'Próxima' };
+      statusConfig = { bg: 'bg-amber-500/10 border-amber-500/20', text: 'text-amber-600', dot: 'bg-amber-500', icon: <Clock size={14} className="text-amber-500" />, label: 'Próxima' };
     }
   } else if (showHoras && alvoHoras && veiculo.horimetro) {
     const horasRestante = alvoHoras - veiculo.horimetro;
     const margemAlerta = data.intervalo_horas ? data.intervalo_horas * 0.1 : 50; 
     if (horasRestante <= 0) {
-      statusConfig = { bg: 'bg-red-50/80 border-red-200/50', text: 'text-red-700', icon: <AlertTriangle size={16} />, label: 'Vencida' };
+      statusConfig = { bg: 'bg-red-500/10 border-red-500/20', text: 'text-red-600', dot: 'bg-red-500', icon: <AlertTriangle size={14} className="text-red-500" />, label: 'Vencida' };
     } else if (horasRestante <= margemAlerta) {
-      statusConfig = { bg: 'bg-amber-50/80 border-amber-200/50', text: 'text-amber-700', icon: <Clock size={16} />, label: 'Próxima' };
+      statusConfig = { bg: 'bg-amber-500/10 border-amber-500/20', text: 'text-amber-600', dot: 'bg-amber-500', icon: <Clock size={14} className="text-amber-500" />, label: 'Próxima' };
     }
   }
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-zinc-100 to-zinc-200 py-8 px-3 sm:px-6 lg:px-8 font-sans text-zinc-900 pb-24 w-full overflow-x-hidden">
+      <div className="min-h-screen bg-[#F5F5F7] py-6 px-4 sm:px-6 lg:px-8 font-sans text-zinc-900 pb-24 w-full overflow-x-hidden selection:bg-orange-200 selection:text-orange-900">
         
-        <div className="max-w-5xl mx-auto w-full space-y-8">
+        <div className="max-w-5xl mx-auto w-full space-y-6 sm:space-y-8">
           
-          {/* CABEÇALHO PREMIUM */}
-          <div className="bg-white rounded-[2.5rem] p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative overflow-hidden w-full">
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-100 rounded-full blur-3xl opacity-50 pointer-events-none" />
-            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-zinc-100 rounded-full blur-3xl opacity-50 pointer-events-none" />
+          {/* CABEÇALHO IMERSIVO (DARK MODE PREMIUM) */}
+          <div className="bg-zinc-950 rounded-[2.5rem] p-8 sm:p-12 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] relative overflow-hidden w-full flex flex-col items-center justify-center text-center">
+            {/* Efeitos de luz no fundo */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-lg bg-orange-500/20 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-64 h-64 bg-zinc-800 rounded-full blur-[80px] pointer-events-none" />
             
-            <div className="relative z-10 flex flex-col items-center text-center space-y-4">
+            <div className="relative z-10 flex flex-col items-center space-y-5">
               {logo ? (
-                <img src={logo} alt={empresa?.nome_fantasia} className="h-16 sm:h-24 mx-auto object-contain drop-shadow-sm" />
+                <div className="bg-white/5 p-4 rounded-3xl backdrop-blur-xl border border-white/10 shadow-2xl">
+                  <img src={logo} alt={empresa?.nome_fantasia} className="h-14 sm:h-20 object-contain" />
+                </div>
               ) : (
-                <h1 className="text-2xl sm:text-4xl font-black uppercase tracking-tighter">{empresa?.nome_fantasia || BRANDING.name}</h1>
+                <h1 className="text-2xl sm:text-4xl font-black uppercase text-white tracking-tighter">{empresa?.nome_fantasia || BRANDING.name}</h1>
               )}
-              <div className="space-y-1">
-                <h2 className="text-lg sm:text-3xl font-black uppercase tracking-tight text-zinc-800">Relatório de Serviço</h2>
-                <p className="text-[10px] sm:text-sm text-zinc-400 font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                  <Sparkles size={14} className="text-orange-500" />
+              
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 backdrop-blur-md">
+                  <Sparkles size={12} className="text-orange-400" />
+                  <span className="text-[9px] font-black text-white uppercase tracking-[0.3em]">Relatório Oficial</span>
+                </div>
+                <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Ficha de Serviço</h2>
+                <p className="text-[10px] sm:text-xs text-zinc-400 font-bold uppercase tracking-widest">
                   Emitido em {new Date().toLocaleDateString('pt-BR')}
                 </p>
               </div>
@@ -247,92 +257,106 @@ export default function PortalClientePage() {
             {/* COLUNA ESQUERDA */}
             <div className="lg:col-span-7 space-y-6 sm:space-y-8 w-full">
               
-              {/* DADOS DO VEÍCULO */}
-              <div className="bg-white rounded-[2rem] p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-5 w-full">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Veículo Identificado</span>
-                  <span className="bg-zinc-900 text-white px-4 py-1.5 rounded-lg text-xs sm:text-sm font-black font-mono tracking-widest shadow-md">
-                    {veiculo.placa}
-                  </span>
+              {/* DADOS DO VEÍCULO (ESTILO CRACHÁ) */}
+              <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white relative overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Identificação do Veículo</p>
+                    <p className="text-xl sm:text-2xl font-black text-zinc-900 uppercase break-words leading-tight">{veiculo.marca} <br className="sm:hidden" /> {veiculo.modelo}</p>
+                    <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      {cliente.nome}
+                    </p>
+                  </div>
+                  
+                  {/* PLACA MERCOSUL REALISTA */}
+                  <div className="inline-flex flex-col min-w-[130px] border border-zinc-300 rounded-lg overflow-hidden bg-white shadow-sm flex-shrink-0">
+                    <div className="bg-[#003399] text-[7px] text-white font-black tracking-[0.2em] px-2.5 py-1 flex items-center justify-between uppercase">
+                      <span>Brasil</span>
+                      <span className="w-2 h-1.5 bg-yellow-400 rounded-[1px]" />
+                    </div>
+                    <div className="bg-white text-zinc-900 font-black font-mono text-xl text-center py-1.5 px-4 tracking-[0.15em] border-t border-zinc-200">
+                      {veiculo.placa}
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="w-full">
-                  <p className="text-xl sm:text-2xl font-black text-zinc-900 uppercase break-words leading-tight">{veiculo.marca} {veiculo.modelo}</p>
-                  <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-1.5 break-words">Proprietário: <span className="text-zinc-700 font-bold">{cliente.nome}</span></p>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2">
+                <div className="grid grid-cols-2 gap-3 w-full pt-6 mt-6 border-t border-zinc-100">
                   {showKm && (
-                    <div className="bg-zinc-50 rounded-2xl p-4 border border-zinc-100 flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-white rounded-md shadow-sm border border-zinc-100">
-                          <Gauge size={16} className="text-orange-500" />
-                        </div>
-                        <span className="text-[10px] sm:text-xs font-bold text-zinc-500 uppercase tracking-wider">KM Atual</span>
-                      </div>
-                      <span className="font-mono font-black text-base sm:text-lg text-zinc-800">
-                        {veiculo.km ? `${veiculo.km.toLocaleString('pt-BR')}` : '---'}
+                    <div className="bg-zinc-50 rounded-2xl p-4 flex flex-col justify-center w-full border border-zinc-100">
+                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                        <Gauge size={10} /> Quilometragem
+                      </span>
+                      <span className="font-mono font-black text-lg text-zinc-800">
+                        {veiculo.km ? veiculo.km.toLocaleString('pt-BR') : '---'} <span className="text-xs text-zinc-400 font-sans">km</span>
                       </span>
                     </div>
                   )}
                   
                   {showHoras && (
-                    <div className="bg-zinc-50 rounded-2xl p-4 border border-zinc-100 flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-white rounded-md shadow-sm border border-zinc-100">
-                          <Clock size={16} className="text-orange-500" />
-                        </div>
-                        <span className="text-[10px] sm:text-xs font-bold text-zinc-500 uppercase tracking-wider">Horímetro</span>
-                      </div>
-                      <span className="font-mono font-black text-base sm:text-lg text-zinc-800">
-                        {veiculo.horimetro ? `${veiculo.horimetro}` : '0'}
+                    <div className="bg-zinc-50 rounded-2xl p-4 flex flex-col justify-center w-full border border-zinc-100">
+                      <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                        <Clock size={10} /> Horímetro
+                      </span>
+                      <span className="font-mono font-black text-lg text-zinc-800">
+                        {veiculo.horimetro ? veiculo.horimetro : '0'} <span className="text-xs text-zinc-400 font-sans">h</span>
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* SERVIÇO REALIZADO E PEÇAS */}
-              <div className="bg-white rounded-[2rem] p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-5 w-full relative">
+              {/* SERVIÇO EXECUTADO E PEÇAS */}
+              <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-6 w-full relative">
                 
                 {/* SELO DE STATUS FLUTUANTE */}
-                <div className={`absolute top-6 right-6 px-3 py-1.5 rounded-full border backdrop-blur-md flex items-center gap-1.5 text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-sm ${statusConfig.bg} ${statusConfig.text}`}>
-                  {statusConfig.icon}
+                <div className={`absolute top-6 right-6 px-3 py-1.5 rounded-full border backdrop-blur-md flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-widest shadow-sm ${statusConfig.bg} ${statusConfig.text}`}>
+                  <div className={`w-2 h-2 rounded-full ${statusConfig.dot} animate-pulse`} />
                   {statusConfig.label}
                 </div>
 
-                <div className="flex items-center gap-2 text-orange-600">
-                  <ShieldCheck size={24} className="flex-shrink-0" />
-                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em]">Serviço Executado</span>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-orange-50 rounded-2xl text-orange-600">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 block">Procedimento</span>
+                    <h3 className="text-lg sm:text-2xl font-black uppercase leading-tight break-words pr-20 text-zinc-900">{data.nome}</h3>
+                  </div>
                 </div>
                 
-                <h3 className="text-xl sm:text-2xl font-black uppercase leading-tight break-words pr-20 text-zinc-800">{data.nome}</h3>
-                
                 {data.descricao && (
-                  <div className="relative">
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-200 rounded-full" />
-                    <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed pl-3 italic break-words">
+                  <div className="bg-zinc-50 p-5 rounded-2xl border border-zinc-100 relative">
+                    <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed italic break-words">
                       "{data.descricao}"
                     </p>
                   </div>
                 )}
 
-                {/* MATERIAIS UTILIZADOS (ESTILO RECIBO) */}
+                {/* MATERIAIS UTILIZADOS (ESTILO RECIBO DE LUXO) */}
                 {pecasUsadas && pecasUsadas.length > 0 && (
-                  <div className="mt-6 border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
-                    <div className="bg-zinc-50 px-5 py-3 border-b border-zinc-200 flex items-center gap-2">
-                      <Wrench size={16} className="text-orange-500" />
-                      <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] text-zinc-500">Materiais e Filtros Aplicados</span>
+                  <div className="border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="bg-zinc-50/80 px-5 py-3 border-b border-zinc-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wrench size={14} className="text-orange-500" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Insumos e Materiais</span>
+                      </div>
+                      <span className="text-[9px] font-black text-zinc-400 bg-white px-2 py-0.5 rounded-full border border-zinc-200">{pecasUsadas.length} itens</span>
                     </div>
                     <div className="divide-y divide-dashed divide-zinc-200 bg-white">
                       {pecasUsadas.map((peca: any, idx: number) => (
-                        <div key={idx} className="px-5 py-4 flex items-center justify-between gap-4 hover:bg-zinc-50/50 transition-colors">
-                          <div className="min-w-0">
-                            <p className="text-xs sm:text-sm font-black text-zinc-800 uppercase break-words">{peca.descricao}</p>
-                            {peca.codigo && <p className="text-[10px] font-mono font-bold text-zinc-400 mt-1">CÓD: {peca.codigo}</p>}
+                        <div key={idx} className="px-5 py-4 flex items-center justify-between gap-4 hover:bg-zinc-50 transition-colors">
+                          <div className="min-w-0 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center flex-shrink-0 text-zinc-400 font-black text-[10px]">
+                              {peca.quantidade}x
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs sm:text-sm font-bold text-zinc-800 uppercase break-words leading-tight">{peca.descricao}</p>
+                              {peca.codigo && <p className="text-[9px] font-mono font-bold text-zinc-400 mt-1">CÓD: {peca.codigo}</p>}
+                            </div>
                           </div>
-                          <span className="text-xs font-black text-orange-600 bg-orange-50 border border-orange-100 px-3 py-1 rounded-lg whitespace-nowrap shadow-sm">
-                            {peca.quantidade} {peca.unidade}
+                          <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg whitespace-nowrap border border-orange-100">
+                            {peca.unidade}
                           </span>
                         </div>
                       ))}
@@ -340,68 +364,76 @@ export default function PortalClientePage() {
                   </div>
                 )}
                 
-                {/* PRÓXIMAS TROCAS */}
-                <div className="flex flex-col gap-3 pt-4 w-full">
+                {/* PRÓXIMAS TROCAS (DESTAQUE MÁXIMO) */}
+                <div className="grid grid-cols-1 gap-4 pt-2 w-full">
                   {showKm && (alvoKm || data.intervalo_km) && (
-                    <div className="flex items-center gap-4 bg-zinc-50 p-4 rounded-2xl border border-zinc-100 w-full overflow-hidden">
-                      <div className="p-3 bg-white text-orange-500 rounded-xl shadow-sm border border-zinc-100 flex-shrink-0">
-                        <TrendingUp size={20} />
+                    <div className="bg-zinc-900 p-5 rounded-2xl w-full relative overflow-hidden flex items-center justify-between">
+                      <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={80} className="text-white" /></div>
+                      <div className="relative z-10">
+                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Próxima Troca (Alvo KM)</span>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-black text-white font-mono">{alvoKm ? alvoKm.toLocaleString('pt-BR') : '---'}</span>
+                          <span className="text-sm font-bold text-zinc-400">KM</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-[10px] sm:text-xs font-black text-zinc-400 uppercase tracking-widest">Próxima Troca (KM)</span>
-                        <span className="text-sm sm:text-base font-black text-zinc-800 truncate mt-0.5">
-                          Alvo: {alvoKm ? `${alvoKm.toLocaleString('pt-BR')} KM` : 'A definir'}
-                          {data.intervalo_km ? <span className="text-zinc-400 font-semibold text-xs ml-1">(a cada {data.intervalo_km.toLocaleString('pt-BR')})</span> : ''}
-                        </span>
-                      </div>
+                      {data.intervalo_km && (
+                        <div className="relative z-10 bg-white/10 border border-white/10 px-3 py-2 rounded-xl text-center">
+                          <span className="block text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-0.5">Intervalo</span>
+                          <span className="text-xs font-bold text-white">{data.intervalo_km.toLocaleString('pt-BR')} KM</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {showHoras && (alvoHoras || data.intervalo_horas) && (
-                    <div className="flex items-center gap-4 bg-zinc-50 p-4 rounded-2xl border border-zinc-100 w-full overflow-hidden">
-                      <div className="p-3 bg-white text-orange-500 rounded-xl shadow-sm border border-zinc-100 flex-shrink-0">
-                        <TrendingUp size={20} />
+                    <div className="bg-zinc-900 p-5 rounded-2xl w-full relative overflow-hidden flex items-center justify-between">
+                      <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={80} className="text-white" /></div>
+                      <div className="relative z-10">
+                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Próxima Troca (Alvo Horas)</span>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-black text-white font-mono">{alvoHoras ? alvoHoras : '---'}</span>
+                          <span className="text-sm font-bold text-zinc-400">H</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-[10px] sm:text-xs font-black text-zinc-400 uppercase tracking-widest">Próxima Troca (Horas)</span>
-                        <span className="text-sm sm:text-base font-black text-zinc-800 truncate mt-0.5">
-                          Alvo: {alvoHoras ? `${alvoHoras} h` : 'A definir'}
-                          {data.intervalo_horas ? <span className="text-zinc-400 font-semibold text-xs ml-1">(a cada {data.intervalo_horas})</span> : ''}
-                        </span>
-                      </div>
+                      {data.intervalo_horas && (
+                        <div className="relative z-10 bg-white/10 border border-white/10 px-3 py-2 rounded-xl text-center">
+                          <span className="block text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-0.5">Intervalo</span>
+                          <span className="text-xs font-bold text-white">{data.intervalo_horas} h</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  <div className="flex items-center gap-4 bg-zinc-50 p-4 rounded-2xl border border-zinc-100 w-full overflow-hidden">
-                    <div className="p-3 bg-white text-orange-500 rounded-xl shadow-sm border border-zinc-100 flex-shrink-0">
-                      <Calendar size={20} />
+                  <div className="flex items-center justify-between bg-white border border-zinc-200 p-4 rounded-2xl w-full shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-zinc-100 text-zinc-500 rounded-xl">
+                        <Calendar size={18} />
+                      </div>
+                      <span className="text-[10px] sm:text-xs font-black text-zinc-500 uppercase tracking-widest">Data Estimada</span>
                     </div>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-[10px] sm:text-xs font-black text-zinc-400 uppercase tracking-widest">Data Prevista</span>
-                      <span className="text-sm sm:text-base font-black text-zinc-800 truncate mt-0.5">
-                        {data.proxima_data ? new Date(data.proxima_data).toLocaleDateString('pt-BR') : 'A definir'}
-                      </span>
-                    </div>
+                    <span className="text-sm font-black text-zinc-900 bg-zinc-50 px-4 py-1.5 rounded-lg border border-zinc-100">
+                      {data.proxima_data ? new Date(data.proxima_data).toLocaleDateString('pt-BR') : 'A definir'}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* HISTÓRICO PREVENTIVO (TIMELINE) */}
-              <div className="bg-white rounded-[2rem] p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-6 w-full">
+              {/* HISTÓRICO PREVENTIVO (TIMELINE LUXO) */}
+              <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-6 w-full">
                 <div className="flex items-center gap-2 border-b border-zinc-100 pb-4">
-                  <History size={20} className="text-zinc-400" />
-                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] text-zinc-500">Histórico de Manutenções</span>
+                  <History size={18} className="text-zinc-400" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Histórico Clínico</span>
                 </div>
 
                 {(!historico || historico.length === 0) ? (
                   <div className="text-center py-8">
-                    <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Nenhuma manutenção anterior</p>
+                    <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Primeira Manutenção Registrada</p>
                   </div>
                 ) : (
-                  <div className="relative border-l-2 border-zinc-100 ml-3 pl-6 space-y-8">
+                  <div className="relative border-l-2 border-zinc-100 ml-4 pl-8 space-y-8">
                     {historico.map((item: any, idx: number) => (
                       <div key={item.id || idx} className="relative group">
-                        <div className="absolute -left-[33px] top-1 w-5 h-5 rounded-full bg-white border-[4px] border-orange-500 shadow-sm group-hover:scale-110 transition-transform" />
+                        <div className="absolute -left-[41px] top-1 w-6 h-6 rounded-full bg-white border-[5px] border-orange-500 shadow-sm group-hover:scale-110 transition-transform" />
                         
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -422,9 +454,12 @@ export default function PortalClientePage() {
                             </div>
                           </div>
                           
-                          <p className="text-xs sm:text-sm text-zinc-500 font-medium leading-relaxed bg-zinc-50/50 p-3 rounded-lg border border-zinc-100/50">
-                            {item.observacoes || 'Manutenção preventiva executada conforme plano.'}
-                          </p>
+                          <div className="bg-zinc-50 border border-zinc-100 p-4 rounded-xl flex items-center justify-between">
+                            <p className="text-xs sm:text-sm text-zinc-600 font-medium leading-relaxed">
+                              {item.observacoes || 'Manutenção preventiva executada conforme plano.'}
+                            </p>
+                            <ChevronRight size={16} className="text-zinc-300" />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -439,10 +474,9 @@ export default function PortalClientePage() {
               
               {/* GALERIA DE FOTOS PREMIUM */}
               {data.fotos && data.fotos.length > 0 && (
-                <div className="bg-white rounded-[2rem] p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-4 w-full">
+                <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-4 w-full">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] text-zinc-500">Registro Fotográfico</span>
-                    <span className="text-[10px] font-black bg-orange-50 text-orange-600 px-3 py-1 rounded-full border border-orange-100">{data.fotos.length} Fotos</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Galeria de Evidências</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3 w-full">
                     {data.fotos.map((foto: string, idx: number) => (
@@ -462,29 +496,35 @@ export default function PortalClientePage() {
               )}
 
               {/* ÁREA DE ASSINATURA PREMIUM */}
-              <div className="bg-white rounded-[2rem] p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-5 w-full">
+              <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white space-y-6 w-full">
                 <div className="text-center space-y-1">
-                  <h3 className="text-sm sm:text-base font-black uppercase tracking-widest text-zinc-800">Assinatura do Cliente</h3>
-                  <p className="text-[10px] sm:text-xs text-zinc-400 font-bold uppercase tracking-wider">Confirme a entrega e aprovação</p>
+                  <h3 className="text-sm sm:text-base font-black uppercase tracking-widest text-zinc-800">Homologação</h3>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Assinatura digital do cliente</p>
                 </div>
 
                 {assinaturaFeita ? (
                   <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-8 text-center space-y-4 w-full relative overflow-hidden">
-                    <div className="absolute -top-6 -right-6 w-20 h-20 bg-emerald-100 rounded-full blur-2xl opacity-50" />
-                    <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto relative z-10" />
+                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-100 rounded-full blur-3xl opacity-60" />
+                    <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto relative z-10 drop-shadow-sm" />
                     <div className="relative z-10">
                       <h4 className="text-sm font-black text-emerald-800 uppercase tracking-wider">Documento Assinado</h4>
-                      <p className="text-xs text-emerald-600 mt-1 font-medium">Assinatura registrada e anexada com sucesso.</p>
+                      <p className="text-xs text-emerald-600 mt-1 font-medium">Sua assinatura foi registrada.</p>
                     </div>
                     {data.assinatura_cliente && (
-                      <div className="bg-white p-3 rounded-xl border border-emerald-100 inline-block shadow-sm mt-2">
-                        <img src={data.assinatura_cliente} alt="Assinatura" className="max-h-24 mix-blend-multiply opacity-80" />
+                      <div className="bg-white p-4 rounded-2xl border border-emerald-100 inline-block shadow-sm mt-2 relative z-10">
+                        <img src={data.assinatura_cliente} alt="Assinatura" className="max-h-24 mix-blend-multiply opacity-90" />
                       </div>
                     )}
                   </div>
                 ) : isSigning ? (
                   <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300 w-full">
-                    <div className="border-2 border-dashed border-zinc-300 rounded-2xl bg-zinc-50 relative overflow-hidden w-full ring-4 ring-zinc-100/50">
+                    <div className="border-2 border-dashed border-zinc-300 rounded-2xl bg-white relative overflow-hidden w-full shadow-inner group">
+                      {/* Linhas guias da assinatura */}
+                      <div className="absolute inset-0 flex flex-col justify-end p-8 pointer-events-none opacity-20">
+                        <div className="border-b-2 border-zinc-400 w-full mb-1" />
+                        <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest text-center">Assine sobre a linha</span>
+                      </div>
+                      
                       <canvas
                         ref={canvasRef}
                         width={400}
@@ -498,10 +538,6 @@ export default function PortalClientePage() {
                         onTouchMove={draw}
                         onTouchEnd={stopDrawing}
                       />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0 text-zinc-300 gap-2">
-                        <PenTool size={24} className="opacity-50" />
-                        <span className="font-bold uppercase tracking-[0.2em] text-[10px] sm:text-xs">Assine no quadro acima</span>
-                      </div>
                     </div>
                     
                     <div className="flex flex-col sm:flex-row gap-3 w-full">
@@ -509,15 +545,15 @@ export default function PortalClientePage() {
                         type="button"
                         onClick={handleConfirmarAssinatura}
                         disabled={submitting}
-                        className="w-full sm:flex-1 py-3.5 px-4 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-orange-600/20 active:scale-95 disabled:opacity-50"
+                        className="w-full sm:flex-1 py-4 px-4 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-xl shadow-orange-600/30 active:scale-95 disabled:opacity-50"
                       >
                         {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                        {submitting ? 'Enviando...' : 'Confirmar Assinatura'}
+                        {submitting ? 'Salvando...' : 'Confirmar Assinatura'}
                       </button>
                       <button
                         type="button"
                         onClick={clearSignature}
-                        className="w-full sm:w-auto py-3.5 px-5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95"
+                        className="w-full sm:w-auto py-4 px-5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95"
                       >
                         <Eraser size={16} /> Limpar
                       </button>
@@ -526,9 +562,10 @@ export default function PortalClientePage() {
                 ) : (
                   <button
                     onClick={() => setIsSigning(true)}
-                    className="w-full py-5 bg-zinc-900 hover:bg-black text-white rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl shadow-zinc-900/20 active:scale-95"
+                    className="w-full py-5 bg-zinc-900 hover:bg-black text-white rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-2xl shadow-zinc-900/20 active:scale-95 group relative overflow-hidden"
                   >
-                    <PenTool size={20} /> Assinar Documento
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                    <PenTool size={20} className="group-hover:rotate-12 transition-transform" /> Assinar Documento
                   </button>
                 )}
               </div>
@@ -536,15 +573,17 @@ export default function PortalClientePage() {
           </div>
 
           {/* RODAPÉ */}
-          <div className="text-center pt-8 pb-4 space-y-3 w-full">
-            <div className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white rounded-full border border-zinc-200 shadow-sm">
-              <ShieldCheck size={14} className="text-emerald-500" />
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
-                Documento Protegido
+          <div className="text-center pt-8 pb-8 space-y-4 w-full flex flex-col items-center">
+            <div className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-white rounded-full border border-zinc-200 shadow-sm">
+              <ShieldCheck size={16} className="text-emerald-500" />
+              <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em]">
+                Documento Autenticado
               </p>
             </div>
-            <p className="text-[9px] text-zinc-400 font-mono break-words px-4 uppercase tracking-wider">
-              Gerado por {BRANDING.name} {empresa?.telefone && `• ${empresa.telefone}`}{empresa?.endereco && ` • ${empresa.endereco}`}
+            <p className="text-[9px] text-zinc-400 font-mono break-words px-4 uppercase tracking-[0.1em] text-center max-w-sm mx-auto leading-relaxed">
+              Gerado por <strong className="text-zinc-500">{BRANDING.name}</strong> <br/>
+              {empresa?.telefone && `Tel: ${empresa.telefone}`}
+              {empresa?.endereco && ` • ${empresa.endereco}`}
             </p>
           </div>
 
@@ -559,7 +598,7 @@ export default function PortalClientePage() {
         >
           <button 
             onClick={() => setFotoAmpliada(null)}
-            className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all z-[110] backdrop-blur-md border border-white/10"
+            className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all z-[110] backdrop-blur-md border border-white/10 active:scale-95"
           >
             <X size={24} />
           </button>
