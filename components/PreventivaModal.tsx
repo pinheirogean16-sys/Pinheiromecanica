@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { 
   X, Wrench, Clock, ShieldCheck, Save, 
-  Camera, Upload, Loader2, CheckCircle2, TrendingUp 
+  Camera, Upload, Loader2, TrendingUp 
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -91,8 +91,8 @@ export default function PreventivaModal({
 
   const [ativo, setAtivo] = useState(preventivaToEdit?.ativo !== false);
   
-  // FOTO
-  const [fotoUrl, setFotoUrl] = useState<string | null>(preventivaToEdit?.foto_url || null);
+  // ✅ MUDANÇA: Agora o estado é um array de fotos
+  const [fotos, setFotos] = useState<string[]>(preventivaToEdit?.fotos || []);
   const [uploadingFoto, setUploadingFoto] = useState(false);
   
   const [submitting, setSubmitting] = useState(false);
@@ -106,46 +106,49 @@ export default function PreventivaModal({
   const projecaoKm = intervaloKm ? baseKm + Number(intervaloKm) : null;
   const projecaoHoras = intervaloHoras ? baseHorimetro + Number(intervaloHoras) : null;
 
-  // ✅ UPLOAD DE FOTO CORRIGIDO (Rota certa + Proteção Safari iOS)
-  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 5MB.');
-      return;
-    }
+  // ✅ UPLOAD DE MÚLTIPLAS FOTOS
+  const handleFotosUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploadingFoto(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
+    let uploadedCount = 0;
 
-      // ✅ ROTA CORRIGIDA AQUI (sem /documentos)
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      // ✅ PROTEÇÃO: Evita que o iOS quebre se o servidor retornar HTML em vez de JSON
-      if (!res.ok) {
-        const text = await res.text();
-        try {
-          const data = JSON.parse(text);
-          throw new Error(data.error || 'Erro no upload');
-        } catch (jsonErr) {
-          throw new Error('O servidor recusou o arquivo. Verifique o tamanho da imagem.');
-        }
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`A foto ${file.name} passou de 5MB e foi ignorada.`);
+        continue;
       }
 
-      const data = await res.json();
-      setFotoUrl(data.url);
-      toast.success('Foto anexada com sucesso!');
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao enviar foto');
-    } finally {
-      setUploadingFoto(false);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          try { throw new Error(JSON.parse(text).error); } catch { throw new Error('Erro ao subir imagem'); }
+        }
+
+        const data = await res.json();
+        setFotos(prev => [...prev, data.url]);
+        uploadedCount++;
+      } catch (err: any) {
+        toast.error(`Falha no upload de ${file.name}`);
+      }
     }
+
+    if (uploadedCount > 0) toast.success(`${uploadedCount} foto(s) anexada(s)!`);
+    setUploadingFoto(false);
+  };
+
+  const removerFoto = (index: number) => {
+    setFotos(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -191,7 +194,7 @@ export default function PreventivaModal({
         antecedencia_km: antecedenciaKm ? parseInt(antecedenciaKm, 10) : 1500,
         antecedencia_horas: antecedenciaHoras ? parseFloat(antecedenciaHoras) : 50,
         ativo,
-        foto_url: fotoUrl
+        fotos // ✅ Envia o array de fotos
       };
 
       const url = isEditing ? `/api/preventivas/${preventivaToEdit.id}` : '/api/preventivas';
@@ -406,45 +409,50 @@ export default function PreventivaModal({
           {/* SEÇÃO 4: FOTO E OBSERVAÇÕES */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 p-5 rounded-2xl space-y-4">
             <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
-              <Camera className="w-4 h-4" /> 4. Anexo e Observações
+              <Camera className="w-4 h-4" /> 4. Anexos e Observações
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Foto de Referência (Opcional)
+                  Fotos de Referência (Opcional)
                 </label>
                 
-                {fotoUrl ? (
-                  <div className="relative w-full h-32 bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden group">
-                    <img src={fotoUrl} alt="Preventiva" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => setFotoUrl(null)}
-                      className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-zinc-800 hover:border-orange-500/50 bg-zinc-950 rounded-xl cursor-pointer transition-colors">
+                {/* ✅ GRADE DE FOTOS */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {fotos.map((url, idx) => (
+                    <div key={idx} className="relative aspect-square bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden group">
+                      <img src={url} alt={`Foto ${idx+1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removerFoto(idx)}
+                        className="absolute top-1 right-1 p-1.5 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {/* Botão de Adicionar Foto (sempre visível) */}
+                  <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-zinc-800 hover:border-orange-500/50 bg-zinc-950 rounded-xl cursor-pointer transition-colors">
                     {uploadingFoto ? (
                       <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
                     ) : (
                       <>
-                        <Upload className="w-6 h-6 text-zinc-600 mb-2" />
-                        <span className="text-[10px] font-black uppercase text-zinc-500">Anexar Foto</span>
+                        <Upload className="w-6 h-6 text-zinc-600 mb-1" />
+                        <span className="text-[9px] font-black uppercase text-zinc-500 text-center px-2">Anexar Fotos</span>
                       </>
                     )}
                     <input 
                       type="file" 
                       accept="image/*" 
+                      multiple
                       className="hidden" 
-                      onChange={handleFotoUpload} 
+                      onChange={handleFotosUpload} 
                       disabled={uploadingFoto}
                     />
                   </label>
-                )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -452,11 +460,11 @@ export default function PreventivaModal({
                   Observações Internas
                 </label>
                 <textarea
-                  rows={5}
+                  rows={3}
                   placeholder="Detalhes do procedimento, marcas de peças, torques..."
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
-                  className="w-full h-32 bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white uppercase focus:border-orange-500 focus:outline-none resize-none"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white uppercase focus:border-orange-500 focus:outline-none resize-none"
                 />
               </div>
             </div>
