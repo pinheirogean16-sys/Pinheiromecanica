@@ -21,8 +21,15 @@ const execucoesQuerySchema = z.object({
     (val) => !val || !isNaN(Date.parse(val)),
     { message: 'Data de fim inválida' }
   ),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  // ✅ CORREÇÃO: Transforma null ou vazio no valor padrão antes de validar
+  page: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? 1 : val),
+    z.coerce.number().int().min(1).default(1)
+  ),
+  limit: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? 20 : val),
+    z.coerce.number().int().min(1).max(100).default(20)
+  ),
 });
 
 // ============================================================
@@ -39,15 +46,15 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
 
-    // Validação com zod
+    // Validação com zod (Passando undefined caso o param não exista para o default funcionar)
     const parsed = execucoesQuerySchema.parse({
       osId: searchParams.get('osId'),
       checklistId: searchParams.get('checklistId'),
       veiculoId: searchParams.get('veiculoId'),
       data_inicio: searchParams.get('data_inicio'),
       data_fim: searchParams.get('data_fim'),
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
     });
 
     const { osId, checklistId, veiculoId, data_inicio, data_fim, page, limit } = parsed;
