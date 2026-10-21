@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   AlertTriangle, CheckCircle2, AlertCircle, Plus, Sparkles, 
   Search, ChevronRight, Wrench, RefreshCw, Clock, Loader2, 
-  Trash2, Edit, ShieldCheck, X, History, MessageCircle
+  Trash2, Edit, ShieldCheck, X, History, MessageCircle, Printer
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -132,7 +132,7 @@ export default function PreventivasPage() {
   };
 
   // ============================================================
-  // ✅ NOVO: Função para enviar WhatsApp
+  // Função para enviar WhatsApp
   // ============================================================
   const enviarWhatsApp = (p: any) => {
     const veiculo = p.Veiculo || p.veiculo;
@@ -143,19 +143,16 @@ export default function PreventivasPage() {
       return;
     }
 
-    // Limpa o telefone e adiciona o código do país (55)
     let telefone = cliente.telefone.replace(/\D/g, '');
     if (!telefone.startsWith('55')) {
       telefone = '55' + telefone;
     }
 
-    // Monta a mensagem
     let mensagem = `*Relatório de Manutenção Preventiva*\n\n`;
     mensagem += `Olá, *${cliente.nome}*!\n`;
     mensagem += `Segue o registro do serviço realizado no veículo *${veiculo.marca} ${veiculo.modelo} (${veiculo.placa})*.\n\n`;
     mensagem += `🛠️ *Serviço:* ${p.nome || p.servico || p.componente}\n`;
     
-    // Anexa as fotos se existirem
     if (p.fotos && Array.isArray(p.fotos) && p.fotos.length > 0) {
       mensagem += `\n📸 *Fotos do Serviço:*\n`;
       p.fotos.forEach((foto: string, index: number) => {
@@ -166,7 +163,6 @@ export default function PreventivasPage() {
 
     mensagem += `\nQualquer dúvida, estamos à disposição!`;
 
-    // Abre o WhatsApp em nova aba
     const url = `https://wa.me/${telefone}?text=${encodeURIComponent(mensagem)}`;
     window.open(url, '_blank');
   };
@@ -465,7 +461,7 @@ export default function PreventivasPage() {
                       </p>
                     )}
                     
-                    {/* ✅ NOVO: Exibição das miniaturas das fotos no card */}
+                    {/* ✅ Exibição das miniaturas das fotos no card */}
                     {p.fotos && Array.isArray(p.fotos) && p.fotos.length > 0 && (
                       <div className="flex gap-1 mt-2 overflow-x-auto custom-scrollbar pb-1">
                         {p.fotos.map((foto: string, idx: number) => (
@@ -519,7 +515,7 @@ export default function PreventivasPage() {
                     </div>
                   </div>
 
-                  {/* ✅ AÇÕES DO CARD COM O NOVO BOTÃO DE WHATSAPP */}
+                  {/* ✅ AÇÕES DO CARD COM O NOVO BOTÃO DE PDF E WHATSAPP */}
                   <div className="flex flex-wrap items-center justify-between border-t border-zinc-800/60 pt-3 gap-y-2">
                     <div className="flex items-center gap-1">
                       <button
@@ -556,6 +552,16 @@ export default function PreventivasPage() {
                         <MessageCircle size={12} />
                         Enviar
                       </button>
+
+                      {/* ✅ NOVO: Botão de Imprimir PDF */}
+                      <Link
+                        href={`/preventivas/${p.id}/imprimir`}
+                        target="_blank"
+                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 transition"
+                        title="Imprimir Relatório"
+                      >
+                        <Printer size={12} />
+                      </Link>
 
                       <Link
                         href={`/os/nova?veiculo_id=${p.veiculo_id}&preventiva_id=${p.id}&diagnostico=MANUTENCAO+PREVENTIVA:+${encodeURIComponent(p.nome || p.servico || p.componente)}`}
