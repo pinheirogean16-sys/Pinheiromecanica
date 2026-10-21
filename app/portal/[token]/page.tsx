@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X
+  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -19,8 +19,6 @@ export default function PortalClientePage() {
   const [isSigning, setIsSigning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [assinaturaFeita, setAssinaturaFeita] = useState(false);
-  
-  // ✅ Novo estado para o Lightbox de fotos
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -168,10 +166,9 @@ export default function PortalClientePage() {
     );
   }
 
-  const { empresa, veiculo, cliente } = data;
+  const { empresa, veiculo, cliente, historico } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
-  // ✅ LÓGICA DE EXIBIÇÃO
   const tipo = (data.tipo_controle || 'KM').toUpperCase();
   const showKm = tipo === 'KM' || tipo === 'MISTO' || tipo === 'COMBINADO' || (!data.tipo_controle && !!data.intervalo_km);
   const showHoras = tipo === 'HORAS' || tipo === 'MISTO' || tipo === 'COMBINADO' || (!data.tipo_controle && !!data.intervalo_horas);
@@ -185,8 +182,7 @@ export default function PortalClientePage() {
   
   if (showKm && alvoKm && veiculo.km) {
     const kmRestante = alvoKm - veiculo.km;
-    const margemAlerta = data.intervalo_km ? data.intervalo_km * 0.1 : 1000; // 10% do intervalo ou 1000km
-    
+    const margemAlerta = data.intervalo_km ? data.intervalo_km * 0.1 : 1000;
     if (kmRestante <= 0) {
       statusCor = 'bg-red-100 text-red-700 border-red-200';
       statusTexto = 'Vencida';
@@ -197,7 +193,6 @@ export default function PortalClientePage() {
   } else if (showHoras && alvoHoras && veiculo.horimetro) {
     const horasRestante = alvoHoras - veiculo.horimetro;
     const margemAlerta = data.intervalo_horas ? data.intervalo_horas * 0.1 : 50; 
-    
     if (horasRestante <= 0) {
       statusCor = 'bg-red-100 text-red-700 border-red-200';
       statusTexto = 'Vencida';
@@ -275,7 +270,6 @@ export default function PortalClientePage() {
               {/* SERVIÇO REALIZADO E STATUS */}
               <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full relative">
                 
-                {/* ✅ SELO DE STATUS */}
                 <div className={`absolute top-5 right-5 px-3 py-1 rounded-full border text-[10px] sm:text-xs font-black uppercase tracking-wider ${statusCor}`}>
                   {statusTexto}
                 </div>
@@ -337,6 +331,58 @@ export default function PortalClientePage() {
                   </div>
                 </div>
               </div>
+
+              {/* ✅ NOVO: HISTÓRICO PREVENTIVO (TIMELINE) */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-6 w-full">
+                <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
+                  <History size={20} className="text-zinc-400" />
+                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Histórico de Manutenções</span>
+                </div>
+
+                {(!historico || historico.length === 0) ? (
+                  <div className="text-center py-6">
+                    <p className="text-xs text-zinc-500 font-medium">Nenhuma manutenção anterior registrada para este plano.</p>
+                  </div>
+                ) : (
+                  <div className="relative border-l-2 border-zinc-200 ml-3 pl-6 space-y-6">
+                    {historico.map((item: any, idx: number) => (
+                      <div key={item.id || idx} className="relative">
+                        {/* Bolinha na linha do tempo */}
+                        <div className="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-white border-4 border-orange-500 shadow-sm" />
+                        
+                        <div className="space-y-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-black text-zinc-800 uppercase tracking-wide">
+                              {new Date(item.data_conclusao).toLocaleDateString('pt-BR')}
+                            </span>
+                            {item.km_conclusao && (
+                              <span className="bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2 py-0.5 rounded">
+                                {item.km_conclusao.toLocaleString('pt-BR')} KM
+                              </span>
+                            )}
+                            {item.horimetro_conclusao && (
+                              <span className="bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2 py-0.5 rounded">
+                                {item.horimetro_conclusao} h
+                              </span>
+                            )}
+                          </div>
+                          
+                          <p className="text-sm text-zinc-600 font-medium">
+                            {item.observacoes || 'Manutenção preventiva executada.'}
+                          </p>
+                          
+                          {item.os_id && (
+                            <p className="text-[10px] text-orange-500 font-bold uppercase tracking-wider">
+                              Ref. OS: #{item.os_id.slice(0, 6).toUpperCase()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
             {/* COLUNA DIREITA */}
@@ -351,7 +397,6 @@ export default function PortalClientePage() {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3 w-full">
                     {data.fotos.map((foto: string, idx: number) => (
-                      // ✅ LIGHTBOX: Em vez de <a>, usamos button para abrir o modal
                       <button 
                         key={idx} 
                         onClick={() => setFotoAmpliada(foto)}
