@@ -42,15 +42,36 @@ export async function GET(
       },
     });
 
-    // ✅ BATE NO BANCO PARA BUSCAR O HISTÓRICO
+    // Busca o histórico de execuções (Timeline)
     const historico = await prisma.preventivaExecucao.findMany({
       where: { 
         preventiva_id: preventiva.id,
         empresa_id: preventiva.empresa_id
       },
       orderBy: { data_conclusao: 'desc' },
-      take: 10, // Busca as últimas 10
+      take: 10,
     });
+
+    // ✅ NOVO: Busca as peças utilizadas na última OS executada
+    let pecasUsadas: any[] = [];
+    if (historico.length > 0 && historico[0].os_id) {
+      const pecas = await prisma.pecaAplicada.findMany({
+        where: { os_id: historico[0].os_id },
+        include: { 
+          Peca: { 
+            select: { descricao: true, codigo: true, unidadeMedida: true } 
+          } 
+        }
+      });
+      
+      pecasUsadas = pecas.map(p => ({
+        id: p.id,
+        descricao: p.Peca?.descricao || p.descricao,
+        codigo: p.Peca?.codigo,
+        quantidade: p.quantidade,
+        unidade: p.unidade || p.Peca?.unidadeMedida || 'un',
+      }));
+    }
 
     let fotosArray: string[] = [];
     if (preventiva.fotos) {
@@ -89,7 +110,9 @@ export async function GET(
       assinatura_cliente: preventiva.assinatura_cliente,
       data_assinatura: preventiva.data_assinatura,
       
-      // ✅ ENVIA O HISTÓRICO PARA O FRONTEND
+      // ✅ NOVO: Envia as peças utilizadas
+      pecasUsadas,
+
       historico: historico.map(h => ({
         id: h.id,
         data_conclusao: h.data_conclusao,
