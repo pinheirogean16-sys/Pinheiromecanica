@@ -7,6 +7,17 @@ import crypto from 'crypto';
 import { z } from 'zod';
 
 // ============================================================
+// CONFIGURAÇÃO DO TRIAL
+// ============================================================
+// ✅ 14 dias de trial a partir do cadastro.
+// Se quiser mudar o período, altere apenas esta constante.
+const DIAS_TRIAL = 14;
+
+function calcularFimTrial(): Date {
+  return new Date(Date.now() + DIAS_TRIAL * 24 * 60 * 60 * 1000);
+}
+
+// ============================================================
 // VALIDAÇÃO REAL DE CNPJ (dígitos verificadores)
 // ============================================================
 function validarCNPJ(cnpj: string): boolean {
@@ -103,11 +114,8 @@ export async function POST(request: Request) {
     // cria uma empresa NOVA, o e-mail sempre será único por empresa.
     // O mesmo e-mail pode ser admin de múltiplas empresas — o login
     // tenta a senha em cada usuário com aquele e-mail até achar.
-    // (Se você quiser "1 e-mail = 1 tenant", veja a explicação no
-    // fim deste arquivo — exige reverter A24 no schema.)
 
     // ✅ CNPJ duplicado: Empresa.cnpj tem @unique (global).
-    // Bloqueia a criação de tenants duplicados.
     if (cnpj) {
       const cnpjLimpo = cnpj.replace(/\D/g, '');
       const existingEmpresa = await prisma.empresa.findFirst({
@@ -125,12 +133,20 @@ export async function POST(request: Request) {
     // Hash da senha fora da transação (operação lenta, não segura conexão)
     const hash = await bcrypt.hash(senha, 10);
 
+    // ✅ Calculado ANTES da transação para garantir consistência
+    const trialFim = calcularFimTrial();
+
     const result = await prisma.$transaction(async (tx) => {
       const empresa = await tx.empresa.create({
         data: {
           id: crypto.randomUUID(),
           nome: empresa_nome,
           cnpj: cnpj ? cnpj.replace(/\D/g, '') : null,
+          // ✅ NOVO: define o plano, status e data de término do trial
+          // sem isso, o Cron Job de bloqueio nunca sabe quando bloquear
+          plano: 'TRIAL',
+          status: 'ATIVO',
+          trial_ends_at: trialFim,
           // updated_at é @updatedAt no schema — Prisma cuida automaticamente
         },
       });
@@ -148,8 +164,6 @@ export async function POST(request: Request) {
       });
 
       // ✅ ConfiguracaoEmpresa com defaults para o tenant funcionar
-      // (alíquota de imposto, dados fiscais, etc. dependem desse registro)
-      // Passamos `id` explícito — funciona com ou sem @default(uuid()) no schema.
       await tx.configuracaoEmpresa.create({
         data: {
           id: crypto.randomUUID(),
@@ -177,6 +191,8 @@ export async function POST(request: Request) {
         empresa_nome: result.empresa.nome,
         admin_id: result.user.id,
         admin_email: result.user.email,
+        plano: 'TRIAL',
+        trial_ends_at: trialFim.toISOString(),
       },
     });
 
@@ -184,7 +200,12 @@ export async function POST(request: Request) {
       'INFO',
       'REGISTER',
       'Nova empresa cadastrada via convite',
-      { empresaId: result.empresa.id, email },
+      {
+        empresaId: result.empresa.id,
+        email,
+        trialFim: trialFim.toISOString(),
+        diasTrial: DIAS_TRIAL,
+      },
       'SISTEMA'
     );
 
@@ -212,25 +233,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
-// ============================================================
-// 📌 SE VOCÊ QUISER "1 E-MAIL = 1 TENANT" (Opção B)
-// ============================================================
-// Este arquivo NÃO garante isso sozinho — a regra global pode ser burlada
-// (usuário muda e-mail na empresa A, outro registra com ele, usuário volta).
-//
-// Para garantir de verdade, é preciso:
-// 1. Reverter A24 no schema.prisma:
-//    model User {
-//      email String @unique   // (global)
-//      // (remover @@unique([email, empresa_id]))
-//    }
-// 2. Rodar migration: npx prisma migrate dev --name revert_a24_email_global
-// 3. Adicionar de volta o check global aqui no register:
-//    const existingUser = await prisma.user.findFirst({ where: { email } });
-//    if (existingUser) return 400;
-// 4. Ajustar usuario/route.ts, usuarios/route.ts, usuarios/[id]/route.ts
-//    para checar e-mail globalmente (não por empresa).
-//
-// Isso é 5 arquivos + 1 migration. Só faça se a regra de negócio exigir.
-// ============================================================
