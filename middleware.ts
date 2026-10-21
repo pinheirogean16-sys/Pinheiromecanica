@@ -4,13 +4,15 @@ import { verifyTokenEdge } from '@/lib/auth-edge';
 const PUBLIC_ROUTES = [
   '/login',
   '/register',
-  '/recuperar-senha', // 👈 ADICIONE AQUI
-  '/redefinir-senha', // 👈 E AQUI
+  '/recuperar-senha',
+  '/redefinir-senha',
+  '/portal',                    // ✅ NOVO: Tela pública do cliente (assinatura)
   '/api/auth/login',
-  '/api/auth/recuperar-senha', // 👈 E AQUI
-  '/api/auth/redefinir-senha', // 👈 E AQUI
+  '/api/auth/recuperar-senha',
+  '/api/auth/redefinir-senha',
   '/api/register',
   '/api/auth/refresh',
+  '/api/portal',                // ✅ NOVO: API pública do portal (GET dados + POST assinatura)
   '/manifest.json',
   '/favicon.ico',
   '/robots.txt',
@@ -31,7 +33,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Rotas públicas (login, register, manifest, etc)
+  // 2. Rotas públicas (login, register, portal do cliente, manifest, etc)
   if (
     PUBLIC_ROUTES.some(
       (route) => pathname === route || pathname.startsWith(route + '/')
