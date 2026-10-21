@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Package
+  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Package, Wrench
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -166,7 +166,7 @@ export default function PortalClientePage() {
     );
   }
 
-  const { empresa, veiculo, cliente, historico, pecasUsadas, debugInfo } = data;
+  const { empresa, veiculo, cliente, historico, pecasUsadas } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
   const tipo = (data.tipo_controle || 'KM').toUpperCase();
@@ -286,21 +286,21 @@ export default function PortalClientePage() {
                   </p>
                 )}
 
-                {/* ✅ LISTA DE PEÇAS E FILTROS */}
+                {/* ✅ MATERIAIS UTILIZADOS (DESTAQUE) */}
                 {pecasUsadas && pecasUsadas.length > 0 && (
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl overflow-hidden mt-4">
-                    <div className="bg-zinc-100/50 px-4 py-2 border-b border-zinc-200 flex items-center gap-2">
-                      <Package size={16} className="text-zinc-500" />
-                      <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-500">Materiais e Filtros Utilizados</span>
+                  <div className="mt-6 border-2 border-zinc-100 rounded-xl overflow-hidden">
+                    <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 flex items-center gap-2">
+                      <Wrench size={18} className="text-orange-500" />
+                      <span className="text-xs font-black uppercase tracking-widest text-zinc-700">Materiais e Filtros Aplicados</span>
                     </div>
-                    <div className="divide-y divide-zinc-200">
+                    <div className="divide-y divide-zinc-100 bg-white">
                       {pecasUsadas.map((peca: any, idx: number) => (
-                        <div key={idx} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                        <div key={idx} className="px-4 py-3 flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-xs sm:text-sm font-bold text-zinc-700 uppercase break-words">{peca.descricao}</p>
-                            {peca.codigo && <p className="text-[9px] font-mono text-zinc-400">Cód: {peca.codigo}</p>}
+                            <p className="text-sm font-bold text-zinc-800 uppercase break-words">{peca.descricao}</p>
+                            {peca.codigo && <p className="text-[10px] font-mono text-zinc-400 mt-0.5">CÓD: {peca.codigo}</p>}
                           </div>
-                          <span className="text-xs font-black text-zinc-800 bg-white border border-zinc-200 px-2 py-1 rounded">
+                          <span className="text-xs font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg whitespace-nowrap">
                             {peca.quantidade} {peca.unidade}
                           </span>
                         </div>
@@ -309,7 +309,7 @@ export default function PortalClientePage() {
                   </div>
                 )}
                 
-                <div className="flex flex-col gap-3 pt-2 w-full">
+                <div className="flex flex-col gap-3 pt-4 w-full">
                   {showKm && (alvoKm || data.intervalo_km) && (
                     <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
                       <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
@@ -353,14 +353,6 @@ export default function PortalClientePage() {
                   </div>
                 </div>
               </div>
-
-              {/* ✅ CAIXA DE DEBUG (Visível apenas para teste) */}
-              {debugInfo && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 w-full">
-                  <p className="text-xs font-black text-red-800 uppercase mb-2">Diagnóstico do Sistema (Tire print)</p>
-                  <pre className="text-[10px] text-red-600 font-mono whitespace-pre-wrap">{JSON.stringify(debugInfo, null, 2)}</pre>
-                </div>
-              )}
 
               {/* HISTÓRICO PREVENTIVO (TIMELINE) */}
               <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-6 w-full">
