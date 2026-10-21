@@ -56,7 +56,7 @@ export default function PreventivaModal({
     preventivaToEdit?.tipo_controle || 'KM'
   );
 
-  // Intervalos (Apenas o que o usuário precisa digitar)
+  // Intervalos
   const [intervaloDias, setIntervaloDias] = useState(
     preventivaToEdit?.intervalo_dias ? String(preventivaToEdit.intervalo_dias) : ''
   );
@@ -67,7 +67,7 @@ export default function PreventivaModal({
     preventivaToEdit?.intervalo_horas ? String(preventivaToEdit.intervalo_horas) : ''
   );
 
-  // Última manutenção (opcional - se deixar em branco, usa o KM atual do veículo)
+  // Última manutenção (opcional)
   const [ultimaData, setUltimaData] = useState(
     preventivaToEdit?.ultima_data ? new Date(preventivaToEdit.ultima_data).toISOString().split('T')[0] : ''
   );
@@ -99,14 +99,14 @@ export default function PreventivaModal({
 
   const selectedVeiculo = useMemo(() => veiculos.find((v) => v.id === veiculoId), [veiculos, veiculoId]);
 
-  // Cálculos automáticos para mostrar a projeção ao usuário (O backend fará o cálculo real de forma segura)
+  // Cálculos automáticos para mostrar a projeção
   const baseKm = Number(ultimoKm) || selectedVeiculo?.quilometragem || 0;
   const baseHorimetro = Number(ultimoHorimetro) || selectedVeiculo?.horimetro_atual || 0;
   
   const projecaoKm = intervaloKm ? baseKm + Number(intervaloKm) : null;
   const projecaoHoras = intervaloHoras ? baseHorimetro + Number(intervaloHoras) : null;
 
-  // Upload de Foto
+  // ✅ UPLOAD DE FOTO CORRIGIDO (Rota certa + Proteção Safari iOS)
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -121,14 +121,24 @@ export default function PreventivaModal({
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/upload/documentos', {
+      // ✅ ROTA CORRIGIDA AQUI (sem /documentos)
+      const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
+
+      // ✅ PROTEÇÃO: Evita que o iOS quebre se o servidor retornar HTML em vez de JSON
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          throw new Error(data.error || 'Erro no upload');
+        } catch (jsonErr) {
+          throw new Error('O servidor recusou o arquivo. Verifique o tamanho da imagem.');
+        }
+      }
+
       const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Erro no upload');
-
       setFotoUrl(data.url);
       toast.success('Foto anexada com sucesso!');
     } catch (err: any) {
@@ -160,8 +170,6 @@ export default function PreventivaModal({
     setSubmitting(true);
 
     try {
-      // O backend fará o cálculo do proximo_km e proxima_data automaticamente 
-      // se enviarmos apenas os intervalos e o veiculo_id.
       const payload: any = {
         veiculo_id: veiculoId,
         nome: nomeFinal,
@@ -171,17 +179,13 @@ export default function PreventivaModal({
         observacoes: observacoes.trim(),
         tipo_controle: tipoControle,
         
-        // Intervalos (fundamentais para o cálculo automático no backend)
         intervalo_dias: intervaloDias ? parseInt(intervaloDias, 10) : null,
         intervalo_km: intervaloKm ? parseInt(intervaloKm, 10) : null,
         intervalo_horas: intervaloHoras ? parseFloat(intervaloHoras) : null,
         
-        // Última manutenção (opcional, se vazio o backend usa a do veículo)
         ultima_data: ultimaData || null,
         ultimo_km: ultimoKm ? parseInt(ultimoKm, 10) : null,
         ultimo_horimetro: ultimoHorimetro ? parseFloat(ultimoHorimetro) : null,
-        
-        // Nós NÃO enviamos proximo_km nem proxima_data. O backend calcula!
         
         antecedencia_dias: antecedenciaDias ? parseInt(antecedenciaDias, 10) : 15,
         antecedencia_km: antecedenciaKm ? parseInt(antecedenciaKm, 10) : 1500,
