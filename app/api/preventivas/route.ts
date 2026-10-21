@@ -25,7 +25,7 @@ const preventivaSchema = z.object({
   descricao: z.string().max(1000).optional().nullable().default(''),
   observacoes: z.string().max(2000).optional().nullable().default(''),
   
-  // ✅ NOVO: Aceita array de strings para as fotos
+  // ✅ Aceita array de strings para as fotos
   fotos: z.array(z.string()).optional().default([]),
 
   tipo_controle: z.preprocess(
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
         if (!matchPlaca && !matchModelo && !matchMarca && !matchCliente && !matchNome && !matchServico && !matchComponente && !matchDesc) continue;
       }
 
-      // ✅ NOVO: Converte a string JSON do banco de volta para um array no Frontend
+      // ✅ Converte a string JSON do banco de volta para um array no Frontend
       let fotosArray: string[] = [];
       if (p.fotos) {
         try { fotosArray = JSON.parse(p.fotos); } catch { fotosArray = []; }
@@ -217,6 +217,9 @@ export async function POST(request: NextRequest) {
         // ✅ SALVANDO AS FOTOS COMO JSON STRING
         fotos: JSON.stringify(body.fotos || []),
         
+        // ✅ NOVO: GERA O TOKEN PÚBLICO PARA O LINK SEGURO
+        token_publico: globalThis.crypto.randomUUID(),
+
         tipo_controle: body.tipo_controle || 'KM',
         intervalo_dias: body.intervalo_dias ?? null,
         intervalo_km: body.intervalo_km ?? null,
