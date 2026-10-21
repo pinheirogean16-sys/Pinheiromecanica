@@ -395,6 +395,7 @@ export default function PreventivaModal({
                   {/* ✅ WIDGET DO CLOUDINARY: Upload direto para a nuvem sem passar pelo servidor */}
                   <CldUploadWidget 
                     uploadPreset="vehlox_preset"
+                    cloudName="krdgekwz" // 👈 ADICIONADO AQUI PARA RESOLVER O ERRO
                     options={{ multiple: true, maxFiles: 5 }}
                     onSuccess={(result: any) => {
                       if (result?.info?.secure_url) {
