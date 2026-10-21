@@ -32,63 +32,29 @@ const editPreventivaSchema = z.object({
   descricao: z.string().max(1000).optional().nullable(),
   observacoes: z.string().max(2000).optional().nullable(),
   
-  // ✅ NOVO: Aceita a URL da foto
-  foto_url: z.string().optional().nullable(),
+  // ✅ MUDANÇA: Agora aceita um array de strings
+  fotos: z.array(z.string()).optional(),
 
-  // ✅ Preprocess para aceitar COMBINADO do frontend
   tipo_controle: z.preprocess(
     (val) => (val === 'COMBINADO' ? 'MISTO' : val),
     z.enum(TIPOS_CONTROLE).optional()
   ),
   
-  intervalo_dias: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().positive().optional().nullable()
-  ),
-  intervalo_km: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().positive().optional().nullable()
-  ),
-  intervalo_horas: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().positive().optional().nullable()
-  ),
+  intervalo_dias: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().positive().optional().nullable()),
+  intervalo_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().positive().optional().nullable()),
+  intervalo_horas: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().positive().optional().nullable()),
   ultima_data: z.string().optional().nullable(),
-  ultimo_km: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().nonnegative().optional().nullable()
-  ),
-  ultimo_horimetro: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().nonnegative().optional().nullable()
-  ),
+  ultimo_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().nonnegative().optional().nullable()),
+  ultimo_horimetro: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().nonnegative().optional().nullable()),
   proxima_data: z.string().optional().nullable(),
-  proximo_km: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().positive().optional().nullable()
-  ),
-  proximo_horimetro: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().positive().optional().nullable()
-  ),
-  antecedencia_dias: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().optional().nullable()
-  ),
-  antecedencia_km: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().optional().nullable()
-  ),
-  antecedencia_horas: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().optional().nullable()
-  ),
+  proximo_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().positive().optional().nullable()),
+  proximo_horimetro: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().positive().optional().nullable()),
+  antecedencia_dias: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().optional().nullable()),
+  antecedencia_km: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().optional().nullable()),
+  antecedencia_horas: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().optional().nullable()),
   ativo: z.boolean().optional(),
   status: z.string().max(50).optional(),
-  km_limite: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
-    z.number().int().optional().nullable()
-  ),
+  km_limite: z.preprocess((val) => (val === '' || val === null || val === undefined ? null : Number(val)), z.number().int().optional().nullable()),
   data_limite: z.string().optional().nullable(),
 });
 
@@ -131,8 +97,15 @@ export async function GET(
       }
     }
 
+    // ✅ Converte a string JSON de fotos de volta para Array
+    let fotosArray: string[] = [];
+    if (preventiva.fotos) {
+      try { fotosArray = JSON.parse(preventiva.fotos); } catch { fotosArray = []; }
+    }
+
     return NextResponse.json({
       ...preventiva,
+      fotos: fotosArray,
       ...safeAvaliacao,
     });
   } catch (error: any) {
@@ -180,8 +153,8 @@ export async function PUT(
     if (body.descricao !== undefined) updateData.descricao = body.descricao;
     if (body.observacoes !== undefined) updateData.observacoes = body.observacoes;
     
-    // ✅ ATUALIZANDO A FOTO AQUI
-    if (body.foto_url !== undefined) updateData.foto_url = body.foto_url;
+    // ✅ SALVANDO AS FOTOS COMO JSON STRING
+    if (body.fotos !== undefined) updateData.fotos = JSON.stringify(body.fotos);
 
     if (body.tipo_controle !== undefined) updateData.tipo_controle = body.tipo_controle;
     if (body.intervalo_dias !== undefined) updateData.intervalo_dias = body.intervalo_dias;
