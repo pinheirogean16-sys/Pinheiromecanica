@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Wrench, Calendar, Gauge, Clock, ShieldCheck, AlertCircle, Save } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { 
+  X, Wrench, Clock, ShieldCheck, Save, 
+  Camera, Upload, Loader2, CheckCircle2, TrendingUp 
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PreventivaModalProps {
@@ -48,12 +51,12 @@ export default function PreventivaModal({
   const [descricao, setDescricao] = useState(preventivaToEdit?.descricao || '');
   const [observacoes, setObservacoes] = useState(preventivaToEdit?.observacoes || '');
 
-  // Tipo de controle: DATA, KM, HORAS ou COMBINADO
+  // Tipo de controle
   const [tipoControle, setTipoControle] = useState<string>(
     preventivaToEdit?.tipo_controle || 'KM'
   );
 
-  // Intervalos
+  // Intervalos (Apenas o que o usuário precisa digitar)
   const [intervaloDias, setIntervaloDias] = useState(
     preventivaToEdit?.intervalo_dias ? String(preventivaToEdit.intervalo_dias) : ''
   );
@@ -64,7 +67,7 @@ export default function PreventivaModal({
     preventivaToEdit?.intervalo_horas ? String(preventivaToEdit.intervalo_horas) : ''
   );
 
-  // Última manutenção realizada
+  // Última manutenção (opcional - se deixar em branco, usa o KM atual do veículo)
   const [ultimaData, setUltimaData] = useState(
     preventivaToEdit?.ultima_data ? new Date(preventivaToEdit.ultima_data).toISOString().split('T')[0] : ''
   );
@@ -73,21 +76,6 @@ export default function PreventivaModal({
   );
   const [ultimoHorimetro, setUltimoHorimetro] = useState(
     preventivaToEdit?.ultimo_horimetro ? String(preventivaToEdit.ultimo_horimetro) : ''
-  );
-
-  // Próximos limites previstos
-  const [proximaData, setProximaData] = useState(
-    preventivaToEdit?.proxima_data || preventivaToEdit?.data_limite
-      ? new Date(preventivaToEdit.proxima_data || preventivaToEdit.data_limite).toISOString().split('T')[0]
-      : ''
-  );
-  const [proximoKm, setProximoKm] = useState(
-    preventivaToEdit?.proximo_km || preventivaToEdit?.km_limite
-      ? String(preventivaToEdit.proximo_km || preventivaToEdit.km_limite)
-      : ''
-  );
-  const [proximoHorimetro, setProximoHorimetro] = useState(
-    preventivaToEdit?.proximo_horimetro ? String(preventivaToEdit.proximo_horimetro) : ''
   );
 
   // Antecedência de alertas
@@ -102,29 +90,51 @@ export default function PreventivaModal({
   );
 
   const [ativo, setAtivo] = useState(preventivaToEdit?.ativo !== false);
+  
+  // FOTO
+  const [fotoUrl, setFotoUrl] = useState<string | null>(preventivaToEdit?.foto_url || null);
+  const [uploadingFoto, setUploadingFoto] = useState(false);
+  
   const [submitting, setSubmitting] = useState(false);
 
-  if (!isOpen) return null;
+  const selectedVeiculo = useMemo(() => veiculos.find((v) => v.id === veiculoId), [veiculos, veiculoId]);
 
-  const selectedVeiculo = veiculos.find((v) => v.id === veiculoId);
-  const usaHorimetro = selectedVeiculo?.tipo === 'MAQUINA_AGRICOLA' || 
-                       selectedVeiculo?.tipo === 'TRATOR' || 
-                       (selectedVeiculo?.horimetro_atual !== null && selectedVeiculo?.horimetro_atual !== undefined);
+  // Cálculos automáticos para mostrar a projeção ao usuário (O backend fará o cálculo real de forma segura)
+  const baseKm = Number(ultimoKm) || selectedVeiculo?.quilometragem || 0;
+  const baseHorimetro = Number(ultimoHorimetro) || selectedVeiculo?.horimetro_atual || 0;
+  
+  const projecaoKm = intervaloKm ? baseKm + Number(intervaloKm) : null;
+  const projecaoHoras = intervaloHoras ? baseHorimetro + Number(intervaloHoras) : null;
 
-  // Recalcular projeções quando intervalos ou valores base mudam
-  const recalcularProjecao = () => {
-    if (intervaloDias) {
-      const base = ultimaData ? new Date(ultimaData) : new Date();
-      base.setDate(base.getDate() + Number(intervaloDias));
-      setProximaData(base.toISOString().split('T')[0]);
+  // Upload de Foto
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5MB.');
+      return;
     }
-    if (intervaloKm) {
-      const baseKm = ultimoKm ? Number(ultimoKm) : (selectedVeiculo?.quilometragem || 0);
-      setProximoKm(String(baseKm + Number(intervaloKm)));
-    }
-    if (intervaloHoras) {
-      const baseH = ultimoHorimetro ? Number(ultimoHorimetro) : (selectedVeiculo?.horimetro_atual || 0);
-      setProximoHorimetro(String((baseH + Number(intervaloHoras)).toFixed(1)));
+
+    setUploadingFoto(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/upload/documentos', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Erro no upload');
+
+      setFotoUrl(data.url);
+      toast.success('Foto anexada com sucesso!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao enviar foto');
+    } finally {
+      setUploadingFoto(false);
     }
   };
 
@@ -142,16 +152,16 @@ export default function PreventivaModal({
       return;
     }
 
-    // Pelo menos um limite deve ser estipulado
-    const temControle = proximaData || proximoKm || proximoHorimetro || intervaloDias || intervaloKm || intervaloHoras;
-    if (!temControle) {
-      toast.warning('Informe ao menos uma previsão por data, quilometragem ou horímetro');
+    if (!intervaloDias && !intervaloKm && !intervaloHoras && !ultimaData) {
+      toast.warning('Informe pelo menos um intervalo (Dias, KM ou Horas)');
       return;
     }
 
     setSubmitting(true);
 
     try {
+      // O backend fará o cálculo do proximo_km e proxima_data automaticamente 
+      // se enviarmos apenas os intervalos e o veiculo_id.
       const payload: any = {
         veiculo_id: veiculoId,
         nome: nomeFinal,
@@ -160,22 +170,24 @@ export default function PreventivaModal({
         descricao: descricao.trim(),
         observacoes: observacoes.trim(),
         tipo_controle: tipoControle,
+        
+        // Intervalos (fundamentais para o cálculo automático no backend)
         intervalo_dias: intervaloDias ? parseInt(intervaloDias, 10) : null,
         intervalo_km: intervaloKm ? parseInt(intervaloKm, 10) : null,
         intervalo_horas: intervaloHoras ? parseFloat(intervaloHoras) : null,
+        
+        // Última manutenção (opcional, se vazio o backend usa a do veículo)
         ultima_data: ultimaData || null,
         ultimo_km: ultimoKm ? parseInt(ultimoKm, 10) : null,
         ultimo_horimetro: ultimoHorimetro ? parseFloat(ultimoHorimetro) : null,
-        proxima_data: proximaData || null,
-        proximo_km: proximoKm ? parseInt(proximoKm, 10) : null,
-        proximo_horimetro: proximoHorimetro ? parseFloat(proximoHorimetro) : null,
+        
+        // Nós NÃO enviamos proximo_km nem proxima_data. O backend calcula!
+        
         antecedencia_dias: antecedenciaDias ? parseInt(antecedenciaDias, 10) : 15,
         antecedencia_km: antecedenciaKm ? parseInt(antecedenciaKm, 10) : 1500,
         antecedencia_horas: antecedenciaHoras ? parseFloat(antecedenciaHoras) : 50,
         ativo,
-        // Compatibilidade
-        km_limite: proximoKm ? parseInt(proximoKm, 10) : null,
-        data_limite: proximaData || null
+        foto_url: fotoUrl
       };
 
       const url = isEditing ? `/api/preventivas/${preventivaToEdit.id}` : '/api/preventivas';
@@ -192,7 +204,7 @@ export default function PreventivaModal({
         throw new Error(data.error || 'Erro ao salvar plano preventivo');
       }
 
-      toast.success(isEditing ? 'Plano preventivo atualizado com sucesso!' : 'Novo plano preventivo cadastrado com sucesso!');
+      toast.success(isEditing ? 'Plano atualizado!' : 'Novo plano cadastrado!');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -202,13 +214,15 @@ export default function PreventivaModal({
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn">
       <div 
         className="bg-zinc-950 border border-zinc-800 rounded-3xl w-full max-w-3xl my-8 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
+        {/* Header */}
         <div className="p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-500">
@@ -216,91 +230,65 @@ export default function PreventivaModal({
             </div>
             <div>
               <h2 className="text-lg font-black text-white uppercase italic tracking-tight">
-                {isEditing ? 'Editar Plano de Manutenção Preventiva' : 'Cadastrar Novo Plano de Manutenção'}
+                {isEditing ? 'Editar Plano Preventivo' : 'Novo Plano Preventivo'}
               </h2>
               <p className="text-[11px] text-zinc-400 font-medium">
-                Controle inteligente por Data, Quilometragem (KM) e Horímetro para frotas diesel.
+                Cálculo automático inteligente baseado no veículo.
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
-          >
+          <button onClick={onClose} className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 transition cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Form */}
+        {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1 font-sans">
-          {/* SEÇÃO 1: VÍNCULO DO VEÍCULO E CLIENTE */}
+          
+          {/* SEÇÃO 1: VEÍCULO */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 p-5 rounded-2xl space-y-4">
             <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
-              <Wrench className="w-4 h-4" /> 1. Veículo ou Máquina Diesel
+              <Wrench className="w-4 h-4" /> 1. Selecione o Veículo
             </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Veículo / Equipamento Alvo *
-                </label>
-                <select
-                  value={veiculoId}
-                  onChange={(e) => setVeiculoId(e.target.value)}
-                  disabled={isEditing}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase focus:border-orange-500 focus:outline-none disabled:opacity-50"
-                  required
-                >
-                  <option value="">Selecione o veículo ou equipamento...</option>
-                  {veiculos.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.placa ? `[${v.placa}] ` : ''}{v.marca} {v.modelo} {v.ano ? `(${v.ano})` : ''} — Cliente: {v.cliente?.nome || v.Cliente?.nome || 'Não definido'}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="grid grid-cols-1 gap-4">
+              <select
+                value={veiculoId}
+                onChange={(e) => setVeiculoId(e.target.value)}
+                disabled={isEditing}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white uppercase focus:border-orange-500 focus:outline-none disabled:opacity-50"
+                required
+              >
+                <option value="">Selecione o veículo ou equipamento...</option>
+                {veiculos.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.placa ? `[${v.placa}] ` : ''}{v.marca} {v.modelo} — {v.cliente?.nome || v.Cliente?.nome || 'Sem cliente'}
+                  </option>
+                ))}
+              </select>
 
               {selectedVeiculo && (
-                <div className="col-span-2 p-3 bg-black/60 border border-zinc-800 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                <div className="bg-black/60 border border-zinc-800 rounded-xl p-3 flex justify-between items-center text-xs font-mono">
                   <div>
-                    <span className="text-[9px] text-zinc-500 block uppercase font-bold">Cliente</span>
-                    <span className="text-zinc-200 font-bold truncate block">
-                      {selectedVeiculo.cliente?.nome || selectedVeiculo.Cliente?.nome || 'Sem cliente'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-zinc-500 block uppercase font-bold">Tipo</span>
-                    <span className="text-zinc-200 font-bold block">{selectedVeiculo.tipo}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-zinc-500 block uppercase font-bold">KM Atual</span>
-                    <span className="text-orange-400 font-black block">
-                      {selectedVeiculo.quilometragem ? `${selectedVeiculo.quilometragem.toLocaleString('pt-BR')} KM` : 'Não registrado'}
-                    </span>
+                    <span className="text-[9px] text-zinc-500 block uppercase font-bold">KM Atual do Veículo</span>
+                    <span className="text-orange-400 font-black">{selectedVeiculo.quilometragem ? `${selectedVeiculo.quilometragem.toLocaleString('pt-BR')} KM` : 'Não registrado'}</span>
                   </div>
                   <div>
                     <span className="text-[9px] text-zinc-500 block uppercase font-bold">Horímetro Atual</span>
-                    <span className="text-amber-400 font-black block">
-                      {selectedVeiculo.horimetro_atual ? `${selectedVeiculo.horimetro_atual} h` : 'Não registrado'}
-                    </span>
+                    <span className="text-amber-400 font-black">{selectedVeiculo.horimetro_atual ? `${selectedVeiculo.horimetro_atual} h` : 'Não registrado'}</span>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* SEÇÃO 2: IDENTIFICAÇÃO DO SERVIÇO */}
+          {/* SEÇÃO 2: IDENTIFICAÇÃO */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 p-5 rounded-2xl space-y-4">
             <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4" /> 2. Identificação do Plano Preventivo
+              <ShieldCheck className="w-4 h-4" /> 2. Identificação do Serviço
             </h3>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Nome do Plano *
-                </label>
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Nome do Plano *</label>
                 <input
                   type="text"
                   placeholder="Ex: Troca de Óleo Motor 15W40 + Filtros"
@@ -312,28 +300,22 @@ export default function PreventivaModal({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Serviço Preventivo
-                </label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Serviço Sugerido</label>
                 <input
                   type="text"
                   list="sugestoes-servicos"
-                  placeholder="Selecione ou digite o serviço..."
+                  placeholder="Selecione ou digite..."
                   value={servico}
                   onChange={(e) => setServico(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold text-white uppercase focus:border-orange-500 focus:outline-none"
                 />
                 <datalist id="sugestoes-servicos">
-                  {SERVICOS_SUGESTOES.map((s, idx) => (
-                    <option key={idx} value={s} />
-                  ))}
+                  {SERVICOS_SUGESTOES.map((s, idx) => <option key={idx} value={s} />)}
                 </datalist>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Componente / Subsistema
-                </label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Componente Principal</label>
                 <select
                   value={componente}
                   onChange={(e) => setComponente(e.target.value)}
@@ -341,86 +323,31 @@ export default function PreventivaModal({
                 >
                   <option value="OLEO">ÓLEO DO MOTOR</option>
                   <option value="FILTROS">FILTROS E FLUIDOS</option>
-                  <option value="REVISAO">REVISÃO GERAL PREVENTIVA</option>
+                  <option value="REVISAO">REVISÃO GERAL</option>
                   <option value="FREIOS">SISTEMA DE FREIOS</option>
                   <option value="DIFERENCIAL">DIFERENCIAL</option>
                   <option value="CAIXA">CAIXA DE CÂMBIO</option>
                   <option value="SUSPENSAO">SUSPENSÃO E MOLAS</option>
-                  <option value="COMPRESSOR">COMPRESSOR E PNEUMÁTICA</option>
-                  <option value="TURBINA">TURBINA E INJEÇÃO</option>
-                  <option value="HIDRAULICA">HIDRÁULICA E MANGUEIRAS</option>
-                  <option value="ARREFECIMENTO">ARREFECIMENTO E RADIADOR</option>
                 </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Tipo de Controle
-                </label>
-                <select
-                  value={tipoControle}
-                  onChange={(e) => setTipoControle(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold text-white uppercase focus:border-orange-500 focus:outline-none"
-                >
-                  <option value="KM">POR QUILOMETRAGEM (KM)</option>
-                  <option value="HORAS">POR HORÍMETRO (HORAS DE USO)</option>
-                  <option value="DATA">POR DATA (DIAS / TEMPO)</option>
-                  <option value="COMBINADO">COMBINADO (O QUE OCORRER PRIMEIRO)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Descrição e Recomendações Técnicas
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Especificações do óleo, marcas recomendadas de filtros, torques, procedimentos de aperto..."
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white uppercase focus:border-orange-500 focus:outline-none"
-                />
               </div>
             </div>
           </div>
 
-          {/* SEÇÃO 3: HISTÓRICO DA ÚLTIMA INTERVENÇÃO & INTERVALOS */}
+          {/* SEÇÃO 3: CÁLCULO AUTOMÁTICO */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 p-5 rounded-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
-                <Clock className="w-4 h-4" /> 3. Intervalos e Última Manutenção
-              </h3>
-              <button
-                type="button"
-                onClick={recalcularProjecao}
-                className="text-[10px] text-orange-400 font-bold uppercase tracking-wider hover:underline cursor-pointer"
-              >
-                Recalcular Projeção
-              </button>
-            </div>
+            <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
+              <Clock className="w-4 h-4" /> 3. Regra de Intervalo (Automático)
+            </h3>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase">
+              Digite o intervalo. O sistema usará o KM/Horímetro atual do veículo para calcular a próxima data/alvo.
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Intervalos */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Intervalo em Dias
-                </label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">A cada quantos KM?</label>
                 <input
                   type="number"
-                  placeholder="Ex: 90 ou 180 dias"
-                  value={intervaloDias}
-                  onChange={(e) => setIntervaloDias(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Intervalo em KM
-                </label>
-                <input
-                  type="number"
-                  placeholder="Ex: 10000 ou 20000 km"
+                  placeholder="Ex: 10000"
                   value={intervaloKm}
                   onChange={(e) => setIntervaloKm(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
@@ -428,161 +355,136 @@ export default function PreventivaModal({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Intervalo em Horas
-                </label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">A cada quantas Horas?</label>
                 <input
                   type="number"
                   step="0.1"
-                  placeholder="Ex: 250 ou 500 horas"
+                  placeholder="Ex: 250"
                   value={intervaloHoras}
                   onChange={(e) => setIntervaloHoras(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
                 />
               </div>
 
-              {/* Última intervenção realizada */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Última Data Realizada
-                </label>
-                <input
-                  type="date"
-                  value={ultimaData}
-                  onChange={(e) => setUltimaData(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  KM da Última Troca
-                </label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">A cada quantos Dias?</label>
                 <input
                   type="number"
-                  placeholder="Ex: 180000"
-                  value={ultimoKm}
-                  onChange={(e) => setUltimoKm(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Horímetro da Última Troca
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  placeholder="Ex: 1250.5"
-                  value={ultimoHorimetro}
-                  onChange={(e) => setUltimoHorimetro(e.target.value)}
+                  placeholder="Ex: 180"
+                  value={intervaloDias}
+                  onChange={(e) => setIntervaloDias(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
                 />
               </div>
             </div>
+
+            {/* Painel de Projeção Inteligente */}
+            {(projecaoKm || projecaoHoras) && (
+              <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-wider">
+                  <TrendingUp size={16} /> Projeção de Alvo
+                </div>
+                <div className="flex flex-wrap gap-6 text-sm font-mono text-emerald-300">
+                  {projecaoKm && (
+                    <span>Próximo KM: <strong className="text-white">{projecaoKm.toLocaleString('pt-BR')} KM</strong></span>
+                  )}
+                  {projecaoHoras && (
+                    <span>Próximo Horímetro: <strong className="text-white">{projecaoHoras.toFixed(1)} h</strong></span>
+                  )}
+                </div>
+                <p className="text-[9px] text-emerald-500/70 uppercase font-bold mt-1">
+                  * A data limite será recalculada com base no histórico de rodagem.
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* SEÇÃO 4: PRÓXIMAS METAS & ANTECEDÊNCIA DE ALERTAS */}
+          {/* SEÇÃO 4: FOTO E OBSERVAÇÕES */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 p-5 rounded-2xl space-y-4">
             <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
-              <Gauge className="w-4 h-4" /> 4. Próxima Manutenção e Alertas
+              <Camera className="w-4 h-4" /> 4. Anexo e Observações
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Próxima Data Prevista
+                  Foto de Referência (Opcional)
                 </label>
-                <input
-                  type="date"
-                  value={proximaData}
-                  onChange={(e) => setProximaData(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
+                
+                {fotoUrl ? (
+                  <div className="relative w-full h-32 bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden group">
+                    <img src={fotoUrl} alt="Preventiva" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setFotoUrl(null)}
+                      className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-zinc-800 hover:border-orange-500/50 bg-zinc-950 rounded-xl cursor-pointer transition-colors">
+                    {uploadingFoto ? (
+                      <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
+                    ) : (
+                      <>
+                        <Upload className="w-6 h-6 text-zinc-600 mb-2" />
+                        <span className="text-[10px] font-black uppercase text-zinc-500">Anexar Foto</span>
+                      </>
+                    )}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleFotoUpload} 
+                      disabled={uploadingFoto}
+                    />
+                  </label>
+                )}
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Próximo KM Previsto
+                  Observações Internas
                 </label>
-                <input
-                  type="number"
-                  placeholder="Ex: 195000"
-                  value={proximoKm}
-                  onChange={(e) => setProximoKm(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
+                <textarea
+                  rows={5}
+                  placeholder="Detalhes do procedimento, marcas de peças, torques..."
+                  value={observacoes}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                  className="w-full h-32 bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white uppercase focus:border-orange-500 focus:outline-none resize-none"
                 />
               </div>
+            </div>
 
+            {/* Alertas e Ativo */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Próximo Horímetro Previsto
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  placeholder="Ex: 1500.0"
-                  value={proximoHorimetro}
-                  onChange={(e) => setProximoHorimetro(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Antecedência de alertas */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Alerta com Antecedência (Dias)
-                </label>
-                <input
-                  type="number"
-                  value={antecedenciaDias}
-                  onChange={(e) => setAntecedenciaDias(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Alerta com Antecedência (KM)
+                  Avisar com antecedência (KM)
                 </label>
                 <input
                   type="number"
                   value={antecedenciaKm}
                   onChange={(e) => setAntecedenciaKm(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-xs font-mono text-white focus:border-orange-500 focus:outline-none"
                 />
               </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Alerta com Antecedência (Horas)
+              <div className="flex items-center gap-3 sm:justify-end h-full">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-zinc-300 uppercase">
+                  <input
+                    type="checkbox"
+                    checked={ativo}
+                    onChange={(e) => setAtivo(e.target.checked)}
+                    className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-orange-600 focus:ring-orange-500"
+                  />
+                  Plano Ativo
                 </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={antecedenciaHoras}
-                  onChange={(e) => setAntecedenciaHoras(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-mono font-bold text-white focus:border-orange-500 focus:outline-none"
-                />
               </div>
-            </div>
-
-            {/* Situação Ativa / Inativa */}
-            <div className="flex items-center gap-3 pt-2">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-zinc-300 uppercase">
-                <input
-                  type="checkbox"
-                  checked={ativo}
-                  onChange={(e) => setAtivo(e.target.checked)}
-                  className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-orange-600 focus:ring-orange-500"
-                />
-                Plano Ativo (Gera notificações e monitoramento)
-              </label>
             </div>
           </div>
 
-          {/* AÇÕES DO FORMULÁRIO */}
+          {/* Ações */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
             <button
               type="button"
