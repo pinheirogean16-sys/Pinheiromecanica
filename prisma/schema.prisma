@@ -510,8 +510,8 @@ model Preventiva {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
   
-  // ✅ NOVO: Campo para guardar o caminho da imagem/foto
-  foto_url           String?   @db.Text
+  // ✅ NOVO: Campo para guardar o caminho das imagens/fotos
+  fotos String? @db.LongText // Vai guardar um JSON: ["url1", "url2", ...]
   
   Veiculo            Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
 
