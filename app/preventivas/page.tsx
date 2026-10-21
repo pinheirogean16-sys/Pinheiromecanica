@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   AlertTriangle, CheckCircle2, AlertCircle, Plus, Sparkles, 
   Search, ChevronRight, Wrench, RefreshCw, Clock, Loader2, 
-  Trash2, Edit, ShieldCheck, X, History
+  Trash2, Edit, ShieldCheck, X, History, MessageCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -14,7 +14,7 @@ import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 
 // ============================================================
-// HELPERS (fora do componente — evita recriação a cada render)
+// HELPERS
 // ============================================================
 function getStatusBadge(status: string, ativo = true) {
   if (!ativo || status === 'DESATIVADO') {
@@ -131,6 +131,46 @@ export default function PreventivasPage() {
     setModalOpen(true);
   };
 
+  // ============================================================
+  // ✅ NOVO: Função para enviar WhatsApp
+  // ============================================================
+  const enviarWhatsApp = (p: any) => {
+    const veiculo = p.Veiculo || p.veiculo;
+    const cliente = veiculo?.Cliente || veiculo?.cliente;
+
+    if (!cliente || !cliente.telefone) {
+      toast.error('Cliente não possui telefone cadastrado.');
+      return;
+    }
+
+    // Limpa o telefone e adiciona o código do país (55)
+    let telefone = cliente.telefone.replace(/\D/g, '');
+    if (!telefone.startsWith('55')) {
+      telefone = '55' + telefone;
+    }
+
+    // Monta a mensagem
+    let mensagem = `*Relatório de Manutenção Preventiva*\n\n`;
+    mensagem += `Olá, *${cliente.nome}*!\n`;
+    mensagem += `Segue o registro do serviço realizado no veículo *${veiculo.marca} ${veiculo.modelo} (${veiculo.placa})*.\n\n`;
+    mensagem += `🛠️ *Serviço:* ${p.nome || p.servico || p.componente}\n`;
+    
+    // Anexa as fotos se existirem
+    if (p.fotos && Array.isArray(p.fotos) && p.fotos.length > 0) {
+      mensagem += `\n📸 *Fotos do Serviço:*\n`;
+      p.fotos.forEach((foto: string, index: number) => {
+        const baseUrl = foto.startsWith('http') ? '' : window.location.origin;
+        mensagem += `Foto ${index + 1}: ${baseUrl}${foto}\n`;
+      });
+    }
+
+    mensagem += `\nQualquer dúvida, estamos à disposição!`;
+
+    // Abre o WhatsApp em nova aba
+    const url = `https://wa.me/${telefone}?text=${encodeURIComponent(mensagem)}`;
+    window.open(url, '_blank');
+  };
+
   // Modal de Histórico de Ciclos Executados
   const [historicoModalOpen, setHistoricoModalOpen] = useState(false);
   const [historicoLoading, setHistoricoLoading] = useState(false);
@@ -151,7 +191,7 @@ export default function PreventivasPage() {
     }
   };
 
-  // Estatísticas calculadas sobre dados reais (Planos inativos não são classificados como vencidos)
+  // Estatísticas
   const totalCadastradas = preventivas.length;
   const totalAtivas = preventivas.filter(p => p.ativo !== false).length;
   const totalVencidas = preventivas.filter(p => p.ativo !== false && p.status === 'VENCIDO').length;
@@ -211,7 +251,6 @@ export default function PreventivasPage() {
 
       {/* METRIC CARDS DE TELEMETRIA */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Cadastradas */}
         <div className="bg-zinc-950 border border-zinc-800 p-5 rounded-2xl space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Planos Ativos</span>
@@ -225,7 +264,6 @@ export default function PreventivasPage() {
           <span className="text-[9px] text-zinc-500 font-mono block">Monitoramento contínuo</span>
         </div>
 
-        {/* Vencidas */}
         <div 
           onClick={() => setStatusFilter(statusFilter === 'VENCIDO' ? '' : 'VENCIDO')}
           className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'VENCIDO' ? 'border-red-500 ring-1 ring-red-500/30' : 'border-zinc-800 hover:border-red-900/50'}`}
@@ -242,7 +280,6 @@ export default function PreventivasPage() {
           <span className="text-[9px] text-zinc-500 font-mono block">Necessitam intervenção imediata</span>
         </div>
 
-        {/* Próximas */}
         <div 
           onClick={() => setStatusFilter(statusFilter === 'PROXIMO' ? '' : 'PROXIMO')}
           className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'PROXIMO' ? 'border-amber-500 ring-1 ring-amber-500/30' : 'border-zinc-800 hover:border-amber-900/50'}`}
@@ -259,7 +296,6 @@ export default function PreventivasPage() {
           <span className="text-[9px] text-zinc-500 font-mono block">Na faixa de tolerância de alerta</span>
         </div>
 
-        {/* Em Dia */}
         <div 
           onClick={() => setStatusFilter(statusFilter === 'SAUDAVEL' ? '' : 'SAUDAVEL')}
           className={`bg-zinc-950 border p-5 rounded-2xl space-y-2 cursor-pointer transition ${statusFilter === 'SAUDAVEL' ? 'border-green-500 ring-1 ring-green-500/30' : 'border-zinc-800 hover:border-green-900/50'}`}
@@ -280,7 +316,6 @@ export default function PreventivasPage() {
       {/* PAINEL DE BUSCA E FILTROS */}
       <div className="bg-zinc-950 border border-zinc-800 p-4 md:p-5 rounded-2xl space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {/* Busca textual */}
           <div className="relative md:col-span-2">
             <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-zinc-500" />
             <input
@@ -292,7 +327,6 @@ export default function PreventivasPage() {
             />
           </div>
 
-          {/* Filtro por Cliente */}
           <div>
             <select
               value={clienteFilter}
@@ -306,7 +340,6 @@ export default function PreventivasPage() {
             </select>
           </div>
 
-          {/* Filtro por Veículo */}
           <div>
             <select
               value={veiculoFilter}
@@ -323,7 +356,6 @@ export default function PreventivasPage() {
           </div>
         </div>
 
-        {/* Abas Rápidas de Situação */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-900">
           <button
             onClick={() => setStatusFilter('')}
@@ -394,7 +426,6 @@ export default function PreventivasPage() {
                 key={p.id} 
                 className={`border rounded-2xl p-5 flex flex-col justify-between space-y-4 hover:border-zinc-700 transition shadow-lg ${styles.banner}`}
               >
-                {/* Header do Card */}
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1">
@@ -419,7 +450,6 @@ export default function PreventivasPage() {
                     </span>
                   </div>
 
-                  {/* Nome e Serviço */}
                   <div className="bg-zinc-950/50 border border-zinc-900 p-3.5 rounded-xl space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-white uppercase tracking-tight">
@@ -434,13 +464,22 @@ export default function PreventivasPage() {
                         {p.descricao}
                       </p>
                     )}
+                    
+                    {/* ✅ NOVO: Exibição das miniaturas das fotos no card */}
+                    {p.fotos && Array.isArray(p.fotos) && p.fotos.length > 0 && (
+                      <div className="flex gap-1 mt-2 overflow-x-auto custom-scrollbar pb-1">
+                        {p.fotos.map((foto: string, idx: number) => (
+                          <a key={idx} href={foto} target="_blank" rel="noreferrer" className="w-10 h-10 rounded border border-zinc-800 overflow-hidden flex-shrink-0 hover:border-orange-500 transition">
+                            <img src={foto} alt={`Foto ${idx}`} className="w-full h-full object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Métricas e Telemetria de Previsão */}
                 <div className="space-y-3 border-t border-zinc-800/80 pt-3 text-xs font-mono">
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    {/* KM */}
                     <div className="bg-zinc-900/40 p-2 rounded-lg">
                       <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-black block">KM Atual / Alvo</span>
                       <span className="text-zinc-200 font-bold block mt-0.5">
@@ -453,7 +492,6 @@ export default function PreventivasPage() {
                       )}
                     </div>
 
-                    {/* Horímetro */}
                     <div className="bg-zinc-900/40 p-2 rounded-lg">
                       <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-black block">Horímetro / Alvo</span>
                       <span className="text-zinc-200 font-bold block mt-0.5">
@@ -466,7 +504,6 @@ export default function PreventivasPage() {
                       )}
                     </div>
 
-                    {/* Data Limite */}
                     <div className="col-span-2 bg-zinc-900/40 p-2 rounded-lg flex items-center justify-between">
                       <div>
                         <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-black block">Data Prevista</span>
@@ -482,8 +519,8 @@ export default function PreventivasPage() {
                     </div>
                   </div>
 
-                  {/* Ações do Card */}
-                  <div className="flex items-center justify-between border-t border-zinc-800/60 pt-3">
+                  {/* ✅ AÇÕES DO CARD COM O NOVO BOTÃO DE WHATSAPP */}
+                  <div className="flex flex-wrap items-center justify-between border-t border-zinc-800/60 pt-3 gap-y-2">
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleEdit(p)}
@@ -501,7 +538,7 @@ export default function PreventivasPage() {
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => handleOpenHistorico(p)}
                         className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer transition"
@@ -509,12 +546,17 @@ export default function PreventivasPage() {
                         <Clock size={12} className="text-orange-500" />
                         Ciclos
                       </button>
-                      <Link
-                        href={`/veiculos/${p.veiculo_id}/historico`}
-                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 transition"
+                      
+                      {/* Botão de WhatsApp */}
+                      <button
+                        onClick={() => enviarWhatsApp(p)}
+                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-green-950/20 transition cursor-pointer"
+                        title="Enviar Relatório no WhatsApp"
                       >
-                        Veículo
-                      </Link>
+                        <MessageCircle size={12} />
+                        Enviar
+                      </button>
+
                       <Link
                         href={`/os/nova?veiculo_id=${p.veiculo_id}&preventiva_id=${p.id}&diagnostico=MANUTENCAO+PREVENTIVA:+${encodeURIComponent(p.nome || p.servico || p.componente)}`}
                         className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-orange-950/20 transition"
