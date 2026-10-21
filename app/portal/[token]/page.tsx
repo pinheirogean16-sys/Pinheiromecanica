@@ -168,17 +168,26 @@ export default function PortalClientePage() {
   const { empresa, veiculo, cliente } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
-  const temKm = data.tipo_controle === 'KM' || data.tipo_controle === 'MISTO' || !!data.intervalo_km || !!data.proximo_km;
-  const temHoras = data.tipo_controle === 'HORAS' || data.tipo_controle === 'MISTO' || !!data.intervalo_horas || !!data.proximo_horimetro;
+  // ✅ LÓGICA ESTRITA: Baseada apenas no tipo_controle da preventiva
+  const tipo = (data.tipo_controle || '').toUpperCase();
+  
+  const isKm = tipo === 'KM' || tipo === 'MISTO' || tipo === 'COMBINADO';
+  const isHoras = tipo === 'HORAS' || tipo === 'MISTO' || tipo === 'COMBINADO';
+
+  // Fallback para preventivas antigas que não tinham tipo_controle salvo
+  const hasKmData = data.proximo_km || data.intervalo_km;
+  const hasHorasData = data.proximo_horimetro || data.intervalo_horas;
+  
+  const showKm = isKm || (!tipo && hasKmData);
+  const showHoras = isHoras || (!tipo && hasHorasData);
 
   return (
     <div className="min-h-screen bg-zinc-100 py-6 px-3 sm:px-6 lg:px-8 font-sans text-zinc-900 pb-20 w-full overflow-x-hidden">
       
-      {/* ✅ CONTAINER RESPONSIVO: Expande em telas maiores */}
-      <div className="max-w-5xl mx-auto w-full">
+      <div className="max-w-5xl mx-auto w-full space-y-6">
         
-        {/* CABEÇALHO (Ocupa toda a largura no topo) */}
-        <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-sm border border-zinc-200 text-center space-y-3 relative overflow-hidden w-full mb-6">
+        {/* CABEÇALHO */}
+        <div className="bg-white rounded-3xl p-5 sm:p-8 shadow-sm border border-zinc-200 text-center space-y-3 relative overflow-hidden w-full">
           <div className="absolute top-0 left-0 w-full h-2 bg-orange-600" />
           
           {logo ? (
@@ -192,7 +201,7 @@ export default function PortalClientePage() {
           </div>
         </div>
 
-        {/* ✅ GRID PRINCIPAL: 1 coluna no celular, 2 colunas no PC/Tablet */}
+        {/* GRID PRINCIPAL: 1 coluna no celular, 2 colunas no PC/Tablet */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* COLUNA ESQUERDA (Dados e Serviço) */}
@@ -211,7 +220,7 @@ export default function PortalClientePage() {
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2">
-                {temKm && (
+                {showKm && (
                   <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                       <Gauge size={18} className="text-zinc-400" />
@@ -223,7 +232,7 @@ export default function PortalClientePage() {
                   </div>
                 )}
                 
-                {temHoras && (
+                {showHoras && (
                   <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                       <Clock size={18} className="text-zinc-400" />
@@ -253,7 +262,8 @@ export default function PortalClientePage() {
               )}
               
               <div className="flex flex-col gap-3 pt-2 w-full">
-                {temKm && (data.proximo_km || data.intervalo_km) && (
+                {/* ✅ BLOCO PRÓXIMA TROCA KM */}
+                {showKm && (data.proximo_km || data.intervalo_km) && (
                   <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
                     <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
                       <TrendingUp size={18} />
@@ -268,7 +278,8 @@ export default function PortalClientePage() {
                   </div>
                 )}
 
-                {temHoras && (data.proximo_horimetro || data.intervalo_horas) && (
+                {/* ✅ BLOCO PRÓXIMA TROCA HORAS */}
+                {showHoras && (data.proximo_horimetro || data.intervalo_horas) && (
                   <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
                     <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
                       <TrendingUp size={18} />
@@ -283,6 +294,7 @@ export default function PortalClientePage() {
                   </div>
                 )}
 
+                {/* DATA PREVISTA */}
                 <div className="flex items-center gap-3 bg-zinc-50 p-4 rounded-xl border border-zinc-100 w-full overflow-hidden">
                   <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
                     <Calendar size={18} />
@@ -308,7 +320,6 @@ export default function PortalClientePage() {
                   <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Registro Fotográfico</span>
                   <span className="text-[10px] sm:text-xs font-bold bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full">{data.fotos.length} fotos</span>
                 </div>
-                {/* ✅ No tablet/desktop, as fotos ficam em 3 colunas. No celular, 2 colunas. */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3 w-full">
                   {data.fotos.map((foto: string, idx: number) => (
                     <a key={idx} href={foto} target="_blank" rel="noreferrer" className="relative aspect-square rounded-xl overflow-hidden border border-zinc-200 group block">
@@ -338,7 +349,6 @@ export default function PortalClientePage() {
               ) : isSigning ? (
                 <div className="space-y-3 animate-in fade-in zoom-in-95 duration-300 w-full">
                   <div className="border-2 border-dashed border-zinc-300 rounded-2xl bg-zinc-50 relative overflow-hidden w-full">
-                    {/* ✅ O Canvas fica maior no desktop (h-56) e menor no celular (h-48) */}
                     <canvas
                       ref={canvasRef}
                       width={400}
