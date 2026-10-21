@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History
+  Calendar, PenTool, Eraser, ShieldCheck, TrendingUp, Gauge, Clock, X, History, Package
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -166,7 +166,7 @@ export default function PortalClientePage() {
     );
   }
 
-  const { empresa, veiculo, cliente, historico } = data;
+  const { empresa, veiculo, cliente, historico, pecasUsadas } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
   const tipo = (data.tipo_controle || 'KM').toUpperCase();
@@ -176,7 +176,6 @@ export default function PortalClientePage() {
   const alvoKm = data.proximo_km || (veiculo.km && data.intervalo_km ? veiculo.km + data.intervalo_km : null);
   const alvoHoras = data.proximo_horimetro || (veiculo.horimetro && data.intervalo_horas ? veiculo.horimetro + data.intervalo_horas : null);
 
-  // ✅ CÁLCULO DO STATUS (Em Dia, Próximo, Vencido)
   let statusCor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
   let statusTexto = 'Em Dia';
   
@@ -267,7 +266,7 @@ export default function PortalClientePage() {
                 </div>
               </div>
 
-              {/* SERVIÇO REALIZADO E STATUS */}
+              {/* SERVIÇO REALIZADO E PEÇAS */}
               <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full relative">
                 
                 <div className={`absolute top-5 right-5 px-3 py-1 rounded-full border text-[10px] sm:text-xs font-black uppercase tracking-wider ${statusCor}`}>
@@ -285,6 +284,29 @@ export default function PortalClientePage() {
                   <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed bg-zinc-50 p-4 rounded-xl border border-zinc-100 italic break-words">
                     "{data.descricao}"
                   </p>
+                )}
+
+                {/* ✅ NOVO: LISTA DE PEÇAS E FILTROS */}
+                {pecasUsadas && pecasUsadas.length > 0 && (
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl overflow-hidden mt-4">
+                    <div className="bg-zinc-100/50 px-4 py-2 border-b border-zinc-200 flex items-center gap-2">
+                      <Package size={16} className="text-zinc-500" />
+                      <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-500">Materiais e Filtros Utilizados</span>
+                    </div>
+                    <div className="divide-y divide-zinc-200">
+                      {pecasUsadas.map((peca: any, idx: number) => (
+                        <div key={idx} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs sm:text-sm font-bold text-zinc-700 uppercase break-words">{peca.descricao}</p>
+                            {peca.codigo && <p className="text-[9px] font-mono text-zinc-400">Cód: {peca.codigo}</p>}
+                          </div>
+                          <span className="text-xs font-black text-zinc-800 bg-white border border-zinc-200 px-2 py-1 rounded">
+                            {peca.quantidade} {peca.unidade}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 
                 <div className="flex flex-col gap-3 pt-2 w-full">
@@ -332,7 +354,7 @@ export default function PortalClientePage() {
                 </div>
               </div>
 
-              {/* ✅ NOVO: HISTÓRICO PREVENTIVO (TIMELINE) */}
+              {/* HISTÓRICO PREVENTIVO (TIMELINE) */}
               <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-6 w-full">
                 <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
                   <History size={20} className="text-zinc-400" />
@@ -347,7 +369,6 @@ export default function PortalClientePage() {
                   <div className="relative border-l-2 border-zinc-200 ml-3 pl-6 space-y-6">
                     {historico.map((item: any, idx: number) => (
                       <div key={item.id || idx} className="relative">
-                        {/* Bolinha na linha do tempo */}
                         <div className="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-white border-4 border-orange-500 shadow-sm" />
                         
                         <div className="space-y-1.5">
@@ -491,7 +512,7 @@ export default function PortalClientePage() {
         </div>
       </div>
 
-      {/* ✅ MODAL LIGHTBOX PARA AS FOTOS */}
+      {/* MODAL LIGHTBOX PARA AS FOTOS */}
       {fotoAmpliada && (
         <div 
           className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200"
