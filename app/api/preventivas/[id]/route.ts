@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/api-auth';
@@ -32,7 +31,16 @@ const editPreventivaSchema = z.object({
   componente: z.string().max(100).optional().nullable(),
   descricao: z.string().max(1000).optional().nullable(),
   observacoes: z.string().max(2000).optional().nullable(),
-  tipo_controle: z.enum(TIPOS_CONTROLE).optional(),
+  
+  // ✅ NOVO: Aceita a URL da foto
+  foto_url: z.string().optional().nullable(),
+
+  // ✅ Preprocess para aceitar COMBINADO do frontend
+  tipo_controle: z.preprocess(
+    (val) => (val === 'COMBINADO' ? 'MISTO' : val),
+    z.enum(TIPOS_CONTROLE).optional()
+  ),
+  
   intervalo_dias: z.preprocess(
     (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
     z.number().int().positive().optional().nullable()
@@ -76,9 +84,7 @@ const editPreventivaSchema = z.object({
     z.number().optional().nullable()
   ),
   ativo: z.boolean().optional(),
-  // Status: string com limite (o valor real vem de avaliarStatusPreventiva)
   status: z.string().max(50).optional(),
-  // Retrocompatibilidade
   km_limite: z.preprocess(
     (val) => (val === '' || val === null || val === undefined ? null : Number(val)),
     z.number().int().optional().nullable()
@@ -118,7 +124,6 @@ export async function GET(
 
     const avaliacao = avaliarStatusPreventiva(preventiva);
 
-    // ✅ Evita sobrescrever campos do banco com undefined da avaliação
     const safeAvaliacao: any = {};
     for (const key of Object.keys(avaliacao)) {
       if ((avaliacao as any)[key] !== undefined) {
@@ -174,20 +179,22 @@ export async function PUT(
     if (body.componente !== undefined) updateData.componente = body.componente;
     if (body.descricao !== undefined) updateData.descricao = body.descricao;
     if (body.observacoes !== undefined) updateData.observacoes = body.observacoes;
+    
+    // ✅ ATUALIZANDO A FOTO AQUI
+    if (body.foto_url !== undefined) updateData.foto_url = body.foto_url;
+
     if (body.tipo_controle !== undefined) updateData.tipo_controle = body.tipo_controle;
     if (body.intervalo_dias !== undefined) updateData.intervalo_dias = body.intervalo_dias;
     if (body.intervalo_km !== undefined) updateData.intervalo_km = body.intervalo_km;
     if (body.intervalo_horas !== undefined) updateData.intervalo_horas = body.intervalo_horas;
     if (body.ativo !== undefined) updateData.ativo = body.ativo;
 
-    // ✅ Datas com parse seguro
     if (body.ultima_data !== undefined) {
       updateData.ultima_data = parseDate(body.ultima_data);
     }
     if (body.ultimo_km !== undefined) updateData.ultimo_km = body.ultimo_km;
     if (body.ultimo_horimetro !== undefined) updateData.ultimo_horimetro = body.ultimo_horimetro;
 
-    // Sincronizar limites de data
     if (body.proxima_data !== undefined || body.data_limite !== undefined) {
       const dataVal = body.proxima_data || body.data_limite;
       const parsedDate = parseDate(dataVal);
@@ -195,7 +202,6 @@ export async function PUT(
       updateData.data_limite = parsedDate;
     }
 
-    // Sincronizar limites de KM
     if (body.proximo_km !== undefined || body.km_limite !== undefined) {
       const kmVal = body.proximo_km !== undefined ? body.proximo_km : body.km_limite;
       updateData.proximo_km = kmVal;
@@ -210,7 +216,6 @@ export async function PUT(
     if (body.antecedencia_km !== undefined) updateData.antecedencia_km = body.antecedencia_km;
     if (body.antecedencia_horas !== undefined) updateData.antecedencia_horas = body.antecedencia_horas;
 
-    // Recalcular status
     const mergedObj = {
       ...beforeObj,
       ...updateData,
@@ -222,7 +227,6 @@ export async function PUT(
       ? 'DESATIVADO'
       : (body.status !== undefined ? body.status : avaliacao.status);
 
-    // ✅ Redundância de segurança: empresa_id no where
     const updated = await prisma.preventiva.update({
       where: {
         id,
@@ -283,16 +287,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
     }
 
-    // Verificar se existem execuções históricas vinculadas a este plano
     let temExecucoes = false;
     try {
       const countExec = await (prisma as any).preventivaExecucao.count({
         where: { preventiva_id: id, empresa_id: user.empresa_id },
       });
       if (countExec > 0) temExecucoes = true;
-    } catch {
-      // fallback via auditoria
-    }
+    } catch {}
 
     if (!temExecucoes) {
       const auditExec = await prisma.auditLog.findFirst({
@@ -306,11 +307,10 @@ export async function DELETE(
     }
 
     if (temExecucoes) {
-      // Política de retenção: planos com histórico são desativados
       await prisma.preventiva.update({
         where: {
           id,
-          empresa_id: user.empresa_id, // ✅ Redundância de segurança
+          empresa_id: user.empresa_id,
         },
         data: {
           ativo: false,
@@ -339,11 +339,10 @@ export async function DELETE(
       });
     }
 
-    // Sem histórico: exclusão física
     await prisma.preventiva.delete({
       where: {
         id,
-        empresa_id: user.empresa_id, // ✅ Redundância de segurança
+        empresa_id: user.empresa_id,
       },
     });
 
