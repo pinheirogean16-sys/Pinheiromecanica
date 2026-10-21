@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   
   const cronSecret = process.env.CRON_SECRET;
 
+  // 🚨 TRAVA DE SEGURANÇA: Se a senha não bater, bloqueia o acesso
   const isAuthorized = 
     (secretViaUrl && secretViaUrl === cronSecret) ||
     (authHeader === `Bearer ${cronSecret}`) || 
