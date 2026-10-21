@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   Loader2, AlertTriangle, CheckCircle2, 
-  Calendar, Gauge, PenTool, Eraser, ShieldCheck
+  Calendar, Gauge, PenTool, Eraser, ShieldCheck, TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
@@ -61,7 +61,7 @@ export default function PortalClientePage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.strokeStyle = '#0f172a'; // Azul escuro para parecer caneta
+    ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -115,7 +115,6 @@ export default function PortalClientePage() {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     
-    // Verifica se o canvas está em branco (truque básico checando a string base64)
     const blank = document.createElement('canvas');
     blank.width = canvas.width;
     blank.height = canvas.height;
@@ -172,12 +171,16 @@ export default function PortalClientePage() {
   const { empresa, veiculo, cliente } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
+  // ✅ REGRAS DE EXIBIÇÃO CONDICIONAL (KM vs HORÍMETRO)
+  const isKm = data.tipo_controle === 'KM' || data.tipo_controle === 'MISTO' || (data.intervalo_km && data.intervalo_km > 0) || !!data.proximo_km;
+  const isHoras = data.tipo_controle === 'HORAS' || data.tipo_controle === 'MISTO' || (data.intervalo_horas && data.intervalo_horas > 0) || !!data.proximo_horimetro;
+
   return (
     <div className="min-h-screen bg-zinc-100 py-6 px-4 font-sans text-zinc-900 pb-20">
-      <div className="max-w-md mx-auto space-y-6">
+      <div className="max-w-md mx-auto space-y-5 w-full">
         
         {/* CABEÇALHO */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-zinc-200 text-center space-y-3 relative overflow-hidden">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 text-center space-y-3 relative overflow-hidden w-full">
           <div className="absolute top-0 left-0 w-full h-2 bg-orange-600" />
           
           {logo ? (
@@ -186,58 +189,105 @@ export default function PortalClientePage() {
             <h1 className="text-2xl font-black uppercase">{empresa?.nome_fantasia || BRANDING.name}</h1>
           )}
           <div>
-            <h2 className="text-lg font-black uppercase tracking-tight text-zinc-800">Relatório de Serviço</h2>
+            <h2 className="text-lg sm:text-xl font-black uppercase tracking-tight text-zinc-800">Relatório de Serviço</h2>
             <p className="text-xs text-zinc-500 font-mono mt-1">Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
           </div>
         </div>
 
         {/* DADOS DO VEÍCULO */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-zinc-200 space-y-4">
-          <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-            <span className="text-xs font-black uppercase tracking-widest text-zinc-400">Veículo</span>
-            <span className="bg-zinc-900 text-white px-3 py-1 rounded text-sm font-bold font-mono tracking-widest">{veiculo.placa}</span>
+        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
+          <div className="flex flex-wrap items-center justify-between border-b border-zinc-100 pb-3 gap-2">
+            <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Veículo</span>
+            <span className="bg-zinc-900 text-white px-2.5 py-1 rounded text-xs sm:text-sm font-bold font-mono tracking-widest">{veiculo.placa}</span>
           </div>
-          <div>
-            <p className="text-lg font-black text-zinc-900 uppercase">{veiculo.marca} {veiculo.modelo}</p>
-            <p className="text-sm text-zinc-500 font-medium">Proprietário: {cliente.nome}</p>
+          <div className="min-w-0">
+            <p className="text-base sm:text-lg font-black text-zinc-900 uppercase break-words">{veiculo.marca} {veiculo.modelo}</p>
+            <p className="text-xs sm:text-sm text-zinc-500 font-medium truncate">Proprietário: {cliente.nome}</p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100">
-              <span className="block text-[10px] font-bold text-zinc-400 uppercase">KM Registrado</span>
-              <span className="font-mono font-black text-lg">{veiculo.km?.toLocaleString('pt-BR') || '---'}</span>
-            </div>
-            <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100">
-              <span className="block text-[10px] font-bold text-zinc-400 uppercase">Horímetro</span>
-              <span className="font-mono font-black text-lg">{veiculo.horimetro || '0'}h</span>
-            </div>
+          
+          {/* ✅ EXIBIÇÃO CONDICIONAL: Mostra KM ou Horímetro dependendo do tipo */}
+          <div className={`grid gap-2 ${isKm && isHoras ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {isKm && (
+              <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">KM Atual</span>
+                <span className="font-mono font-black text-base sm:text-lg">{veiculo.km?.toLocaleString('pt-BR') || '---'}</span>
+              </div>
+            )}
+            {isHoras && (
+              <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Horímetro Atual</span>
+                <span className="font-mono font-black text-base sm:text-lg">{veiculo.horimetro || '0'}h</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* SERVIÇO REALIZADO */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-zinc-200 space-y-3">
+        {/* SERVIÇO REALIZADO E PRÓXIMAS TROCAS */}
+        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
           <div className="flex items-center gap-2 text-orange-600 mb-2">
-            <ShieldCheck size={20} />
-            <span className="text-xs font-black uppercase tracking-widest">Serviço Executado</span>
+            <ShieldCheck size={20} className="flex-shrink-0" />
+            <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest">Serviço Executado</span>
           </div>
-          <h3 className="text-xl font-black uppercase leading-tight">{data.nome}</h3>
+          
+          <h3 className="text-lg sm:text-xl font-black uppercase leading-tight break-words">{data.nome}</h3>
+          
           {data.descricao && (
-            <p className="text-sm text-zinc-600 leading-relaxed bg-zinc-50 p-4 rounded-xl border border-zinc-100 italic">
+            <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed bg-zinc-50 p-3 sm:p-4 rounded-xl border border-zinc-100 italic break-words">
               "{data.descricao}"
             </p>
           )}
-          <div className="flex items-center gap-2 pt-2">
-            <Calendar size={16} className="text-zinc-400" />
-            <span className="text-xs font-bold text-zinc-500 uppercase">
-              Próxima Revisão: {data.proxima_data ? new Date(data.proxima_data).toLocaleDateString('pt-BR') : 'A definir'}
-            </span>
+          
+          {/* ✅ NOVOS CAMPOS: Próxima Troca (KM/Horas) e Data */}
+          <div className="flex flex-col gap-3 pt-2">
+            {isKm && data.proximo_km && (
+              <div className="flex items-center gap-3 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
+                  <TrendingUp size={16} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase">Próxima Troca (KM)</span>
+                  <span className="text-xs sm:text-sm font-bold text-zinc-700 truncate">
+                    Alvo: {data.proximo_km.toLocaleString('pt-BR')} KM
+                    {data.intervalo_km ? ` (a cada ${data.intervalo_km.toLocaleString('pt-BR')} KM)` : ''}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {isHoras && data.proximo_horimetro && (
+              <div className="flex items-center gap-3 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
+                  <TrendingUp size={16} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase">Próxima Troca (Horas)</span>
+                  <span className="text-xs sm:text-sm font-bold text-zinc-700 truncate">
+                    Alvo: {data.proximo_horimetro} h
+                    {data.intervalo_horas ? ` (a cada ${data.intervalo_horas} h)` : ''}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+              <div className="p-2 bg-orange-100 text-orange-600 rounded-lg flex-shrink-0">
+                <Calendar size={16} />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">Data Prevista</span>
+                <span className="text-xs sm:text-sm font-bold text-zinc-700 truncate">
+                  {data.proxima_data ? new Date(data.proxima_data).toLocaleDateString('pt-BR') : 'A definir'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* GALERIA DE FOTOS */}
         {data.fotos && data.fotos.length > 0 && (
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-zinc-200 space-y-4">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-widest text-zinc-400">Registro Fotográfico</span>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-400">Registro Fotográfico</span>
               <span className="text-[10px] font-bold bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full">{data.fotos.length} fotos</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -251,7 +301,7 @@ export default function PortalClientePage() {
         )}
 
         {/* ÁREA DE ASSINATURA */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-zinc-200 space-y-4">
+        <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-4 w-full">
           <div className="text-center">
             <h3 className="text-sm font-black uppercase tracking-widest text-zinc-800">Assinatura do Cliente</h3>
             <p className="text-[11px] text-zinc-500 mt-1">Assine abaixo para confirmar a entrega e aprovação do serviço.</p>
@@ -282,16 +332,16 @@ export default function PortalClientePage() {
                   onTouchMove={draw}
                   onTouchEnd={stopDrawing}
                 />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 text-zinc-300 font-bold uppercase tracking-widest text-sm">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 text-zinc-300 font-bold uppercase tracking-widest text-xs sm:text-sm text-center px-4">
                   Assine com o dedo aqui
                 </div>
               </div>
               
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={clearSignature}
-                  className="px-4 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition"
+                  className="w-full sm:w-auto px-4 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition"
                 >
                   <Eraser size={16} /> Limpar
                 </button>
@@ -299,7 +349,7 @@ export default function PortalClientePage() {
                   type="button"
                   onClick={handleConfirmarAssinatura}
                   disabled={submitting}
-                  className="flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition shadow-lg shadow-orange-500/30 disabled:opacity-50"
+                  className="w-full sm:flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition shadow-lg shadow-orange-500/30 disabled:opacity-50"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                   {submitting ? 'Enviando...' : 'Confirmar Assinatura'}
@@ -321,7 +371,7 @@ export default function PortalClientePage() {
           <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
             Gerado por {BRANDING.name}
           </p>
-          <p className="text-[10px] text-zinc-400 font-mono">
+          <p className="text-[10px] text-zinc-400 font-mono break-words px-4">
             {empresa?.telefone && `Tel: ${empresa.telefone}`}
             {empresa?.endereco && ` • ${empresa.endereco}`}
           </p>
