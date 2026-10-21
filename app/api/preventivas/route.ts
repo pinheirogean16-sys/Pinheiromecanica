@@ -35,6 +35,9 @@ const preventivaSchema = z.object({
   descricao: z.string().max(1000).optional().nullable().default(''),
   observacoes: z.string().max(2000).optional().nullable().default(''),
   
+  // ✅ NOVO: Aceita a URL da foto
+  foto_url: z.string().optional().nullable(),
+
   // ✅ CORRIGIDO: Aceita 'COMBINADO' do frontend e transforma em 'MISTO' para o banco
   tipo_controle: z.preprocess(
     (val) => (val === 'COMBINADO' ? 'MISTO' : val),
@@ -283,6 +286,9 @@ export async function POST(request: NextRequest) {
         componente: componenteFinal,
         descricao: body.descricao || '',
         observacoes: body.observacoes || '',
+        
+        foto_url: body.foto_url || null, // ✅ SALVANDO A FOTO AQUI
+        
         tipo_controle: body.tipo_controle || 'KM',
         intervalo_dias: body.intervalo_dias ?? null,
         intervalo_km: body.intervalo_km ?? null,
