@@ -50,7 +50,12 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
   let diasRestantes: number | null = null;
   const motivos: string[] = [];
 
-  const kmLimite = p.proximo_km ?? p.km_limite;
+  // ✅ MELHORIA: Cálculo dinâmico caso o proximo_km não esteja salvo, mas o intervalo exista
+  let kmLimite = p.proximo_km ?? p.km_limite;
+  if (!kmLimite && p.ultimo_km && p.intervalo_km) {
+    kmLimite = p.ultimo_km + p.intervalo_km;
+  }
+
   const antecedenciaKm = p.antecedencia_km !== null && p.antecedencia_km !== undefined 
     ? Number(p.antecedencia_km) 
     : 1500;
@@ -65,7 +70,12 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
     }
   }
 
-  const proximoHorimetro = p.proximo_horimetro;
+  // ✅ MELHORIA: Cálculo dinâmico para horímetro
+  let proximoHorimetro = p.proximo_horimetro;
+  if (!proximoHorimetro && p.ultimo_horimetro && p.intervalo_horas) {
+    proximoHorimetro = p.ultimo_horimetro + p.intervalo_horas;
+  }
+
   const antecedenciaHoras = p.antecedencia_horas !== null && p.antecedencia_horas !== undefined
     ? Number(p.antecedencia_horas)
     : 50;
@@ -80,7 +90,14 @@ export function avaliarStatusPreventiva(p: any, veiculo?: any): AvaliacaoPrevent
     }
   }
 
-  const dataAlvo = p.proxima_data || p.data_limite;
+  // ✅ MELHORIA: Cálculo dinâmico para data
+  let dataAlvo = p.proxima_data || p.data_limite;
+  if (!dataAlvo && p.ultima_data && p.intervalo_dias) {
+    const d = new Date(p.ultima_data);
+    d.setDate(d.getDate() + p.intervalo_dias);
+    dataAlvo = d;
+  }
+
   const antecedenciaDias = p.antecedencia_dias !== null && p.antecedencia_dias !== undefined
     ? Number(p.antecedencia_dias)
     : 15;
@@ -163,10 +180,6 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
         const dedupTag = `[PREV:${p.id}:${avaliacao.status}:${cicloKm}:${cicloData}]`;
         const dedupKey = `PREV_${p.id}_${avaliacao.status}_${cicloKm}_${cicloData}_${hojeYMD}`;
 
-        // M12: usa createMany com skipDuplicates para evitar que o Prisma
-        // logue P2002 no stderr mesmo quando o catch trataria o erro.
-        // createMany retorna { count: 0 } quando a chave já existe, sem
-        // disparar erro no console do Prisma.
         let lockAdquirido = false;
         try {
           const result = await (prisma as any).notificacaoDeduplicacao.createMany({
@@ -177,27 +190,17 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
             }],
             skipDuplicates: true
           });
-          // count === 1 → criou agora (lock adquirido)
-          // count === 0 → já existia (skip), não é nosso lock
           lockAdquirido = result?.count === 1;
         } catch (err: any) {
           if (err.code === 'P2021' || (err.message && err.message.includes("doesn't exist"))) {
             log('WARN', 'PREVENTIVAS_NOTIF', 'Alertas preventivos suspensos: tabela NotificacaoDeduplicacao pendente de migration no banco de dados.');
             continue;
           }
-
-          log('ERROR', 'PREVENTIVAS_NOTIF', 'Erro de banco ao verificar deduplicação de notificação', {
-            error: err.message,
-            empresa_id,
-            dedupKey
-          });
+          log('ERROR', 'PREVENTIVAS_NOTIF', 'Erro de banco ao verificar deduplicação de notificação', { error: err.message, empresa_id, dedupKey });
           continue;
         }
 
-        if (!lockAdquirido) {
-          // Já existe dedup para este ciclo — pula sem notificar
-          continue;
-        }
+        if (!lockAdquirido) continue;
 
         const identificador = p.Veiculo?.placa 
           ? `${p.Veiculo.placa} (${p.Veiculo.modelo})` 
@@ -222,31 +225,18 @@ export async function notificarPreventivasPendentes(empresa_id: string) {
 
         let envioSucesso = false;
         try {
-          const enviados = await notifyAdminsAndLeaders(
-            titulo,
-            mensagem,
-            `/preventivas`,
-            empresa_id
-          );
+          const enviados = await notifyAdminsAndLeaders(titulo, mensagem, `/preventivas`, empresa_id);
           if (enviados !== null && (!Array.isArray(enviados) || enviados.length > 0)) {
             envioSucesso = true;
           }
         } catch (dispatchErr: any) {
-          log('ERROR', 'PREVENTIVAS_NOTIF', 'Falha ao despachar notificação para administradores', {
-            error: dispatchErr?.message,
-            empresa_id,
-            dedupKey
-          });
+          log('ERROR', 'PREVENTIVAS_NOTIF', 'Falha ao despachar notificação para administradores', { error: dispatchErr?.message, empresa_id, dedupKey });
         }
 
-        // Se falhou ao despachar, remove o lock para permitir nova tentativa
         if (!envioSucesso && lockAdquirido) {
           try {
             await (prisma as any).notificacaoDeduplicacao.deleteMany({
-              where: {
-                empresa_id,
-                dedup_key: dedupKey
-              }
+              where: { empresa_id, dedup_key: dedupKey }
             });
           } catch {}
         }
@@ -302,18 +292,10 @@ export async function sincronizarPreventivasAposOS(
 
   const hoje = new Date();
 
-  // ============================================================
-  // EXECUÇÃO COM TX EXTERNA (atômica com a OS)
-  // ============================================================
   if (options?.tx) {
     try {
       const tx = options.tx;
-      const veiculo = await tx.veiculo.findFirst({
-        where: {
-          id: os.veiculo_id,
-          empresa_id: os.empresa_id
-        }
-      });
+      const veiculo = await tx.veiculo.findFirst({ where: { id: os.veiculo_id, empresa_id: os.empresa_id } });
 
       const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
       const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
@@ -324,12 +306,7 @@ export async function sincronizarPreventivasAposOS(
 
       for (const prevId of preventivasSolicitadas) {
         const plano = await tx.preventiva.findFirst({
-          where: {
-            id: prevId,
-            empresa_id: os.empresa_id,
-            veiculo_id: os.veiculo_id,
-            ativo: true
-          }
+          where: { id: prevId, empresa_id: os.empresa_id, veiculo_id: os.veiculo_id, ativo: true }
         });
 
         if (!plano) {
@@ -339,13 +316,7 @@ export async function sincronizarPreventivasAposOS(
         }
 
         const execucaoExistente = await tx.preventivaExecucao.findUnique({
-          where: {
-            empresa_id_os_id_preventiva_id: {
-              empresa_id: os.empresa_id,
-              os_id: os.id,
-              preventiva_id: plano.id
-            }
-          }
+          where: { empresa_id_os_id_preventiva_id: { empresa_id: os.empresa_id, os_id: os.id, preventiva_id: plano.id } }
         });
 
         if (execucaoExistente) {
@@ -354,13 +325,8 @@ export async function sincronizarPreventivasAposOS(
           continue;
         }
 
-        const kmBase = kmConclusao
-          ? Number(kmConclusao)
-          : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
-
-        const horimetroBase = horimetroConclusao
-          ? Number(horimetroConclusao)
-          : Number(veiculo?.horimetro_atual ?? plano.ultimo_horimetro ?? 0);
+        const kmBase = kmConclusao ? Number(kmConclusao) : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
+        const horimetroBase = horimetroConclusao ? Number(horimetroConclusao) : Number(veiculo?.horimetro_atual ?? plano.ultimo_horimetro ?? 0);
 
         let novoProximoKm: number | null = plano.proximo_km;
         if (plano.intervalo_km && plano.intervalo_km > 0) {
@@ -436,34 +402,15 @@ export async function sincronizarPreventivasAposOS(
       const isTableMissing = err?.code === 'P2021' || (err?.message && err.message.includes("doesn't exist"));
       if (isTableMissing) {
         log('ERROR', 'PREVENTIVAS', 'A tabela PreventivaExecucao ainda não foi aplicada no banco de dados.', { error: err.message });
-        return {
-          sucesso: false,
-          executadas: [],
-          ignoradas: preventivasSolicitadas,
-          erro: 'Tabela PreventivaExecucao pendente de migration no banco de dados.'
-        };
+        return { sucesso: false, executadas: [], ignoradas: preventivasSolicitadas, erro: 'Tabela PreventivaExecucao pendente de migration no banco de dados.' };
       }
       log('ERROR', 'PREVENTIVAS', 'Falha transacional ao sincronizar preventivas após OS com tx externa', { error: err?.message });
-      return {
-        sucesso: false,
-        executadas: [],
-        ignoradas: preventivasSolicitadas,
-        erro: err?.message || 'Erro transacional ao sincronizar preventivas'
-      };
+      return { sucesso: false, executadas: [], ignoradas: preventivasSolicitadas, erro: err?.message || 'Erro transacional ao sincronizar preventivas' };
     }
   }
 
-  // ============================================================
-  // EXECUÇÃO ISOLADA (sem tx externa)
-  // ============================================================
   const dbClient = options?.prismaClient || prisma;
-  const veiculo = await dbClient.veiculo.findFirst({
-    where: {
-      id: os.veiculo_id,
-      empresa_id: os.empresa_id
-    }
-  });
-
+  const veiculo = await dbClient.veiculo.findFirst({ where: { id: os.veiculo_id, empresa_id: os.empresa_id } });
   const kmConclusao = options?.kmVeiculo ?? veiculo?.quilometragem ?? null;
   const horimetroConclusao = options?.horimetroVeiculo ?? veiculo?.horimetro_atual ?? null;
 
@@ -478,12 +425,7 @@ export async function sincronizarPreventivasAposOS(
 
       await dbClient.$transaction(async (tx: any) => {
         const plano = await tx.preventiva.findFirst({
-          where: {
-            id: prevId,
-            empresa_id: os.empresa_id,
-            veiculo_id: os.veiculo_id,
-            ativo: true
-          }
+          where: { id: prevId, empresa_id: os.empresa_id, veiculo_id: os.veiculo_id, ativo: true }
         });
 
         if (!plano) {
@@ -493,13 +435,7 @@ export async function sincronizarPreventivasAposOS(
         }
 
         const execucaoExistente = await tx.preventivaExecucao.findUnique({
-          where: {
-            empresa_id_os_id_preventiva_id: {
-              empresa_id: os.empresa_id,
-              os_id: os.id,
-              preventiva_id: plano.id
-            }
-          }
+          where: { empresa_id_os_id_preventiva_id: { empresa_id: os.empresa_id, os_id: os.id, preventiva_id: plano.id } }
         });
 
         if (execucaoExistente) {
@@ -508,13 +444,8 @@ export async function sincronizarPreventivasAposOS(
           return;
         }
 
-        const kmBase = kmConclusao
-          ? Number(kmConclusao)
-          : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
-
-        const horimetroBase = horimetroConclusao
-          ? Number(horimetroConclusao)
-          : Number(veiculo?.horimetro_atual ?? plano.ultimo_horimetro ?? 0);
+        const kmBase = kmConclusao ? Number(kmConclusao) : Number(veiculo?.quilometragem ?? plano.ultimo_km ?? 0);
+        const horimetroBase = horimetroConclusao ? Number(horimetroConclusao) : Number(veiculo?.horimetro_atual ?? plano.ultimo_horimetro ?? 0);
 
         let novoProximoKm: number | null = plano.proximo_km;
         if (plano.intervalo_km && plano.intervalo_km > 0) {
@@ -588,36 +519,16 @@ export async function sincronizarPreventivasAposOS(
 
       const isTableMissing = err?.code === 'P2021' || (err?.message && err.message.includes("doesn't exist"));
       if (isTableMissing) {
-        log('ERROR', 'PREVENTIVAS', 'A tabela PreventivaExecucao ainda não foi aplicada no banco de dados.', {
-          error: err.message
-        });
-        return {
-          sucesso: false,
-          executadas,
-          ignoradas: [...ignoradas, prevId],
-          erro: 'Tabela PreventivaExecucao pendente de migration no banco de dados.'
-        };
+        log('ERROR', 'PREVENTIVAS', 'A tabela PreventivaExecucao ainda não foi aplicada no banco de dados.', { error: err.message });
+        return { sucesso: false, executadas, ignoradas: [...ignoradas, prevId], erro: 'Tabela PreventivaExecucao pendente de migration no banco de dados.' };
       }
 
-      log('ERROR', 'PREVENTIVAS', `Falha transacional ao sincronizar plano ${prevId} após OS`, {
-        error: err?.message,
-        osId: os.id
-      });
-      return {
-        sucesso: false,
-        executadas,
-        ignoradas: [...ignoradas, prevId],
-        erro: err?.message || 'Erro transacional ao sincronizar preventivas'
-      };
+      log('ERROR', 'PREVENTIVAS', `Falha transacional ao sincronizar plano ${prevId} após OS`, { error: err?.message, osId: os.id });
+      return { sucesso: false, executadas, ignoradas: [...ignoradas, prevId], erro: err?.message || 'Erro transacional ao sincronizar preventivas' };
     }
   }
 
-  return {
-    sucesso: true,
-    executadas,
-    ignoradas,
-    concorrente: concorrenciaDetectada
-  };
+  return { sucesso: true, executadas, ignoradas, concorrente: concorrenciaDetectada };
 }
 
 export interface ResultadoConsultaExecucoes {
@@ -636,40 +547,19 @@ export async function obterHistoricoExecucoesPreventiva(
   try {
     const db = prismaClient || prisma;
     const dbExecs = await (db as any).preventivaExecucao.findMany({
-      where: {
-        preventiva_id: preventivaId,
-        empresa_id: empresaId
-      },
-      orderBy: {
-        data_conclusao: 'desc'
-      }
+      where: { preventiva_id: preventivaId, empresa_id: empresaId },
+      orderBy: { data_conclusao: 'desc' }
     });
 
-    return {
-      sucesso: true,
-      dados: dbExecs || [],
-      indisponivel: false
-    };
+    return { sucesso: true, dados: dbExecs || [], indisponivel: false };
   } catch (e: any) {
     const isTableMissing = e?.code === 'P2021' || (e?.message && e.message.includes("doesn't exist"));
     if (isTableMissing) {
       log('WARN', 'PREVENTIVAS', 'Histórico indisponível: tabela PreventivaExecucao pendente de migration.');
-      return {
-        sucesso: false,
-        dados: [],
-        indisponivel: true,
-        motivo: 'TABELA_INEXISTENTE',
-        erro: 'Histórico indisponível: tabela PreventivaExecucao pendente de migration.'
-      };
+      return { sucesso: false, dados: [], indisponivel: true, motivo: 'TABELA_INEXISTENTE', erro: 'Histórico indisponível: tabela PreventivaExecucao pendente de migration.' };
     }
     log('ERROR', 'PREVENTIVAS', 'Erro ao obter histórico de execuções de preventiva', { error: e?.message });
-    return {
-      sucesso: false,
-      dados: [],
-      indisponivel: true,
-      motivo: 'ERRO_BANCO',
-      erro: e?.message || 'Erro ao consultar histórico'
-    };
+    return { sucesso: false, dados: [], indisponivel: true, motivo: 'ERRO_BANCO', erro: e?.message || 'Erro ao consultar histórico' };
   }
 }
 
@@ -681,37 +571,16 @@ export async function obterExecucoesPreventivasDaOS(
   try {
     const db = prismaClient || prisma;
     const execs = await (db as any).preventivaExecucao.findMany({
-      where: {
-        os_id: osId,
-        empresa_id: empresaId
-      },
-      orderBy: {
-        created_at: 'asc'
-      }
+      where: { os_id: osId, empresa_id: empresaId },
+      orderBy: { created_at: 'asc' }
     });
-    return {
-      sucesso: true,
-      dados: execs || [],
-      indisponivel: false
-    };
+    return { sucesso: true, dados: execs || [], indisponivel: false };
   } catch (e: any) {
     const isTableMissing = e?.code === 'P2021' || (e?.message && e.message.includes("doesn't exist"));
     if (isTableMissing) {
-      return {
-        sucesso: false,
-        dados: [],
-        indisponivel: true,
-        motivo: 'TABELA_INEXISTENTE',
-        erro: 'Tabela PreventivaExecucao pendente de migration.'
-      };
+      return { sucesso: false, dados: [], indisponivel: true, motivo: 'TABELA_INEXISTENTE', erro: 'Tabela PreventivaExecucao pendente de migration.' };
     }
     log('ERROR', 'PREVENTIVAS', 'Erro ao obter execuções de preventivas da OS', { osId, error: e?.message });
-    return {
-      sucesso: false,
-      dados: [],
-      indisponivel: true,
-      motivo: 'ERRO_BANCO',
-      erro: e?.message || 'Erro ao consultar execuções'
-    };
+    return { sucesso: false, dados: [], indisponivel: true, motivo: 'ERRO_BANCO', erro: e?.message || 'Erro ao consultar execuções' };
   }
 }
