@@ -6,7 +6,7 @@ import {
   AlertTriangle, CheckCircle2, AlertCircle, Plus, Sparkles, 
   Search, ChevronRight, Wrench, RefreshCw, Clock, Loader2, 
   Trash2, Edit, ShieldCheck, X, History, MessageCircle, Printer,
-  CheckCheck
+  CheckCheck, Link as LinkIcon
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -133,7 +133,7 @@ export default function PreventivasPage() {
   };
 
   // ============================================================
-  // ✅ NOVO: Enviar link do Portal do Cliente via WhatsApp
+  // ✅ Enviar link do Portal do Cliente via WhatsApp
   // ============================================================
   const enviarWhatsApp = (p: any) => {
     const veiculo = p.Veiculo || p.veiculo;
@@ -144,23 +144,19 @@ export default function PreventivasPage() {
       return;
     }
 
-    // Verifica se a preventiva tem o token público (link seguro)
     if (!p.token_publico) {
       toast.error('Link do portal ainda não foi gerado. Edite o plano e salve novamente para gerar o link.');
       return;
     }
 
-    // Formata o telefone com código do Brasil
     let telefone = cliente.telefone.replace(/\D/g, '');
     if (!telefone.startsWith('55')) {
       telefone = '55' + telefone;
     }
 
-    // Monta a URL do portal
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://login.pinheiromecanica.com';
     const linkPortal = `${baseUrl}/portal/${p.token_publico}`;
 
-    // Mensagem profissional e curta
     let mensagem = `*Relatório de Manutenção Preventiva*\n\n`;
     mensagem += `Olá, *${cliente.nome}*!\n\n`;
     mensagem += `Segue o registro do serviço realizado no veículo *${veiculo.marca} ${veiculo.modelo} (${veiculo.placa})*.\n\n`;
@@ -180,7 +176,7 @@ export default function PreventivasPage() {
   };
 
   // ============================================================
-  // ✅ NOVO: Copiar link do portal para a área de transferência
+  // ✅ Copiar link do portal
   // ============================================================
   const copiarLinkPortal = async (p: any) => {
     if (!p.token_publico) {
@@ -197,7 +193,6 @@ export default function PreventivasPage() {
         description: 'Cole no WhatsApp, e-mail ou SMS do cliente.'
       });
     } catch {
-      // Fallback para navegadores antigos
       toast.info('Copie o link manualmente:', { description: linkPortal, duration: 15000 });
     }
   };
@@ -481,7 +476,6 @@ export default function PreventivasPage() {
                         <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
                         {styles.label}
                       </span>
-                      {/* ✅ NOVO: Badge de assinatura */}
                       {assinada && (
                         <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[8px] font-black rounded uppercase tracking-wider flex items-center gap-1">
                           <CheckCheck size={10} /> Assinada
@@ -505,7 +499,6 @@ export default function PreventivasPage() {
                       </p>
                     )}
                     
-                    {/* ✅ Exibição das miniaturas das fotos no card */}
                     {p.fotos && Array.isArray(p.fotos) && p.fotos.length > 0 && (
                       <div className="flex gap-1 mt-2 overflow-x-auto custom-scrollbar pb-1">
                         {p.fotos.map((foto: string, idx: number) => (
@@ -587,7 +580,6 @@ export default function PreventivasPage() {
                         Ciclos
                       </button>
                       
-                      {/* ✅ Botão de WhatsApp - agora envia link do portal */}
                       <button
                         onClick={() => enviarWhatsApp(p)}
                         className={`px-3 py-1.5 ${assinada ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-green-600 hover:bg-green-500'} text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-green-950/20 transition cursor-pointer`}
@@ -597,16 +589,15 @@ export default function PreventivasPage() {
                         {assinada ? 'Reenviar' : 'Portal'}
                       </button>
 
-                      {/* ✅ NOVO: Botão de copiar link do portal */}
+                      {/* ✅ Botão de copiar link do portal — usa LinkIcon (renomeado) */}
                       <button
                         onClick={() => copiarLinkPortal(p)}
                         className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 transition"
                         title="Copiar link do portal"
                       >
-                        <Link size={12} />
+                        <LinkIcon size={12} />
                       </button>
 
-                      {/* ✅ Botão de Imprimir PDF */}
                       <Link
                         href={`/preventivas/${p.id}/imprimir`}
                         target="_blank"
