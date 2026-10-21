@@ -510,8 +510,13 @@ model Preventiva {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
   
-  // ✅ NOVO: Campo para guardar a lista de fotos (JSON)
+  // ✅ FOTOS
   fotos              String?   @db.LongText
+  
+  // ✅ NOVOS CAMPOS DE SEGURANÇA E ASSINATURA
+  token_publico      String?   @unique @default(uuid())
+  assinatura_cliente String?   @db.LongText
+  data_assinatura    DateTime?
   
   Veiculo            Veiculo   @relation(fields: [veiculo_id], references: [id], onDelete: Cascade)
 
