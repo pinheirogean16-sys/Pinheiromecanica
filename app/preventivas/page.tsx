@@ -5,7 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   AlertTriangle, CheckCircle2, AlertCircle, Plus, Sparkles, 
   Search, ChevronRight, Wrench, RefreshCw, Clock, Loader2, 
-  Trash2, Edit, ShieldCheck, X, History, MessageCircle, Printer
+  Trash2, Edit, ShieldCheck, X, History, MessageCircle, Printer,
+  CheckCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -132,7 +133,7 @@ export default function PreventivasPage() {
   };
 
   // ============================================================
-  // Função para enviar WhatsApp
+  // ✅ NOVO: Enviar link do Portal do Cliente via WhatsApp
   // ============================================================
   const enviarWhatsApp = (p: any) => {
     const veiculo = p.Veiculo || p.veiculo;
@@ -143,28 +144,62 @@ export default function PreventivasPage() {
       return;
     }
 
+    // Verifica se a preventiva tem o token público (link seguro)
+    if (!p.token_publico) {
+      toast.error('Link do portal ainda não foi gerado. Edite o plano e salve novamente para gerar o link.');
+      return;
+    }
+
+    // Formata o telefone com código do Brasil
     let telefone = cliente.telefone.replace(/\D/g, '');
     if (!telefone.startsWith('55')) {
       telefone = '55' + telefone;
     }
 
-    let mensagem = `*Relatório de Manutenção Preventiva*\n\n`;
-    mensagem += `Olá, *${cliente.nome}*!\n`;
-    mensagem += `Segue o registro do serviço realizado no veículo *${veiculo.marca} ${veiculo.modelo} (${veiculo.placa})*.\n\n`;
-    mensagem += `🛠️ *Serviço:* ${p.nome || p.servico || p.componente}\n`;
-    
-    if (p.fotos && Array.isArray(p.fotos) && p.fotos.length > 0) {
-      mensagem += `\n📸 *Fotos do Serviço:*\n`;
-      p.fotos.forEach((foto: string, index: number) => {
-        const baseUrl = foto.startsWith('http') ? '' : window.location.origin;
-        mensagem += `Foto ${index + 1}: ${baseUrl}${foto}\n`;
-      });
-    }
+    // Monta a URL do portal
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://login.pinheiromecanica.com';
+    const linkPortal = `${baseUrl}/portal/${p.token_publico}`;
 
-    mensagem += `\nQualquer dúvida, estamos à disposição!`;
+    // Mensagem profissional e curta
+    let mensagem = `*Relatório de Manutenção Preventiva*\n\n`;
+    mensagem += `Olá, *${cliente.nome}*!\n\n`;
+    mensagem += `Segue o registro do serviço realizado no veículo *${veiculo.marca} ${veiculo.modelo} (${veiculo.placa})*.\n\n`;
+    mensagem += `🛠️ *Serviço:* ${p.nome || p.servico || p.componente}\n\n`;
+    
+    if (p.assinatura_cliente) {
+      mensagem += `✅ *Documento já assinado.*\n\n`;
+    } else {
+      mensagem += `📄 *Acesse o relatório completo com as fotos e assine digitalmente:*\n`;
+    }
+    
+    mensagem += `${linkPortal}\n\n`;
+    mensagem += `Qualquer dúvida, estamos à disposição!`;
 
     const url = `https://wa.me/${telefone}?text=${encodeURIComponent(mensagem)}`;
     window.open(url, '_blank');
+  };
+
+  // ============================================================
+  // ✅ NOVO: Copiar link do portal para a área de transferência
+  // ============================================================
+  const copiarLinkPortal = async (p: any) => {
+    if (!p.token_publico) {
+      toast.error('Link do portal ainda não foi gerado.');
+      return;
+    }
+
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://login.pinheiromecanica.com';
+    const linkPortal = `${baseUrl}/portal/${p.token_publico}`;
+
+    try {
+      await navigator.clipboard.writeText(linkPortal);
+      toast.success('Link do portal copiado!', {
+        description: 'Cole no WhatsApp, e-mail ou SMS do cliente.'
+      });
+    } catch {
+      // Fallback para navegadores antigos
+      toast.info('Copie o link manualmente:', { description: linkPortal, duration: 15000 });
+    }
   };
 
   // Modal de Histórico de Ciclos Executados
@@ -416,6 +451,7 @@ export default function PreventivasPage() {
             const horimetroAtual = veiculo?.horimetro_atual ?? p.horimetro_atual ?? 0;
             const proximoKm = p.proximo_km ?? p.km_limite;
             const proximaData = p.proxima_data ?? p.data_limite;
+            const assinada = !!p.assinatura_cliente;
 
             return (
               <div 
@@ -440,10 +476,18 @@ export default function PreventivasPage() {
                       </span>
                     </div>
 
-                    <span className={`px-2.5 py-1 border text-[9px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1.5 ${styles.badge}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
-                      {styles.label}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`px-2.5 py-1 border text-[9px] font-black rounded-lg uppercase tracking-wider flex items-center gap-1.5 ${styles.badge}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
+                        {styles.label}
+                      </span>
+                      {/* ✅ NOVO: Badge de assinatura */}
+                      {assinada && (
+                        <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[8px] font-black rounded uppercase tracking-wider flex items-center gap-1">
+                          <CheckCheck size={10} /> Assinada
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="bg-zinc-950/50 border border-zinc-900 p-3.5 rounded-xl space-y-1">
@@ -515,7 +559,7 @@ export default function PreventivasPage() {
                     </div>
                   </div>
 
-                  {/* ✅ AÇÕES DO CARD COM O NOVO BOTÃO DE PDF E WHATSAPP */}
+                  {/* ✅ AÇÕES DO CARD */}
                   <div className="flex flex-wrap items-center justify-between border-t border-zinc-800/60 pt-3 gap-y-2">
                     <div className="flex items-center gap-1">
                       <button
@@ -543,17 +587,26 @@ export default function PreventivasPage() {
                         Ciclos
                       </button>
                       
-                      {/* Botão de WhatsApp */}
+                      {/* ✅ Botão de WhatsApp - agora envia link do portal */}
                       <button
                         onClick={() => enviarWhatsApp(p)}
-                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-green-950/20 transition cursor-pointer"
-                        title="Enviar Relatório no WhatsApp"
+                        className={`px-3 py-1.5 ${assinada ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-green-600 hover:bg-green-500'} text-white font-black rounded-xl text-[10px] uppercase tracking-wider inline-flex items-center gap-1 shadow-md shadow-green-950/20 transition cursor-pointer`}
+                        title={assinada ? 'Reenviar link do portal' : 'Enviar link do portal no WhatsApp'}
                       >
                         <MessageCircle size={12} />
-                        Enviar
+                        {assinada ? 'Reenviar' : 'Portal'}
                       </button>
 
-                      {/* ✅ NOVO: Botão de Imprimir PDF */}
+                      {/* ✅ NOVO: Botão de copiar link do portal */}
+                      <button
+                        onClick={() => copiarLinkPortal(p)}
+                        className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 transition"
+                        title="Copiar link do portal"
+                      >
+                        <Link size={12} />
+                      </button>
+
+                      {/* ✅ Botão de Imprimir PDF */}
                       <Link
                         href={`/preventivas/${p.id}/imprimir`}
                         target="_blank"
