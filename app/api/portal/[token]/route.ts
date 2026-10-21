@@ -42,7 +42,7 @@ export async function GET(
       },
     });
 
-    // Busca o histórico de execuções (Timeline)
+    // 1. Busca o histórico de execuções (Timeline)
     const historico = await prisma.preventivaExecucao.findMany({
       where: { 
         preventiva_id: preventiva.id,
@@ -52,11 +52,31 @@ export async function GET(
       take: 10,
     });
 
-    // ✅ Busca as peças utilizadas na última OS executada
+    // 2. Busca as peças utilizadas
     let pecasUsadas: any[] = [];
+    let osIdParaBuscarPecas = null;
+
+    // Se tem histórico, pega a OS da última execução
     if (historico.length > 0 && historico[0].os_id) {
+      osIdParaBuscarPecas = historico[0].os_id;
+    } else {
+      // FALLBACK: Se não achou no histórico, busca a última OS finalizada do veículo
+      const ultimaOs = await prisma.ordemServico.findFirst({
+        where: { 
+          veiculo_id: preventiva.veiculo_id,
+          empresa_id: preventiva.empresa_id,
+          status: 'FINALIZADA'
+        },
+        orderBy: { data_finalizada: 'desc' }
+      });
+      if (ultimaOs) {
+        osIdParaBuscarPecas = ultimaOs.id;
+      }
+    }
+
+    if (osIdParaBuscarPecas) {
       const pecas = await prisma.pecaAplicada.findMany({
-        where: { os_id: historico[0].os_id },
+        where: { os_id: osIdParaBuscarPecas },
         include: { 
           Peca: { 
             select: { descricao: true, codigo: true, unidadeMedida: true } 
@@ -66,7 +86,6 @@ export async function GET(
       
       pecasUsadas = pecas.map(p => ({
         id: p.id,
-        // ✅ CORRIGIDO AQUI: Removido o "|| p.descricao" que causava erro no TS
         descricao: p.Peca?.descricao || 'Peça aplicada',
         codigo: p.Peca?.codigo,
         quantidade: p.quantidade,
