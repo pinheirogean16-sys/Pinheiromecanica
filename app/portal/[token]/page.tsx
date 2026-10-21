@@ -166,7 +166,7 @@ export default function PortalClientePage() {
     );
   }
 
-  const { empresa, veiculo, cliente, historico, pecasUsadas } = data;
+  const { empresa, veiculo, cliente, historico, pecasUsadas, debugInfo } = data;
   const logo = empresa?.logo_url || BRANDING?.logo?.url;
 
   const tipo = (data.tipo_controle || 'KM').toUpperCase();
@@ -286,7 +286,7 @@ export default function PortalClientePage() {
                   </p>
                 )}
 
-                {/* ✅ NOVO: LISTA DE PEÇAS E FILTROS */}
+                {/* ✅ LISTA DE PEÇAS E FILTROS */}
                 {pecasUsadas && pecasUsadas.length > 0 && (
                   <div className="bg-zinc-50 border border-zinc-200 rounded-xl overflow-hidden mt-4">
                     <div className="bg-zinc-100/50 px-4 py-2 border-b border-zinc-200 flex items-center gap-2">
@@ -353,6 +353,14 @@ export default function PortalClientePage() {
                   </div>
                 </div>
               </div>
+
+              {/* ✅ CAIXA DE DEBUG (Visível apenas para teste) */}
+              {debugInfo && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 w-full">
+                  <p className="text-xs font-black text-red-800 uppercase mb-2">Diagnóstico do Sistema (Tire print)</p>
+                  <pre className="text-[10px] text-red-600 font-mono whitespace-pre-wrap">{JSON.stringify(debugInfo, null, 2)}</pre>
+                </div>
+              )}
 
               {/* HISTÓRICO PREVENTIVO (TIMELINE) */}
               <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-zinc-200 space-y-6 w-full">
