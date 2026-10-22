@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { 
   Wrench, ShieldCheck, Package, DollarSign, 
   Cloud, Smartphone, CheckCircle2, ChevronRight, 
-  HelpCircle, Zap, BarChart3, Lock, ArrowRight
+  HelpCircle, Zap, Lock
 } from 'lucide-react';
 import { BRANDING } from '@/lib/branding';
 
@@ -11,27 +13,36 @@ export const metadata = {
   description: 'Gestão completa de Ordens de Serviço, Preventivas, Estoque e Financeiro. O único ERP que sua oficina pesada precisa.',
 };
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // ✅ REDIRECIONAMENTO INTELIGENTE
+  // Se o usuário já estiver logado, vai direto para o Dashboard.
+  // Se não estiver, continua e mostra a Landing Page.
+  const token = (await cookies()).get('auth-token')?.value;
+  if (token) {
+    redirect('/dashboard');
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-orange-500/30 overflow-x-hidden">
       
       {/* HEADER FIXO */}
       <header className="fixed top-0 w-full bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
+          
+          {/* ✅ LOGO IMPONENTE E COM BRILHO */}
           <div className="flex items-center gap-3">
-            {/* ✅ LOGO AQUI: Puxa do BRANDING ou usa um fallback */}
             {BRANDING.logo?.url ? (
               <img 
                 src={BRANDING.logo.url} 
                 alt={BRANDING.name} 
-                className="h-10 w-auto object-contain" 
+                className="h-12 sm:h-16 w-auto object-contain drop-shadow-[0_0_15px_rgba(249,115,22,0.2)] transition-transform hover:scale-105" 
               />
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-900/40">
-                  <Wrench className="text-white w-6 h-6" />
+              <div className="flex items-center gap-3 transition-transform hover:scale-105">
+                <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-900/40">
+                  <Wrench className="text-white w-7 h-7" />
                 </div>
-                <span className="text-xl font-black uppercase italic tracking-tighter">
+                <span className="text-2xl sm:text-3xl font-black uppercase italic tracking-tighter drop-shadow-lg">
                   {BRANDING.name}
                 </span>
               </div>
@@ -94,7 +105,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* ✅ MOCKUP DO SISTEMA (Para dar visual de produto real) */}
+        {/* MOCKUP DO SISTEMA */}
         <div className="max-w-4xl mx-auto mt-20 relative z-10 px-4 sm:px-0">
           <div className="bg-zinc-900/80 border border-zinc-800 rounded-t-3xl p-2 shadow-2xl backdrop-blur-xl">
             <div className="bg-zinc-950 rounded-2xl border border-zinc-800 p-4 sm:p-6 space-y-4">
@@ -284,22 +295,29 @@ export default function LandingPage() {
       {/* FOOTER */}
       <footer className="border-t border-zinc-800 py-12 text-center text-sm text-zinc-500">
         <div className="max-w-6xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
+          
+          <div className="flex items-center gap-3">
             {BRANDING.logo?.url ? (
-              <img src={BRANDING.logo.url} alt={BRANDING.name} className="h-6 w-auto object-contain opacity-50 grayscale hover:grayscale-0 transition-all" />
+              <img 
+                src={BRANDING.logo.url} 
+                alt={BRANDING.name} 
+                className="h-10 w-auto object-contain opacity-70 hover:opacity-100 transition-opacity" 
+              />
             ) : (
-              <Wrench className="text-zinc-700 w-5 h-5" />
+              <>
+                <Wrench className="text-zinc-700 w-6 h-6" />
+                <span className="text-lg font-black uppercase tracking-widest">{BRANDING.name}</span>
+              </>
             )}
-            <span className="font-black uppercase tracking-widest">{BRANDING.name}</span>
           </div>
           
-          <div className="flex gap-6">
+          <div className="flex gap-6 font-bold uppercase tracking-wider text-[10px]">
             <Link href="/termos" className="hover:text-white transition">Termos de Uso</Link>
             <Link href="/privacidade" className="hover:text-white transition">Privacidade</Link>
             <a href="mailto:suporte@vehlox.com.br" className="hover:text-white transition">Suporte</a>
           </div>
 
-          <p>© {new Date().getFullYear()} {BRANDING.name}. Todos os direitos reservados.</p>
+          <p className="text-xs font-mono">© {new Date().getFullYear()} {BRANDING.name}. Todos os direitos reservados.</p>
         </div>
       </footer>
 
