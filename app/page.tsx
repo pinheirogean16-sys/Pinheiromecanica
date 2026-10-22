@@ -14,9 +14,7 @@ export const metadata = {
 };
 
 export default async function LandingPage() {
-  // ✅ REDIRECIONAMENTO INTELIGENTE
   // Se o usuário já estiver logado, vai direto para o Dashboard.
-  // Se não estiver, continua e mostra a Landing Page.
   const token = (await cookies()).get('auth-token')?.value;
   if (token) {
     redirect('/dashboard');
@@ -29,7 +27,7 @@ export default async function LandingPage() {
       <header className="fixed top-0 w-full bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
           
-          {/* ✅ LOGO IMPONENTE E COM BRILHO */}
+          {/* LOGO IMPONENTE E COM BRILHO */}
           <div className="flex items-center gap-3">
             {BRANDING.logo?.url ? (
               <img 
@@ -59,8 +57,9 @@ export default async function LandingPage() {
             <Link href="/login" className="text-sm font-bold text-zinc-300 hover:text-white transition-colors hidden sm:block">
               Entrar
             </Link>
+            {/* ✅ CORRIGIDO: /register-page */}
             <Link 
-              href="/register" 
+              href="/register-page" 
               className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-orange-950/20 active:scale-95"
             >
               Teste Grátis
@@ -71,7 +70,6 @@ export default async function LandingPage() {
 
       {/* HERO SECTION */}
       <section className="relative pt-40 pb-20 px-4 sm:px-6 overflow-hidden">
-        {/* Fundo com Grid Pattern */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20 pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-orange-600/10 rounded-full blur-[120px] pointer-events-none" />
         
@@ -92,8 +90,9 @@ export default async function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+            {/* ✅ CORRIGIDO: /register-page */}
             <Link 
-              href="/register" 
+              href="/register-page" 
               className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-950/40 active:scale-95 flex items-center justify-center gap-2 group"
             >
               Começar 14 Dias Grátis 
@@ -109,7 +108,6 @@ export default async function LandingPage() {
         <div className="max-w-4xl mx-auto mt-20 relative z-10 px-4 sm:px-0">
           <div className="bg-zinc-900/80 border border-zinc-800 rounded-t-3xl p-2 shadow-2xl backdrop-blur-xl">
             <div className="bg-zinc-950 rounded-2xl border border-zinc-800 p-4 sm:p-6 space-y-4">
-              {/* Header do Mockup */}
               <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-red-500/80" />
@@ -119,7 +117,6 @@ export default async function LandingPage() {
                 <div className="h-6 w-48 bg-zinc-900 rounded-md border border-zinc-800 hidden sm:block" />
                 <div className="w-8 h-8 rounded-full bg-zinc-800" />
               </div>
-              {/* Cards Falsos do Dashboard */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                 <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl space-y-2">
                   <span className="text-[10px] text-zinc-500 font-bold uppercase">OS Abertas</span>
@@ -232,7 +229,8 @@ export default async function LandingPage() {
                 ))}
               </ul>
 
-              <Link href="/register" className="w-full py-4 text-center border border-zinc-700 hover:bg-zinc-800 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">
+              {/* ✅ CORRIGIDO: /register-page */}
+              <Link href="/register-page" className="w-full py-4 text-center border border-zinc-700 hover:bg-zinc-800 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">
                 Começar Teste
               </Link>
             </div>
@@ -259,7 +257,8 @@ export default async function LandingPage() {
                 ))}
               </ul>
 
-              <Link href="/register" className="w-full py-4 text-center bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+              {/* ✅ CORRIGIDO: /register-page */}
+              <Link href="/register-page" className="w-full py-4 text-center bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
                 Começar Teste Grátis
               </Link>
             </div>
