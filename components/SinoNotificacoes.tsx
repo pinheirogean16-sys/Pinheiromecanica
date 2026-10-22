@@ -21,10 +21,11 @@ export default function SinoNotificacoes() {
   const [carregando, setCarregando] = useState(true);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
-  const [ultimaNotificacaoId, setUltimaNotificacaoId] = useState<string | null>(null);
 
   const notificacoesRef = useRef<Notificacao[]>([]);
   const ultimaNotificacaoIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const backoffRef = useRef<number>(0); // ✅ NOVO: Controle de Backoff para 429
 
   useEffect(() => {
     setMounted(true);
@@ -37,13 +38,33 @@ export default function SinoNotificacoes() {
 
   const updateUltimaNotificacaoId = (id: string | null) => {
     ultimaNotificacaoIdRef.current = id;
-    setUltimaNotificacaoId(id);
   };
 
-  const fetchNotificacoes = useCallback(async (triggerFinance = false) => {
+  const fetchNotificacoes = useCallback(async () => {
+    // Se estivermos em backoff (bloqueados), não faz a chamada
+    if (backoffRef.current > Date.now()) return;
+
+    // Cancela requisição anterior se ainda estiver pendente
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const url = `/api/notificacoes?limite=10${triggerFinance ? '&triggerCheck=true' : ''}`;
-      const res = await fetch(url, { credentials: 'include' });
+      const url = `/api/notificacoes?limit=10`;
+      const res = await fetch(url, { 
+        credentials: 'include',
+        signal: controller.signal 
+      });
+
+      // ✅ NOVO: Se tomar bloqueio (429), ativa backoff de 2 minutos
+      if (res.status === 429) {
+        console.warn('Rate limit atingido nas notificações. Pausando por 2 minutos.');
+        backoffRef.current = Date.now() + 120000; 
+        return;
+      }
+
       if (res.ok) {
         const data = await res.json();
         const lista = Array.isArray(data) ? data : (data.items || []);
@@ -53,7 +74,11 @@ export default function SinoNotificacoes() {
 
         // Detectar novas notificações para mostrar toast
         if (currentUltimaId && lista.length > 0) {
-          const novidades = lista.filter((n: any) => !n.lida && n.id !== currentUltimaId && new Date(n.created_at) > new Date(currentNotificacoes[0]?.created_at || 0));
+          const novidades = lista.filter((n: any) => 
+            !n.lida && 
+            n.id !== currentUltimaId && 
+            new Date(n.created_at) > new Date(currentNotificacoes[0]?.created_at || 0)
+          );
           novidades.forEach((n: any) => {
              toast.info(n.titulo, {
               description: n.mensagem,
@@ -67,23 +92,30 @@ export default function SinoNotificacoes() {
           updateUltimaNotificacaoId(lista[0].id);
         }
       }
-    } catch (err) {
-      // silencioso
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        // silencioso para erros de rede normais
+      }
     } finally {
       setCarregando(false);
     }
   }, []);
 
   useEffect(() => {
-    // Busca inicial com gatilho para verificação financeira
+    // Busca inicial após montar
     const timer = setTimeout(() => {
-      fetchNotificacoes(true);
-    }, 50);
-    const interval = setInterval(() => fetchNotificacoes(false), 30000);
+      fetchNotificacoes();
+    }, 100);
+
+    // ✅ NOVO: Intervalo aumentado para 60 segundos (evita rate limit)
+    const interval = setInterval(() => {
+      fetchNotificacoes();
+    }, 60000);
 
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, [fetchNotificacoes]);
 
@@ -92,9 +124,7 @@ export default function SinoNotificacoes() {
     if (!aberto) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setAberto(false);
-      }
+      if (e.key === 'Escape') setAberto(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -165,7 +195,6 @@ export default function SinoNotificacoes() {
 
   return (
     <>
-      {/* Botão de Notificações no Cabeçalho */}
       <button 
         onClick={() => setAberto(!aberto)}
         aria-expanded={aberto}
@@ -181,7 +210,6 @@ export default function SinoNotificacoes() {
         )}
       </button>
 
-      {/* Painel montado via Portal diretamente no body */}
       {mounted && aberto && createPortal(
         <div 
           className="fixed inset-0 z-[99999] flex justify-end"
@@ -189,19 +217,16 @@ export default function SinoNotificacoes() {
           aria-modal="true"
           aria-label="Central de Notificações"
         >
-          {/* Fundo escurecido que impede concorrência visual com a página */}
           <div 
             className="fixed inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity duration-200 animate-in fade-in"
             onClick={() => setAberto(false)}
             aria-hidden="true"
           />
 
-          {/* Painel com fundo sólido 100% opaco e isolado de overflow/stacking contexts */}
           <div 
             onClick={(e) => e.stopPropagation()}
             className="fixed top-14 sm:top-16 right-2 sm:right-6 w-[calc(100vw-1rem)] sm:w-[420px] max-w-[440px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl shadow-black/90 overflow-hidden flex flex-col max-h-[calc(100vh-4.5rem)] sm:max-h-[580px] z-[100000] animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200"
           >
-            {/* Header do Painel */}
             <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/90 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500 border border-orange-500/20 shrink-0">
@@ -218,36 +243,14 @@ export default function SinoNotificacoes() {
               <div className="flex items-center gap-1 shrink-0">
                 {notificacoes.length > 0 && (
                   <>
-                    <button 
-                      onClick={marcarTodasLidas}
-                      title="Marcar todas como lidas"
-                      aria-label="Marcar todas como lidas"
-                      className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button 
-                      onClick={excluirTodas}
-                      title="Excluir todas"
-                      aria-label="Excluir todas"
-                      className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-400 transition cursor-pointer"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <button onClick={marcarTodasLidas} title="Marcar todas como lidas" className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-emerald-400 transition cursor-pointer"><Check size={16} /></button>
+                    <button onClick={excluirTodas} title="Excluir todas" className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-red-400 transition cursor-pointer"><Trash2 size={16} /></button>
                   </>
                 )}
-                <button 
-                  onClick={() => setAberto(false)}
-                  title="Fechar"
-                  aria-label="Fechar"
-                  className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition cursor-pointer ml-1"
-                >
-                  <X size={16} />
-                </button>
+                <button onClick={() => setAberto(false)} title="Fechar" className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition cursor-pointer ml-1"><X size={16} /></button>
               </div>
             </div>
 
-            {/* Lista com rolagem interna */}
             <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-zinc-900 bg-zinc-950">
               {carregando ? (
                 <div className="p-10 flex flex-col items-center justify-center gap-3">
@@ -277,12 +280,8 @@ export default function SinoNotificacoes() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
                           <div className="flex items-center gap-2 min-w-0">
-                            {!n.lida && (
-                              <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
-                            )}
-                            <h4 className={`text-xs uppercase tracking-tight truncate ${
-                              !n.lida ? 'text-white font-black' : 'text-zinc-300 font-bold'
-                            }`}>
+                            {!n.lida && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />}
+                            <h4 className={`text-xs uppercase tracking-tight truncate ${!n.lida ? 'text-white font-black' : 'text-zinc-300 font-bold'}`}>
                               {n.titulo}
                             </h4>
                           </div>
@@ -291,9 +290,7 @@ export default function SinoNotificacoes() {
                           </span>
                         </div>
                         
-                        <p className={`text-[11px] leading-relaxed line-clamp-2 ${
-                          !n.lida ? 'text-zinc-200 font-normal' : 'text-zinc-400 font-normal'
-                        }`}>
+                        <p className={`text-[11px] leading-relaxed line-clamp-2 ${!n.lida ? 'text-zinc-200 font-normal' : 'text-zinc-400 font-normal'}`}>
                           {n.mensagem}
                         </p>
 
@@ -308,7 +305,6 @@ export default function SinoNotificacoes() {
                       <button 
                         onClick={(e) => excluirNotificacao(n.id, e)}
                         title="Excluir notificação"
-                        aria-label="Excluir notificação"
                         className="p-1.5 hover:bg-red-500/10 rounded-lg text-zinc-500 hover:text-red-400 transition-colors opacity-70 group-hover:opacity-100 shrink-0 cursor-pointer"
                       >
                         <Trash2 size={13} />
@@ -319,7 +315,6 @@ export default function SinoNotificacoes() {
               )}
             </div>
 
-            {/* Footer Fixo */}
             <div className="p-4 border-t border-zinc-800 bg-zinc-900/90 shrink-0">
               <button 
                 onClick={() => {
