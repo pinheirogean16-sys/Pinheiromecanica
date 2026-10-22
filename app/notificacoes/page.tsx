@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Bell, Check, Trash2, X, ExternalLink, Loader2, 
-  BellOff, Filter, ArrowLeft, RefreshCw, CheckCircle2 
+  BellOff, Filter, ArrowLeft, RefreshCw, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -20,13 +20,24 @@ interface Notificacao {
 }
 
 export default function NotificacoesPage() {
-  const [data, setData] = useState<{ items: Notificacao[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 0 });
+  // ✅ CORRIGIDO: totalPages inicia em 1 para não quebrar o componente <Pagination>
+  const [data, setData] = useState<{ items: Notificacao[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [carregando, setCarregando] = useState(true);
   const [filtro, setFiltro] = useState<'todas' | 'nao_lidas' | 'lidas'>('todas');
   const [page, setPage] = useState(1);
   const router = useRouter();
 
+  // ✅ NOVO: AbortController para evitar requisições duplicadas se clicar rápido
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const fetchNotificacoes = useCallback(async () => {
+    // Cancela requisição anterior se ainda estiver pendente
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setCarregando(true);
     try {
       const params = new URLSearchParams();
@@ -35,7 +46,17 @@ export default function NotificacoesPage() {
       params.append('page', page.toString());
       params.append('limit', '10');
 
-      const res = await fetch(`/api/notificacoes?${params.toString()}`, { credentials: 'include' });
+      const res = await fetch(`/api/notificacoes?${params.toString()}`, { 
+        credentials: 'include',
+        signal: controller.signal 
+      });
+
+      // ✅ NOVO: Tratamento para Rate Limit (429)
+      if (res.status === 429) {
+        toast.warning('Muitas requisições. Aguarde alguns segundos.');
+        return;
+      }
+
       if (res.ok) {
         const result = await res.json();
         const items = Array.isArray(result) ? result : (result.items || []);
@@ -43,18 +64,23 @@ export default function NotificacoesPage() {
         const totalPages = result.totalPages || 1;
         setData({ items, total, totalPages });
       }
-    } catch (error) {
-      toast.error('Erro ao buscar notificações');
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        toast.error('Erro ao buscar notificações');
+      }
     } finally {
-      setCarregando(false);
+      // Só desativa o loading se não foi abortado
+      if (abortControllerRef.current === controller) {
+        setCarregando(false);
+      }
     }
   }, [filtro, page]);
 
   useEffect(() => {
-    const load = async () => {
-      await fetchNotificacoes();
+    fetchNotificacoes();
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
-    load();
   }, [fetchNotificacoes]);
 
   const marcarLida = async (id: string) => {
@@ -81,7 +107,7 @@ export default function NotificacoesPage() {
       setData(prev => ({
         ...prev,
         items: prev.items.filter(n => n.id !== id),
-        total: prev.total - 1
+        total: Math.max(0, prev.total - 1)
       }));
       toast.success('Notificação removida');
     } catch (error) {
@@ -113,7 +139,7 @@ export default function NotificacoesPage() {
         method: 'DELETE',
         credentials: 'include'
       });
-      setData({ items: [], total: 0, totalPages: 0 });
+      setData({ items: [], total: 0, totalPages: 1 });
       toast.success('Todas as notificações foram excluídas');
     } catch (error) {
       toast.error('Erro ao excluir todas');
@@ -126,7 +152,7 @@ export default function NotificacoesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <Link 
-            href="/"
+            href="/dashboard"
             className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition group shadow-lg"
           >
             <ArrowLeft className="group-hover:-translate-x-1 transition-transform" />
@@ -160,47 +186,47 @@ export default function NotificacoesPage() {
         </div>
       </div>
 
-        {/* Filtros */}
-        <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
-          <button 
-            onClick={() => setFiltro('todas')}
-            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap border ${filtro === 'todas' ? 'bg-orange-600 text-white border-orange-500 shadow-lg' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
-          >
-            Todas ({data.total})
-          </button>
-          <button 
-            onClick={() => setFiltro('nao_lidas')}
-            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap border ${filtro === 'nao_lidas' ? 'bg-orange-600 text-white border-orange-500 shadow-lg' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
-          >
-            Não Lidas
-          </button>
-          <button 
-            onClick={() => setFiltro('lidas')}
-            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap border ${filtro === 'lidas' ? 'bg-orange-600 text-white border-orange-500 shadow-lg' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
-          >
-            Lidas
-          </button>
-        </div>
+      {/* Filtros */}
+      <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+        <button 
+          onClick={() => { setFiltro('todas'); setPage(1); }}
+          className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap border ${filtro === 'todas' ? 'bg-orange-600 text-white border-orange-500 shadow-lg' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
+        >
+          Todas ({data.total})
+        </button>
+        <button 
+          onClick={() => { setFiltro('nao_lidas'); setPage(1); }}
+          className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap border ${filtro === 'nao_lidas' ? 'bg-orange-600 text-white border-orange-500 shadow-lg' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
+        >
+          Não Lidas
+        </button>
+        <button 
+          onClick={() => { setFiltro('lidas'); setPage(1); }}
+          className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap border ${filtro === 'lidas' ? 'bg-orange-600 text-white border-orange-500 shadow-lg' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
+        >
+          Lidas
+        </button>
+      </div>
 
-        {/* Conteúdo */}
-        <div className="space-y-4">
-          {carregando ? (
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-20 flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-10 h-10 text-orange-600 animate-spin" />
-              <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sincronizando base de notificações...</p>
+      {/* Conteúdo */}
+      <div className="space-y-4">
+        {carregando ? (
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-20 flex flex-col items-center justify-center gap-4">
+            <Loader2 className="w-10 h-10 text-orange-600 animate-spin" />
+            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sincronizando base de notificações...</p>
+          </div>
+        ) : data.items.length === 0 ? (
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-20 flex flex-col items-center justify-center text-center opacity-40">
+            <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mb-6">
+              <BellOff size={40} className="text-zinc-600" />
             </div>
-          ) : data.items.length === 0 ? (
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-20 flex flex-col items-center justify-center text-center opacity-40">
-              <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mb-6">
-                <BellOff size={40} className="text-zinc-600" />
-              </div>
-              <h3 className="text-lg font-black text-white uppercase italic tracking-tighter mb-2">Tudo em ordem</h3>
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Nenhuma notificação encontrada com este filtro</p>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4">
-                {data.items.map((n) => (
+            <h3 className="text-lg font-black text-white uppercase italic tracking-tighter mb-2">Tudo em ordem</h3>
+            <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Nenhuma notificação encontrada com este filtro</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4">
+              {data.items.map((n) => (
                 <div 
                   key={n.id}
                   className={`group bg-zinc-900/50 border transition-all rounded-3xl overflow-hidden ${!n.lida ? 'border-orange-600/50 shadow-xl' : 'border-zinc-800 opacity-80 hover:opacity-100 hover:border-zinc-700'}`}
@@ -259,17 +285,17 @@ export default function NotificacoesPage() {
                   </div>
                 </div>
               ))}
-              </div>
-              <div className="mt-8">
-                <Pagination 
-                  page={page} 
-                  totalPages={data.totalPages || 0} 
-                  onPageChange={setPage} 
-                />
-              </div>
-            </>
-          )}
-        </div>
+            </div>
+            <div className="mt-8">
+              <Pagination 
+                page={page} 
+                totalPages={data.totalPages || 1} 
+                onPageChange={setPage} 
+              />
+            </div>
+          </>
+        )}
       </div>
-    );
+    </div>
+  );
 }
