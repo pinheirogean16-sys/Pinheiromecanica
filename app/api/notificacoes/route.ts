@@ -8,6 +8,24 @@ import { createAuditLog } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 
 // ============================================================
+// ✅ NOVO: RATE LIMIT EM MEMÓRIA PARA NOTIFICAÇÕES
+// ============================================================
+const ipHits = new Map<string, { count: number; resetAt: number }>();
+const WINDOW_MS = 60_000; // 1 minuto
+const MAX_HITS = 30; // 30 requisições por minuto por IP (ajuste se necessário)
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipHits.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= MAX_HITS;
+}
+
+// ============================================================
 // SCHEMAS DE VALIDAÇÃO
 // ============================================================
 const notificacaoSchema = z.object({
@@ -30,7 +48,7 @@ const listarQuerySchema = z.object({
     z.coerce.number().int().min(1).max(100).default(10)
   ),
   lida: z.enum(['true', 'false']).optional(),
-  triggerCheck: z.string().optional(), // Ignora o parâmetro enviado pelo front
+  triggerCheck: z.string().optional(),
 });
 
 // ============================================================
@@ -38,12 +56,22 @@ const listarQuerySchema = z.object({
 // ============================================================
 export async function GET(request: Request) {
   try {
+    // ✅ NOVO: Verifica o Rate Limit antes de processar qualquer coisa
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    
+    if (!checkRateLimit(ip)) {
+      // Retorna 429 silenciosamente para o frontend (sem gerar log de erro no servidor)
+      return NextResponse.json(
+        { error: 'Muitas requisições. Aguarde um momento.' },
+        { status: 429 }
+      );
+    }
+
     const { error, user } = await requireAuth();
     if (error) return error;
 
     const { searchParams } = new URL(request.url);
 
-    // ✅ O `|| undefined` garante que valores nulos da URL não quebrem o Zod
     const parsed = listarQuerySchema.parse({
       page: searchParams.get('page') || undefined,
       limit: searchParams.get('limit') || searchParams.get('limite') || undefined,
