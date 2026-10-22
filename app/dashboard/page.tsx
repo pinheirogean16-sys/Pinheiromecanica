@@ -21,9 +21,6 @@ import { BRANDING } from '@/lib/branding';
 
 const COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#06b6d4', '#eab308'];
 
-// ============================================================
-// SKELETON LOADERS
-// ============================================================
 const SkeletonPulse = () => (
   <div className="w-full h-full animate-pulse bg-zinc-900/40 rounded-3xl border border-zinc-800/40 p-6 flex flex-col justify-between" />
 );
@@ -230,7 +227,6 @@ export default function DashboardPage() {
     setLoadingPreventivas(true);
     try {
       const data = await apiFetch<any>('/api/preventivas', { ttl: 30000 });
-      // ✅ CORRIGIDO: fallback para paginação
       if (data) setPreventivas(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingPreventivas(false); }
   }, []);
@@ -239,7 +235,6 @@ export default function DashboardPage() {
     setLoadingPecas(true);
     try {
       const data = await apiFetch<any>('/api/pecas?limit=30', { ttl: 30000 });
-      // ✅ CORRIGIDO: fallback para paginação
       if (data) setPecas(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingPecas(false); }
   }, []);
@@ -251,21 +246,36 @@ export default function DashboardPage() {
       const start = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString();
       const end = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59, 999).toISOString();
       const data = await apiFetch<any>(`/api/agenda?start=${start}&end=${end}`, { ttl: 25000 });
-      // ✅ CORRIGIDO: fallback para paginação
       if (data) setAgendaEvents(Array.isArray(data) ? data : (data.items || []));
     } catch {} finally { setLoadingAgenda(false); }
   }, []);
 
   useEffect(() => {
     setMounted(true);
+    
+    // ✅ FASE 1: Carrega o essencial imediatamente (3 requests)
     loadUser();
     loadPlano();
     loadStats();
-    loadResumoFinanceiro();
-    loadVeiculoStats();
-    loadAgenda();
-    loadOsPorStatus();
-    loadPreventivas();
+    
+    // ✅ FASE 2: Carrega o financeiro após 800ms (2 requests)
+    const timer1 = setTimeout(() => {
+      loadResumoFinanceiro();
+      loadVeiculoStats();
+    }, 800);
+
+    // ✅ FASE 3: Carrega a operação (agenda/preventivas/os) após 1600ms (3 requests)
+    // Isso evita o erro 429 (Too Many Requests) da Hostinger
+    const timer2 = setTimeout(() => {
+      loadAgenda();
+      loadOsPorStatus();
+      loadPreventivas();
+    }, 1600);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, [loadUser, loadPlano, loadStats, loadResumoFinanceiro, loadVeiculoStats, loadAgenda, loadOsPorStatus, loadPreventivas]);
 
   const computedAlerts = useMemo(() => {
