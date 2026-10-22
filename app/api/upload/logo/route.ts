@@ -6,7 +6,20 @@ import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { createAuditLog } from '@/lib/audit';
 
-// O SDK já lê a CLOUDINARY_URL do ambiente automaticamente
+// ✅ CONFIGURAÇÃO EXPLÍCITA DO CLOUDINARY
+// Se a CLOUDINARY_URL estiver no ambiente, o SDK a usa. 
+// Caso contrário, tenta as variáveis separadas.
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config(process.env.CLOUDINARY_URL);
+} else {
+  cloudinary.config({
+    cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+}
+
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
 // ============================================================
@@ -46,7 +59,6 @@ export async function POST(req: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // Exige permissão para editar configurações da empresa
     if (!checkPermission(user, 'configuracoes', 'editar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
@@ -58,7 +70,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
     }
 
-    // Valida tamanho ANTES de carregar na memória
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: `A imagem deve ter no máximo ${MAX_FILE_SIZE / 1024 / 1024}MB.` },
@@ -70,17 +81,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Arquivo vazio' }, { status: 400 });
     }
 
-    // Valida por magic bytes — bloqueia SVG (XSS) e qualquer não-imagem
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     const detected = detectImageType(buffer);
     if (!detected) {
       return NextResponse.json(
-        {
-          error:
-            'Formato não suportado. Envie JPG, PNG ou WEBP (validado pelo conteúdo do arquivo). SVG não é permitido por segurança.',
-        },
+        { error: 'Formato não suportado. Envie JPG, PNG ou WEBP.' },
         { status: 400 }
       );
     }
@@ -90,18 +97,13 @@ export async function POST(req: Request) {
     const dataUri = `data:${detected.mime};base64,${base64Image}`;
 
     const uploadResult = await cloudinary.uploader.upload(dataUri, {
-      folder: `vehlox/logos/${user.empresa_id}`, // Pasta isolada por empresa
+      folder: `vehlox/logos/${user.empresa_id}`,
       resource_type: 'image',
       public_id: `logo-${Date.now()}-${globalThis.crypto.randomUUID()}`,
-      // Redimensiona a logo para não ficar gigante (opcional)
-      transformation: [
-        { width: 500, height: 500, crop: 'limit' } 
-      ]
     });
 
     const url = uploadResult.secure_url;
 
-    // Auditoria da alteração de logo
     await createAuditLog({
       modulo: 'CONFIG',
       acao: 'ALTERAR_LOGO',
@@ -130,7 +132,10 @@ export async function POST(req: Request) {
       tipo: detected.mime,
     });
   } catch (error: any) {
+    // ✅ ALTERADO: Agora o toast vai mostrar o erro REAL do Cloudinary
     log('ERROR', 'UPLOAD_LOGO', 'Erro ao processar upload da logo', { error: error?.message }, 'SISTEMA');
-    return apiError(error, 'UPLOAD_LOGO', 'Erro ao processar upload da logo');
+    return NextResponse.json({ 
+      error: `Falha no Cloudinary: ${error?.message || 'Erro desconhecido'}` 
+    }, { status: 500 });
   }
 }
