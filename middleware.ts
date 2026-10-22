@@ -6,13 +6,15 @@ const PUBLIC_ROUTES = [
   '/register',
   '/recuperar-senha',
   '/redefinir-senha',
-  '/portal',                    // ✅ NOVO: Tela pública do cliente (assinatura)
+  '/termos',          // ✅ NOVO: Página pública de Termos
+  '/privacidade',     // ✅ NOVO: Página pública de Privacidade
+  '/portal',
   '/api/auth/login',
   '/api/auth/recuperar-senha',
   '/api/auth/redefinir-senha',
   '/api/register',
   '/api/auth/refresh',
-  '/api/portal',                // ✅ NOVO: API pública do portal (GET dados + POST assinatura)
+  '/api/portal',
   '/manifest.json',
   '/favicon.ico',
   '/robots.txt',
@@ -33,16 +35,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Rotas públicas (login, register, portal do cliente, manifest, etc)
-  if (
-    PUBLIC_ROUTES.some(
-      (route) => pathname === route || pathname.startsWith(route + '/')
-    )
-  ) {
+  // 2. ✅ VERIFICAÇÃO DA RAIZ (Landing Page) E ROTAS PÚBLICAS
+  // Se for a raiz '/' ou alguma rota da lista, deixa passar!
+  const isRoot = pathname === '/';
+  const isPublicRoute = PUBLIC_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + '/')
+  );
+
+  if (isRoot || isPublicRoute) {
     return NextResponse.next();
   }
 
-  // 3. Valida o JWT de verdade (C01b) — não basta o cookie existir
+  // 3. Valida o JWT de verdade para as rotas PRIVADAS (Dashboard, Clientes, etc.)
   const token = request.cookies.get('auth-token')?.value;
 
   if (!token) {
@@ -52,7 +56,6 @@ export async function middleware(request: NextRequest) {
   const payload = await verifyTokenEdge(token);
 
   if (!payload) {
-    // Token inválido, expirado ou forjado — nega acesso
     return denyAccess(pathname, request);
   }
 
@@ -60,12 +63,10 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/master-admin') || pathname.startsWith('/api/master-admin')) {
     const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
     
-    // Se o e-mail do token for diferente do e-mail mestre, bloqueia
     if (!superAdminEmail || payload.email !== superAdminEmail) {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ error: 'Acesso negado. Área restrita.' }, { status: 403 });
       }
-      // Se for tentar acessar a tela pela URL, chuta pro dashboard
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
   }
