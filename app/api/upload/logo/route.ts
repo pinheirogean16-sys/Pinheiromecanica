@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server';
+import { v2 as cloudinary } from 'cloudinary';
 import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { createAuditLog } from '@/lib/audit';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 
-// ============================================================
-// CONFIGURAÇÕES DE SEGURANÇA
-// ============================================================
+// O SDK já lê a CLOUDINARY_URL do ambiente automaticamente
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
 // ============================================================
@@ -20,39 +17,24 @@ type TipoImagem = { ext: 'jpg' | 'png' | 'webp'; mime: string };
 function detectImageType(buffer: Buffer): TipoImagem | null {
   if (buffer.length < 12) return null;
 
-  // JPEG: FF D8 FF
+  // JPEG
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return { ext: 'jpg', mime: 'image/jpeg' };
   }
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  // PNG
   if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47 &&
-    buffer[4] === 0x0d &&
-    buffer[5] === 0x0a &&
-    buffer[6] === 0x1a &&
-    buffer[7] === 0x0a
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
   ) {
     return { ext: 'png', mime: 'image/png' };
   }
-
-  // WEBP: "RIFF" .... "WEBP"
+  // WEBP
   if (
-    buffer[0] === 0x52 &&
-    buffer[1] === 0x49 &&
-    buffer[2] === 0x46 &&
-    buffer[3] === 0x46 &&
-    buffer[8] === 0x57 &&
-    buffer[9] === 0x45 &&
-    buffer[10] === 0x42 &&
-    buffer[11] === 0x50
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
   ) {
     return { ext: 'webp', mime: 'image/webp' };
   }
-
   return null;
 }
 
@@ -103,52 +85,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Pasta isolada por empresa
-    const uploadDir = path.join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'logos',
-      user.empresa_id
-    );
+    // ✅ UPLOAD PARA O CLOUDINARY (Base64 / Data URI)
+    const base64Image = buffer.toString('base64');
+    const dataUri = `data:${detected.mime};base64,${base64Image}`;
 
-    try {
-      await mkdir(uploadDir, { recursive: true });
-    } catch (err: any) {
-      log(
-        'ERROR',
-        'UPLOAD_LOGO',
-        'Falha ao criar diretório de logos',
-        { error: err?.message },
-        user?.name
-      );
-      return NextResponse.json(
-        { error: 'Erro ao preparar armazenamento. Contate o suporte.' },
-        { status: 500 }
-      );
-    }
+    const uploadResult = await cloudinary.uploader.upload(dataUri, {
+      folder: `vehlox/logos/${user.empresa_id}`, // Pasta isolada por empresa
+      resource_type: 'image',
+      public_id: `logo-${Date.now()}-${globalThis.crypto.randomUUID()}`,
+      // Redimensiona a logo para não ficar gigante (opcional)
+      transformation: [
+        { width: 500, height: 500, crop: 'limit' } 
+      ]
+    });
 
-    // Nome gerado com UUID — impossível prever ou colidir
-    const safeFileName = `logo-${globalThis.crypto.randomUUID()}.${detected.ext}`;
-    const filePath = path.join(uploadDir, safeFileName);
-
-    // Path traversal bloqueado
-    const resolvedPath = path.resolve(filePath);
-    const resolvedDir = path.resolve(uploadDir);
-    if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
-      log(
-        'ERROR',
-        'UPLOAD_LOGO',
-        'Path traversal bloqueado',
-        { userId: user.id },
-        user?.name
-      );
-      return NextResponse.json({ error: 'Caminho de arquivo inválido' }, { status: 400 });
-    }
-
-    await writeFile(resolvedPath, buffer);
-
-    const url = `/uploads/logos/${user.empresa_id}/${safeFileName}`;
+    const url = uploadResult.secure_url;
 
     // Auditoria da alteração de logo
     await createAuditLog({
@@ -168,7 +119,7 @@ export async function POST(req: Request) {
     log(
       'INFO',
       'UPLOAD_LOGO',
-      'Logo da empresa atualizada',
+      'Logo da empresa atualizada no Cloudinary',
       { empresa_id: user.empresa_id, tipo: detected.mime, size: file.size },
       user?.name
     );
@@ -179,6 +130,7 @@ export async function POST(req: Request) {
       tipo: detected.mime,
     });
   } catch (error: any) {
+    log('ERROR', 'UPLOAD_LOGO', 'Erro ao processar upload da logo', { error: error?.message }, 'SISTEMA');
     return apiError(error, 'UPLOAD_LOGO', 'Erro ao processar upload da logo');
   }
 }
