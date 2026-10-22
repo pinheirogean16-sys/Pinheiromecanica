@@ -6,11 +6,6 @@ import {
   Camera, Loader2, TrendingUp 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { CldUploadWidget as CldUploadWidgetBase } from 'next-cloudinary';
-
-// ✅ FORÇA O TYPESCRIPT A IGNORAR AS TIPAGENS DO COMPONENTE
-// Isso resolve o erro de build na Hostinger sem quebrar o upload.
-const CldUploadWidget = CldUploadWidgetBase as any;
 
 interface PreventivaModalProps {
   isOpen: boolean;
@@ -56,12 +51,10 @@ export default function PreventivaModal({
   const [descricao, setDescricao] = useState(preventivaToEdit?.descricao || '');
   const [observacoes, setObservacoes] = useState(preventivaToEdit?.observacoes || '');
 
-  // Tipo de controle
   const [tipoControle, setTipoControle] = useState<string>(
     preventivaToEdit?.tipo_controle || 'KM'
   );
 
-  // Intervalos
   const [intervaloDias, setIntervaloDias] = useState(
     preventivaToEdit?.intervalo_dias ? String(preventivaToEdit.intervalo_dias) : ''
   );
@@ -72,7 +65,6 @@ export default function PreventivaModal({
     preventivaToEdit?.intervalo_horas ? String(preventivaToEdit.intervalo_horas) : ''
   );
 
-  // Última manutenção (opcional)
   const [ultimaData, setUltimaData] = useState(
     preventivaToEdit?.ultima_data ? new Date(preventivaToEdit.ultima_data).toISOString().split('T')[0] : ''
   );
@@ -83,7 +75,6 @@ export default function PreventivaModal({
     preventivaToEdit?.ultimo_horimetro ? String(preventivaToEdit.ultimo_horimetro) : ''
   );
 
-  // Antecedência de alertas
   const [antecedenciaDias, setAntecedenciaDias] = useState(
     String(preventivaToEdit?.antecedencia_dias ?? 15)
   );
@@ -96,14 +87,16 @@ export default function PreventivaModal({
 
   const [ativo, setAtivo] = useState(preventivaToEdit?.ativo !== false);
   
-  // ✅ Estado das fotos
   const [fotos, setFotos] = useState<string[]>(preventivaToEdit?.fotos || []);
+  const [uploadingFoto, setUploadingFoto] = useState(false);
   
   const [submitting, setSubmitting] = useState(false);
 
-  const selectedVeiculo = useMemo(() => veiculos.find((v) => v.id === veiculoId), [veiculos, veiculoId]);
+  const selectedVeiculo = useMemo(
+    () => veiculos.find((v) => v.id === veiculoId), 
+    [veiculos, veiculoId]
+  );
 
-  // Cálculos automáticos para mostrar a projeção
   const baseKm = Number(ultimoKm) || selectedVeiculo?.quilometragem || 0;
   const baseHorimetro = Number(ultimoHorimetro) || selectedVeiculo?.horimetro_atual || 0;
   
@@ -112,6 +105,42 @@ export default function PreventivaModal({
 
   const removerFoto = (index: number) => {
     setFotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // ✅ UPLOAD TRADICIONAL (Para a API que manda pro Cloudinary)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingFoto(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Chama a sua API (que já configuramos para usar o Cloudinary)
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.url) {
+          setFotos(prev => [...prev, data.url]);
+        } else {
+          toast.error(data.error || `Falha no upload de ${file.name}`);
+        }
+      }
+    } catch (err) {
+      toast.error('Erro de conexão ao enviar a imagem.');
+    } finally {
+      setUploadingFoto(false);
+      // Limpa o input para permitir selecionar a mesma foto novamente
+      e.target.value = '';
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -157,7 +186,7 @@ export default function PreventivaModal({
         antecedencia_km: antecedenciaKm ? parseInt(antecedenciaKm, 10) : 1500,
         antecedencia_horas: antecedenciaHoras ? parseFloat(antecedenciaHoras) : 50,
         ativo,
-        fotos // ✅ Envia o array de fotos para o banco de dados
+        fotos
       };
 
       const url = isEditing ? `/api/preventivas/${preventivaToEdit.id}` : '/api/preventivas';
@@ -207,7 +236,7 @@ export default function PreventivaModal({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 transition cursor-pointer">
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-800 transition cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -240,11 +269,15 @@ export default function PreventivaModal({
                 <div className="bg-black/60 border border-zinc-800 rounded-xl p-3 flex justify-between items-center text-xs font-mono">
                   <div>
                     <span className="text-[9px] text-zinc-500 block uppercase font-bold">KM Atual do Veículo</span>
-                    <span className="text-orange-400 font-black">{selectedVeiculo.quilometragem ? `${selectedVeiculo.quilometragem.toLocaleString('pt-BR')} KM` : 'Não registrado'}</span>
+                    <span className="text-orange-400 font-black">
+                      {selectedVeiculo.quilometragem ? `${selectedVeiculo.quilometragem.toLocaleString('pt-BR')} KM` : 'Não registrado'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[9px] text-zinc-500 block uppercase font-bold">Horímetro Atual</span>
-                    <span className="text-amber-400 font-black">{selectedVeiculo.horimetro_atual ? `${selectedVeiculo.horimetro_atual} h` : 'Não registrado'}</span>
+                    <span className="text-amber-400 font-black">
+                      {selectedVeiculo.horimetro_atual ? `${selectedVeiculo.horimetro_atual} h` : 'Não registrado'}
+                    </span>
                   </div>
                 </div>
               )}
@@ -258,7 +291,9 @@ export default function PreventivaModal({
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5 md:col-span-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Nome do Plano *</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
+                  Nome do Plano *
+                </label>
                 <input
                   type="text"
                   placeholder="Ex: Troca de Óleo Motor 15W40 + Filtros"
@@ -270,7 +305,9 @@ export default function PreventivaModal({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Serviço Sugerido</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
+                  Serviço Sugerido
+                </label>
                 <input
                   type="text"
                   list="sugestoes-servicos"
@@ -285,7 +322,9 @@ export default function PreventivaModal({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Componente Principal</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
+                  Componente Principal
+                </label>
                 <select
                   value={componente}
                   onChange={(e) => setComponente(e.target.value)}
@@ -314,7 +353,9 @@ export default function PreventivaModal({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">A cada quantos KM?</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
+                  A cada quantos KM?
+                </label>
                 <input
                   type="number"
                   placeholder="Ex: 10000"
@@ -325,7 +366,9 @@ export default function PreventivaModal({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">A cada quantas Horas?</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
+                  A cada quantas Horas?
+                </label>
                 <input
                   type="number"
                   step="0.1"
@@ -337,7 +380,9 @@ export default function PreventivaModal({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">A cada quantos Dias?</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
+                  A cada quantos Dias?
+                </label>
                 <input
                   type="number"
                   placeholder="Ex: 180"
@@ -348,7 +393,6 @@ export default function PreventivaModal({
               </div>
             </div>
 
-            {/* Painel de Projeção Inteligente */}
             {(projecaoKm || projecaoHoras) && (
               <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-wider">
@@ -362,14 +406,11 @@ export default function PreventivaModal({
                     <span>Próximo Horímetro: <strong className="text-white">{projecaoHoras.toFixed(1)} h</strong></span>
                   )}
                 </div>
-                <p className="text-[9px] text-emerald-500/70 uppercase font-bold mt-1">
-                  * A data limite será recalculada com base no histórico de rodagem.
-                </p>
               </div>
             )}
           </div>
 
-          {/* SEÇÃO 4: FOTO E OBSERVAÇÕES */}
+          {/* SEÇÃO 4: FOTOS E OBSERVAÇÕES */}
           <div className="bg-zinc-900/40 border border-zinc-800/80 p-5 rounded-2xl space-y-4">
             <h3 className="text-xs font-black uppercase text-orange-500 tracking-wider flex items-center gap-2">
               <Camera className="w-4 h-4" /> 4. Anexos e Observações
@@ -381,7 +422,6 @@ export default function PreventivaModal({
                   Fotos de Referência (Opcional)
                 </label>
                 
-                {/* ✅ GRADE DE FOTOS */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {fotos.map((url, idx) => (
                     <div key={idx} className="relative aspect-square bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden group">
@@ -389,38 +429,35 @@ export default function PreventivaModal({
                       <button
                         type="button"
                         onClick={() => removerFoto(idx)}
-                        className="absolute top-1 right-1 p-1.5 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 right-1 p-1.5 bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       >
                         <X size={14} />
                       </button>
                     </div>
                   ))}
                   
-                  {/* ✅ WIDGET DO CLOUDINARY (O as any no topo do arquivo resolveu o TS) */}
-                  <CldUploadWidget 
-                    uploadPreset="vehlox_preset"
-                    cloudName="krdgekwz" 
-                    options={{ multiple: true, maxFiles: 5 }}
-                    onSuccess={(result: any) => {
-                      if (result?.info?.secure_url) {
-                        setFotos(prev => [...prev, result.info.secure_url]);
-                        toast.success('Foto anexada com sucesso!');
-                      }
-                    }}
-                  >
-                    {({ open }: any) => {
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => open()}
-                          className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-zinc-800 hover:border-orange-500/50 bg-zinc-950 rounded-xl cursor-pointer transition-colors"
-                        >
-                          <Camera className="w-6 h-6 text-zinc-600 mb-1" />
-                          <span className="text-[9px] font-black uppercase text-zinc-500 text-center px-2">Anexar Fotos</span>
-                        </button>
-                      );
-                    }}
-                  </CldUploadWidget>
+                  {/* ✅ INPUT TRADICIONAL (Oculto) */}
+                  <label className={`flex flex-col items-center justify-center aspect-square border-2 border-dashed rounded-xl cursor-pointer transition-colors ${uploadingFoto ? 'border-orange-500/50 bg-orange-500/10' : 'border-zinc-800 hover:border-orange-500/50 bg-zinc-950'}`}>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      multiple 
+                      className="hidden" 
+                      onChange={handleFileUpload} 
+                      disabled={uploadingFoto}
+                    />
+                    {uploadingFoto ? (
+                      <>
+                        <Loader2 className="w-6 h-6 text-orange-500 animate-spin mb-1" />
+                        <span className="text-[9px] font-black uppercase text-orange-500 text-center px-2">Enviando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-6 h-6 text-zinc-600 mb-1" />
+                        <span className="text-[9px] font-black uppercase text-zinc-500 text-center px-2">Anexar Fotos</span>
+                      </>
+                    )}
+                  </label>
                 </div>
               </div>
 
@@ -430,54 +467,28 @@ export default function PreventivaModal({
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Detalhes do procedimento, marcas de peças, torques..."
+                  placeholder="Detalhes do procedimento..."
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs text-white uppercase focus:border-orange-500 focus:outline-none resize-none"
                 />
               </div>
             </div>
-
-            {/* Alertas e Ativo */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">
-                  Avisar com antecedência (KM)
-                </label>
-                <input
-                  type="number"
-                  value={antecedenciaKm}
-                  onChange={(e) => setAntecedenciaKm(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-xs font-mono text-white focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-3 sm:justify-end h-full">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-zinc-300 uppercase">
-                  <input
-                    type="checkbox"
-                    checked={ativo}
-                    onChange={(e) => setAtivo(e.target.checked)}
-                    className="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-orange-600 focus:ring-orange-500"
-                  />
-                  Plano Ativo
-                </label>
-              </div>
-            </div>
           </div>
 
-          {/* Ações */}
+          {/* BOTÕES */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
             <button
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-5 py-3 rounded-xl border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900 text-xs font-black uppercase tracking-widest transition cursor-pointer"
+              className="px-5 py-3 rounded-xl border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900 text-xs font-black uppercase tracking-widest transition cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || uploadingFoto}
               className="px-6 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black uppercase tracking-widest transition cursor-pointer flex items-center gap-2 shadow-lg shadow-orange-950/20 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
