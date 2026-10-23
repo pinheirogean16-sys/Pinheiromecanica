@@ -5,12 +5,12 @@ import { createAuditLog } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { criarClienteAsaas, criarAssinaturaAsaas } from '@/lib/asaas';
+import { criarClienteAsaas } from '@/lib/asaas';
 
 // ============================================================
 // CONFIGURAÇÃO DO TRIAL
 // ============================================================
-const DIAS_TRIAL = 14;
+const DIAS_TRIAL = Number(process.env.TRIAL_DIAS ?? 14);
 
 function calcularFimTrial(): Date {
   return new Date(Date.now() + DIAS_TRIAL * 24 * 60 * 60 * 1000);
@@ -169,54 +169,29 @@ export async function POST(request: Request) {
     });
 
     // ============================================================
-    // INTEGRAÇÃO ASAAS (fora da transação)
+    // INTEGRAÇÃO ASAAS — apenas o CUSTOMER (sem assinatura)
+    // A assinatura é criada no master-admin quando o plano é convertido.
     // ============================================================
     try {
-      // 1. Cria o cliente no Asaas
       const customer = await criarClienteAsaas({
         name: empresa_nome,
-        cpfCnpj: cnpjLimpo || '', // Asaas aceita string vazia? Melhor enviar apenas se existir
+        ...(cnpjLimpo ? { cpfCnpj: cnpjLimpo } : {}), // ✅ Só envia se existir
         email,
         externalReference: result.empresa.id,
       });
 
-      // 2. Salva o customer_id no banco
       await prisma.empresa.update({
         where: { id: result.empresa.id },
         data: { asaas_customer_id: customer.id },
       });
 
-      // 3. Cria a assinatura (7 dias para o primeiro vencimento)
-      const proximoVencimento = new Date();
-      proximoVencimento.setDate(proximoVencimento.getDate() + 7);
-      const dataVencimento = proximoVencimento.toISOString().split('T')[0];
-
-      const subscription = await criarAssinaturaAsaas({
-        customer: customer.id,
-        billingType: 'BOLETO',
-        value: 149.90,
-        nextDueDate: dataVencimento,
-        cycle: 'MONTHLY',
-        description: `Assinatura Plano PRO - ${empresa_nome}`,
-      });
-
-      // 4. Salva o subscription_id e status local
-      await prisma.empresa.update({
-        where: { id: result.empresa.id },
-        data: {
-          asaas_subscription_id: subscription.id,
-          asaas_status: 'ACTIVE',
-        },
-      });
-
       log(
         'INFO',
         'ASAAS',
-        'Cliente e assinatura criados no Asaas',
+        'Customer criado no Asaas',
         {
           empresaId: result.empresa.id,
           customerId: customer.id,
-          subscriptionId: subscription.id,
         },
         'SISTEMA'
       );
@@ -225,7 +200,7 @@ export async function POST(request: Request) {
       log(
         'ERROR',
         'ASAAS',
-        'Falha ao criar cliente/assinatura no Asaas',
+        'Falha ao criar customer no Asaas',
         {
           empresaId: result.empresa.id,
           error: asaasError?.message || String(asaasError),
