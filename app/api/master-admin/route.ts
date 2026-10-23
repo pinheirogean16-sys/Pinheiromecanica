@@ -5,7 +5,7 @@ import { createAuditLog } from '@/lib/audit';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { z } from 'zod';
-import { criarAssinaturaAsaas } from '@/lib/asaas';
+import { criarAssinaturaAsaas, atualizarClienteAsaas } from '@/lib/asaas'; // ✅ Importação atualizada
 
 // ============================================================
 // CONSTANTES
@@ -204,6 +204,15 @@ export async function PATCH(request: Request) {
       empresaAntes.asaas_customer_id
     ) {
       try {
+        // ✅ NOVO: Garante que a empresa tenha CNPJ e atualiza o cliente no Asaas
+        if (!empresaAntes.cnpj) {
+          throw new Error('A empresa precisa de um CNPJ cadastrado para gerar a assinatura.');
+        }
+
+        await atualizarClienteAsaas(empresaAntes.asaas_customer_id, {
+          cpfCnpj: empresaAntes.cnpj.replace(/\D/g, ''),
+        });
+
         // ✅ nextDueDate = fim do trial se ainda válido; senão, hoje
         const hoje = new Date();
         const fimTrial = empresaAntes.trial_ends_at
