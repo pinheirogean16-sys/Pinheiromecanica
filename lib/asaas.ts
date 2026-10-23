@@ -20,13 +20,11 @@ async function asaasFetch<T>(endpoint: string, options: RequestInit = {}): Promi
   const data = await res.json();
 
   if (!res.ok) {
-    // Extrai a mensagem de erro real do Asaas (pode vir em data.errors[0].description)
     const asaasError =
       data?.errors?.[0]?.description ||
       data?.message ||
       `Erro ${res.status} na API do Asaas`;
 
-    // Lança um erro com contexto suficiente para debug nos logs
     throw new Error(`[Asaas ${res.status}] ${asaasError}`);
   }
 
@@ -44,6 +42,17 @@ export async function criarClienteAsaas(params: {
 }) {
   return asaasFetch<{ id: string }>('/customers', {
     method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+// ✅ NOVO: Atualizar cliente (necessário para injetar o CNPJ antes da assinatura)
+export async function atualizarClienteAsaas(
+  customerId: string,
+  params: { cpfCnpj?: string; name?: string; email?: string }
+) {
+  return asaasFetch<{ id: string }>(`/customers/${customerId}`, {
+    method: 'PUT',
     body: JSON.stringify(params),
   });
 }
