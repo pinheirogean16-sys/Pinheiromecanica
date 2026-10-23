@@ -156,16 +156,26 @@ model ConfiguracaoEmpresa {
   conta                String?
 }
 
+// ✅ MODELO EMPRESA CORRIGIDO PARA INTEGRAÇÃO COM ASAAS
 model Empresa {
-  id            String    @id
-  nome          String
-  cnpj          String?   @unique
-  status        String    @default("ATIVO")
-  plano         String    @default("TRIAL")
-  trial_ends_at DateTime?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  User          User[]
+  id                     String    @id
+  nome                   String
+  cnpj                   String?   @unique
+  status                 String    @default("ATIVO") // ATIVO, BLOQUEADO, CANCELADO
+  plano                  String    @default("TRIAL") // TRIAL, BASICO, PRO
+  trial_ends_at          DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+  
+  // 🔽 NOVOS CAMPOS PARA O ASAAS
+  asaas_customer_id      String?   @unique // ID do cliente no Asaas (cus_...)
+  asaas_subscription_id  String?   @unique // ID da assinatura no Asaas (sub_...)
+  asaas_status           String?   // Status local sincronizado (ACTIVE, OVERDUE, CANCELED, etc.)
+  
+  User                   User[]
+
+  @@index([asaas_customer_id])
+  @@index([asaas_subscription_id])
 }
 
 model EventoAgenda {
