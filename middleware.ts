@@ -6,8 +6,8 @@ const PUBLIC_ROUTES = [
   '/register',
   '/recuperar-senha',
   '/redefinir-senha',
-  '/termos',          // ✅ NOVO: Página pública de Termos
-  '/privacidade',     // ✅ NOVO: Página pública de Privacidade
+  '/termos',
+  '/privacidade',
   '/portal',
   '/api/auth/login',
   '/api/auth/recuperar-senha',
@@ -15,6 +15,7 @@ const PUBLIC_ROUTES = [
   '/api/register',
   '/api/auth/refresh',
   '/api/portal',
+  '/api/webhooks/asaas', // ✅ NOVO: webhook do Asaas (segurança via token no header)
   '/manifest.json',
   '/favicon.ico',
   '/robots.txt',
@@ -35,8 +36,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. ✅ VERIFICAÇÃO DA RAIZ (Landing Page) E ROTAS PÚBLICAS
-  // Se for a raiz '/' ou alguma rota da lista, deixa passar!
+  // 2. ✅ VERIFICAÇÃO DA RAIZ E ROTAS PÚBLICAS
   const isRoot = pathname === '/';
   const isPublicRoute = PUBLIC_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + '/')
@@ -46,7 +46,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Valida o JWT de verdade para as rotas PRIVADAS (Dashboard, Clientes, etc.)
+  // 3. Valida o JWT para as rotas PRIVADAS
   const token = request.cookies.get('auth-token')?.value;
 
   if (!token) {
@@ -62,7 +62,7 @@ export async function middleware(request: NextRequest) {
   // 4. 🔒 PROTEÇÃO DO PAINEL SUPER ADMIN
   if (pathname.startsWith('/master-admin') || pathname.startsWith('/api/master-admin')) {
     const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
-    
+
     if (!superAdminEmail || payload.email !== superAdminEmail) {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ error: 'Acesso negado. Área restrita.' }, { status: 403 });
