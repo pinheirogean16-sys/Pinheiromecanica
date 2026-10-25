@@ -3,6 +3,45 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { apiError } from '@/lib/api-error';
 import { log } from '@/lib/logger';
+import { getPlanLimits } from '@/lib/plan-limits'; // ✅ UPGRADE
+
+/**
+ * ✅ UPGRADE: verifica se o plano da empresa libera o Portal do Cliente.
+ * Retorna um NextResponse 402 se bloqueado, ou null se liberado.
+ */
+async function checarPlanoPortal(empresa_id: string) {
+  // ⚠️ Ajuste aqui se o model/campo do plano tiver outro nome no seu schema.
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresa_id },
+    select: { plano: true },
+  });
+
+  const planoAtual = empresa?.plano ?? 'BASICO';
+  const limites = getPlanLimits(planoAtual);
+
+  if (!limites.portalCliente) {
+    log(
+      'WARN',
+      'PORTAL_PUBLICO',
+      'Acesso ao Portal do Cliente bloqueado pelo plano',
+      { empresa_id, plano: planoAtual },
+      'SISTEMA'
+    );
+
+    return NextResponse.json(
+      {
+        error: 'UPGRADE_REQUIRED',
+        code: 'UPGRADE_REQUIRED',
+        message: 'O Portal do Cliente está disponível apenas no plano PRO.',
+        planoAtual,
+        feature: 'portal_cliente',
+      },
+      { status: 402 }
+    );
+  }
+
+  return null;
+}
 
 export async function GET(
   request: Request,
@@ -30,6 +69,10 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // ✅ UPGRADE: bloqueia antes das consultas pesadas
+    const bloqueio = await checarPlanoPortal(preventiva.empresa_id);
+    if (bloqueio) return bloqueio;
 
     const empresa = await prisma.configuracaoEmpresa.findUnique({
       where: { empresa_id: preventiva.empresa_id },
@@ -142,6 +185,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     });
 
     if (!preventiva) return NextResponse.json({ error: 'Link inválido ou expirado.' }, { status: 404 });
+
+    // ✅ UPGRADE: bloqueia a assinatura via API mesmo se o front estiver burlado
+    const bloqueio = await checarPlanoPortal(preventiva.empresa_id);
+    if (bloqueio) return bloqueio;
+
     if (preventiva.assinatura_cliente) return NextResponse.json({ error: 'Este documento já foi assinado.' }, { status: 400 });
 
     await prisma.preventiva.update({
