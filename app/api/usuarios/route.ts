@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { createAuditLog } from '@/lib/audit';
+import { checkUserLimit } from '@/lib/check-plan-limit';
 
 // ============================================================
 // SCHEMAS
@@ -27,7 +28,6 @@ const userSchema = z.object({
   comissao: z.coerce.number().nonnegative().max(100, 'Comissão não pode exceder 100%').optional().default(0),
 });
 
-// ✅ CORRIGIDO: Blindagem do Zod para nulos/zeros e limite máximo de 1000
 const listarUsuariosQuerySchema = z.object({
   q: z.string().nullish().transform((v) => v?.slice(0, 100) || ''),
   page: z.preprocess(
@@ -36,7 +36,7 @@ const listarUsuariosQuerySchema = z.object({
   ),
   limit: z.preprocess(
     (val) => (val === '' || val === null || val === undefined || val === 0 ? 10 : val),
-    z.coerce.number().int().min(1).max(1000).default(10) // Aumentado para aceitar limit=1000
+    z.coerce.number().int().min(1).max(1000).default(10)
   ),
 });
 
@@ -53,8 +53,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    
-    // ✅ CORRIGIDO: `|| undefined` previne o erro "Expected string, received null"
+
     const parsed = listarUsuariosQuerySchema.parse({
       q: searchParams.get('q') || undefined,
       page: searchParams.get('page') || undefined,
@@ -118,9 +117,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
     }
 
+    // ✅ NOVO: bloqueio por limite de plano (Básico = 3 usuários)
+    const limite = await checkUserLimit(currentUser.empresa_id);
+    if (!limite.ok) {
+      log(
+        'WARN',
+        'USUARIOS',
+        'Limite de usuários do plano atingido',
+        {
+          empresa_id: currentUser.empresa_id,
+          plano: limite.planoAtual,
+          limite: limite.limite,
+          total: limite.total,
+        },
+        currentUser.name
+      );
+
+      return NextResponse.json(
+        {
+          error: 'UPGRADE_REQUIRED',
+          code: 'UPGRADE_REQUIRED',
+          message: limite.mensagem,
+          planoAtual: limite.planoAtual,
+          limite: limite.limite,
+          total: limite.total,
+        },
+        { status: 402 }
+      );
+    }
+
     const body = userSchema.parse(await request.json());
 
-    // ✅ NOVO: previne escalada de privilégio — só ADMIN pode criar ADMIN
+    // Previne escalada de privilégio — só ADMIN pode criar ADMIN
     if (body.role === 'ADMIN' && currentUser.role !== 'ADMIN') {
       log(
         'WARN',
