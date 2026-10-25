@@ -1,5 +1,6 @@
 'use client';
 
+import '@/styles/print.css';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Printer, ChevronLeft, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
@@ -8,81 +9,18 @@ import { formatHoras } from '@/lib/utils';
 import { BRANDING } from '@/lib/branding';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
+import {
+  formatCurrency,
+  formatDateTime,
+  formatCpfCnpj,
+  formatCNPJ,
+  numeroPorExtenso,
+  waitForPrint,
+} from '@/lib/print';
 
 // ============================================================
-// HELPERS
+// HELPERS LOCAIS
 // ============================================================
-function formatCurrency(val: number | null | undefined): string {
-  return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatDateTimeSafe(dateStr: string | null | undefined): string {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleString('pt-BR');
-}
-
-function numeroPorExtenso(valor: number): string {
-  const unidades = ['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove'];
-  const dezenas = ['','dez','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
-  const especiais = ['dez','onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
-  const centenas = ['','cento','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
-
-  function converteGrupo(n: number): string {
-    if (n === 0) return '';
-    let resultado = '';
-    const c = Math.floor(n / 100);
-    const resto = n % 100;
-    if (c > 0) {
-      if (c === 1 && resto === 0) resultado += 'cem';
-      else resultado += centenas[c];
-    }
-    if (resto > 0) {
-      if (resultado) resultado += ' e ';
-      if (resto < 10) resultado += unidades[resto];
-      else if (resto < 20) resultado += especiais[resto - 10];
-      else {
-        const d = Math.floor(resto / 10);
-        const u = resto % 10;
-        resultado += dezenas[d];
-        if (u > 0) resultado += ' e ' + unidades[u];
-      }
-    }
-    return resultado;
-  }
-
-  if (valor === 0) return 'zero reais';
-
-  const reais = Math.floor(valor);
-  const centavos = Math.round((valor - reais) * 100);
-
-  let texto = '';
-  if (reais === 0) {
-    texto = '';
-  } else if (reais < 1000) {
-    texto = converteGrupo(reais);
-  } else if (reais < 1000000) {
-    const mil = Math.floor(reais / 1000);
-    const resto = reais % 1000;
-    texto = converteGrupo(mil) + ' mil';
-    if (resto > 0) texto += ' e ' + converteGrupo(resto);
-  } else {
-    const milhao = Math.floor(reais / 1000000);
-    const resto = reais % 1000000;
-    texto = converteGrupo(milhao) + (milhao === 1 ? ' milhão' : ' milhões');
-    if (resto > 0) texto += ' e ' + converteGrupo(resto);
-  }
-
-  texto += reais === 1 ? ' real' : ' reais';
-
-  if (centavos > 0) {
-    texto += ' e ' + converteGrupo(centavos) + (centavos === 1 ? ' centavo' : ' centavos');
-  }
-
-  return texto;
-}
-
 function extrairObservacoes(obs: any): string | null {
   if (!obs || typeof obs !== 'string') return null;
   const trimmed = obs.trim();
@@ -97,20 +35,21 @@ function extrairObservacoes(obs: any): string | null {
 export default function ImprimirOSPage() {
   const params = useParams();
   const id = params?.id;
-  
+
   const [os, setOs] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [company, setCompany] = useState<any>(null);
+  const [printing, setPrinting] = useState(false);
+  // Captura a data/hora uma única vez para o rodapé "emitido em"
+  const [emitidoEm] = useState(() => new Date());
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(false);
     try {
       const compData = await apiFetch<any>('/api/configuracoes/empresa/publico', { signal }).catch(() => null);
-      if (compData && Object.keys(compData).length > 0) {
-        setCompany(compData);
-      }
+      if (compData && Object.keys(compData).length > 0) setCompany(compData);
 
       if (!id) throw new Error('ID inválido');
 
@@ -130,6 +69,18 @@ export default function ImprimirOSPage() {
     fetchData(controller.signal);
     return () => controller.abort();
   }, [fetchData]);
+
+  // ✅ Aguarda imagens/fontes antes de imprimir
+  const handlePrint = useCallback(async () => {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      await waitForPrint();
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
+  }, [printing]);
 
   if (loading) {
     return (
@@ -169,7 +120,7 @@ export default function ImprimirOSPage() {
   const valorTotal = os.valor_total !== undefined ? os.valor_total : (totalServicos + totalPecas - desconto);
 
   const dataFormatada = new Date().toLocaleDateString('pt-BR', {
-    day: 'numeric', month: 'long', year: 'numeric'
+    day: 'numeric', month: 'long', year: 'numeric',
   }).toUpperCase();
 
   const tipoOSLabel = os.tipoOS === 'CAMPO' || os.tipo_atendimento === 'CAMPO'
@@ -177,34 +128,27 @@ export default function ImprimirOSPage() {
     : 'OFICINA';
 
   const observacoesLimpa = extrairObservacoes(os.observacoes);
+  const numeroOS = os.numero ? os.numero.toString().padStart(6, '0') : 'S/N';
 
   return (
     <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-sans text-zinc-900">
-      <style jsx global>{`
-        @media print {
-          @page { size: A4 portrait; margin: 10mm 12mm; }
-          html, body { background: white !important; color: black !important; font-size: 10pt; }
-          .no-print { display: none !important; }
-          .print-container { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
-          .print-border { border: 1px solid #000 !important; }
-          table { page-break-inside: auto; }
-          tr { page-break-inside: avoid; }
-          thead { display: table-header-group; }
-          .avoid-break { page-break-inside: avoid; }
-        }
-      `}</style>
-
-      <div className="max-w-4xl mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl">
+      {/* Barra de ações — some na impressão */}
+      <div className="max-w-4xl mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print print:hidden shadow-xl">
         <Link href={`/os/${id}`} className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-[10px] font-black uppercase tracking-widest">
           <ChevronLeft size={16} /> Voltar para OS
         </Link>
-        <button onClick={() => window.print()} className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition shadow-lg shadow-orange-900/40">
-          <Printer size={16} /> Imprimir OS
+        <button
+          onClick={handlePrint}
+          disabled={printing}
+          className="px-8 py-3 bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition shadow-lg shadow-orange-900/40"
+        >
+          {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+          {printing ? 'Preparando...' : 'Imprimir OS'}
         </button>
       </div>
 
       <div className="max-w-4xl mx-auto bg-white shadow-2xl p-8 print:shadow-none print:p-0 print-container">
-        
+
         {/* CABEÇALHO */}
         <div className="flex items-center gap-6 border-b-4 border-black pb-6 mb-6 avoid-break">
           <div className="w-32 h-32 flex-shrink-0 flex items-center justify-center">
@@ -222,7 +166,10 @@ export default function ImprimirOSPage() {
               <p className="text-sm font-bold uppercase text-zinc-600 tracking-wider">{company.nome_fantasia}</p>
             )}
             <div className="text-xs space-y-0.5 pt-1">
-              <p><span className="font-bold">CNPJ:</span> {company?.cnpj || '—'} | <span className="font-bold">IE:</span> {company?.inscricao_estadual || 'ISENTO'}</p>
+              <p>
+                <span className="font-bold">CNPJ:</span> {formatCNPJ(company?.cnpj)} |{' '}
+                <span className="font-bold">IE:</span> {company?.inscricao_estadual || 'ISENTO'}
+              </p>
               <p>{company?.endereco || 'Endereço não configurado'}{company?.numero ? `, ${company.numero}` : ''} {company?.cidade ? `- ${company.cidade}` : ''}{company?.uf ? `/${company.uf}` : ''}</p>
               <p><span className="font-bold">TEL:</span> {company?.telefone || '—'} | <span className="font-bold">EMAIL:</span> {company?.email || '—'}</p>
             </div>
@@ -237,7 +184,7 @@ export default function ImprimirOSPage() {
           </div>
           <div className="w-48 p-3 text-center flex flex-col justify-center">
             <p className="text-[10px] font-bold uppercase text-zinc-600">NÚMERO</p>
-            <p className="text-3xl font-black leading-none mt-1">#{os.numero ? os.numero.toString().padStart(6, '0') : '000000'}</p>
+            <p className="text-3xl font-black leading-none mt-1">#{numeroOS}</p>
             <p className="text-[10px] font-bold uppercase text-zinc-600 mt-2">STATUS: <span className="text-black">{os.status?.replace(/_/g, ' ') || '—'}</span></p>
           </div>
         </div>
@@ -248,7 +195,7 @@ export default function ImprimirOSPage() {
           <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
             <div className="space-y-1 min-w-0">
               <p><span className="font-bold">NOME:</span> {os.cliente?.nome || '—'}</p>
-              <p><span className="font-bold">CPF/CNPJ:</span> {os.cliente?.cpf_cnpj || '—'}</p>
+              <p><span className="font-bold">CPF/CNPJ:</span> {formatCpfCnpj(os.cliente?.cpf_cnpj)}</p>
               <p><span className="font-bold">TELEFONE:</span> {os.cliente?.telefone || '—'}</p>
             </div>
             <div className="space-y-1 min-w-0">
@@ -354,12 +301,14 @@ export default function ImprimirOSPage() {
         </div>
 
         {/* Valor por extenso */}
-        <div className="border-2 border-black p-2 mb-4 avoid-break"><p className="text-xs"><span className="font-bold uppercase">VALOR TOTAL POR EXTENSO:</span> <span className="italic uppercase">{numeroPorExtenso(valorTotal)}</span></p></div>
+        <div className="border-2 border-black p-2 mb-4 avoid-break">
+          <p className="text-xs"><span className="font-bold uppercase">VALOR TOTAL POR EXTENSO:</span> <span className="italic uppercase">{numeroPorExtenso(valorTotal)}</span></p>
+        </div>
 
         {/* DATAS E RESPONSÁVEIS */}
         <div className="grid grid-cols-3 border-2 border-black mb-4 divide-x-2 divide-black text-xs avoid-break">
           <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">MECÂNICO RESPONSÁVEL</p><p className="font-black uppercase truncate">{os.mecanico?.name || 'NÃO ESPECIFICADO'}</p></div>
-          <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">DATA DE ABERTURA</p><p className="font-black">{formatDateTimeSafe(os.data_abertura || os.created_at)}</p></div>
+          <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">DATA DE ABERTURA</p><p className="font-black">{formatDateTime(os.data_abertura || os.created_at)}</p></div>
           <div className="p-3"><p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">FORMA DE PAGAMENTO</p><p className="font-black uppercase truncate">{os.forma_pagamento || 'A RECEBER / EM ABERTO'}{os.numero_parcelas > 1 ? ` (${os.numero_parcelas}x)` : ''}</p></div>
         </div>
 
@@ -368,7 +317,7 @@ export default function ImprimirOSPage() {
           <div className="border-2 border-black p-3 mb-4 text-[10px] avoid-break">
             <p className="font-bold uppercase text-zinc-500 mb-1">DOCUMENTO ASSINADO DIGITALMENTE</p>
             <p className="break-all font-mono">HASH SHA-256: {os.assinatura_hash}</p>
-            {os.assinatura_timestamp && <p className="mt-1"><span className="font-bold">Data da assinatura:</span> {formatDateTimeSafe(os.assinatura_timestamp)}</p>}
+            {os.assinatura_timestamp && <p className="mt-1"><span className="font-bold">Data da assinatura:</span> {formatDateTime(os.assinatura_timestamp)}</p>}
           </div>
         )}
 
@@ -383,6 +332,9 @@ export default function ImprimirOSPage() {
           <p className="text-[9px] uppercase font-bold text-zinc-500">ESTE DOCUMENTO É UMA REPRESENTAÇÃO DOS SERVIÇOS EXECUTADOS E PEÇAS APLICADAS, NÃO TENDO VALOR FISCAL.</p>
           {company?.rodape_personalizado && <p className="text-[10px] font-bold text-zinc-700 mt-2 italic whitespace-pre-wrap">{company.rodape_personalizado}</p>}
           <p className="text-[10px] uppercase font-black text-zinc-800 mt-3">{company?.cidade || 'CIDADE'}, {dataFormatada}</p>
+          <p className="text-[9px] font-bold text-zinc-500 mt-1">
+            Emitido em {emitidoEm.toLocaleString('pt-BR')}
+          </p>
           <p className="text-[9px] font-bold text-zinc-400 mt-1">{BRANDING.name} — {BRANDING.slogan}</p>
         </div>
 
