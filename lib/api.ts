@@ -6,6 +6,7 @@
 
 import { toast } from 'sonner';
 import { requestManager } from './request-manager';
+import { showUpgradeModal } from '@/components/UpgradeModal'; // ✅ UPGRADE
 
 export class ApiError extends Error {
   status: number;
@@ -48,6 +49,11 @@ if (typeof window !== 'undefined') {
   (window as any).__api_telemetry = apiTelemetry;
 }
 
+// ✅ UPGRADE: extrai o payload do erro independente de onde o requestManager guardou
+function extractErrorPayload(err: any): any {
+  return err?.info ?? err?.data ?? err?.body ?? null;
+}
+
 export async function apiFetch<T = any>(
   path: string,
   options: ApiFetchOptions = {}
@@ -70,7 +76,8 @@ export async function apiFetch<T = any>(
     return result;
   } catch (err: any) {
     const status = err.status || 0;
-    
+    const payload = extractErrorPayload(err);
+
     // Append error trace log
     apiTelemetry.lastRequestsLog.unshift({
       path,
@@ -82,9 +89,25 @@ export async function apiFetch<T = any>(
       apiTelemetry.lastRequestsLog.pop();
     }
 
+    // ✅ UPGRADE: detecta 402 UPGRADE_REQUIRED e dispara o modal global
+    // Não mostra o modal se a chamada marcou silentError (ex.: polling em background)
+    if (
+      status === 402 &&
+      payload?.code === 'UPGRADE_REQUIRED' &&
+      !options.silentError
+    ) {
+      showUpgradeModal({
+        message: payload?.message,
+        planoAtual: payload?.planoAtual,
+        limite: payload?.limite,
+        total: payload?.total,
+        feature: payload?.feature,
+      });
+    }
+
     if (err instanceof Error) {
       throw err;
     }
-    throw new ApiError(err.message || 'Erro de rede ou API', status, err.statusText || 'Error', err.data);
+    throw new ApiError(err.message || 'Erro de rede ou API', status, err.statusText || 'Error', payload);
   }
 }
