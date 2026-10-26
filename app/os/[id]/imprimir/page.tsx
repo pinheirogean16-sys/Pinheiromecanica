@@ -72,7 +72,7 @@ export default function ImprimirOSPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-10">
+      <div className="min-h-screen bg-white flex items-center justify-center p-10 print:hidden">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 text-zinc-900 animate-spin" />
           <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">Carregando...</p>
@@ -83,7 +83,7 @@ export default function ImprimirOSPage() {
 
   if (error || !os) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center text-zinc-900 p-10 gap-6">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center text-zinc-900 p-10 gap-6 print:hidden">
         <AlertTriangle className="w-12 h-12 text-red-500" />
         <h1 className="text-xl font-black uppercase text-center">OS não encontrada</h1>
         <div className="flex gap-4 mt-2">
@@ -105,18 +105,51 @@ export default function ImprimirOSPage() {
   const numeroOS = os.numero ? os.numero.toString().padStart(6, '0') : 'S/N';
 
   return (
-    <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-sans text-zinc-800 print-container">
+    <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 print:min-h-0 font-sans text-zinc-800">
       <style jsx global>{`
         @media print {
-          .no-print { display: none !important; }
-          @page { margin: 15mm 12mm; }
-          body { background: white !important; font-size: 10pt; }
-          .print-container { box-shadow: none !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+          /* 1. Reseta o fundo global para branco e remove margens da tela */
+          html, body {
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            min-height: 0 !important;
+          }
+
+          /* 2. Esconde a barra lateral, topo, botões e qualquer menu do sistema */
+          header, aside, nav, [role="navigation"], .no-print, button {
+            display: none !important;
+          }
+
+          /* 3. Isola o documento de impressão. Ele assume o topo da página e cobre o fundo */
+          .print-container {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            box-shadow: none !important;
+            border: none !important;
+            z-index: 9999;
+          }
+
+          /* 4. Configuração da folha A4 */
+          @page {
+            size: A4 portrait;
+            margin: 15mm 12mm;
+          }
+
+          /* 5. Força a quebra correta */
+          .avoid-break { page-break-inside: avoid; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
         }
       `}</style>
 
       {/* Barra de Ações - Escondida na impressão */}
-      <div className="max-w-[210mm] mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl">
+      <div className="max-w-[210mm] mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl print:hidden">
         <Link href={`/os/${id}`} className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-[10px] font-black uppercase tracking-widest">
           <ChevronLeft size={16} /> Voltar
         </Link>
@@ -210,7 +243,7 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* SERVIÇOS - Classe 'breakable' em vez de 'avoid-break' */}
+        {/* SERVIÇOS */}
         <div className="mb-8 breakable">
           <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Serviços Realizados</h3>
           <table className="w-full text-left text-xs border-collapse">
@@ -243,7 +276,7 @@ export default function ImprimirOSPage() {
           </table>
         </div>
 
-        {/* PEÇAS - Classe 'breakable' em vez de 'avoid-break' */}
+        {/* PEÇAS */}
         <div className="mb-8 breakable">
           <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Peças e Materiais</h3>
           <table className="w-full text-left text-xs border-collapse">
