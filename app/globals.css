@@ -103,3 +103,41 @@ select:-webkit-autofill {
   -webkit-box-shadow: 0 0 0px 1000px hsl(var(--card)) inset;
   transition: background-color 5000s ease-in-out 0s;
 }
+
+/* ============================================================
+   ✅ REGRAS GLOBAIS DE IMPRESSÃO (REDE DE SEGURANÇA)
+   Isso garante que QUALQUER página imprima em modo claro,
+   sem menus, sem fundo escuro e sem cortar o conteúdo.
+   ============================================================ */
+@media print {
+  /* 1. Força o fundo geral a ser branco e o texto preto */
+  html, body {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* 2. Esconde menus, botões e barras de navegação em todo o sistema */
+  header, aside, nav, button, .no-print, [role="navigation"] {
+    display: none !important;
+  }
+
+  /* 3. Limpa qualquer fundo escuro do layout principal */
+  main, #__next, body > div {
+    background-color: transparent !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* 4. Permite que o navegador imprima as cores de fundo dos elementos do documento */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
