@@ -34,12 +34,27 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   if (token) {
     try {
       const payload = await verifyTokenEdge(token);
+      
       if (payload && payload.empresa_id) {
         const empresa = await prisma.empresa.findUnique({
           where: { id: payload.empresa_id },
-          select: { status: true }
+          select: { 
+            status: true,
+            plano: true,          // ✅ Adicionado
+            trial_ends_at: true   // ✅ Adicionado
+          }
         });
-        if (!empresa || empresa.status === 'BLOQUEADO') isBlocked = true;
+        
+        if (empresa) {
+          // ✅ REDE DE SEGURANÇA: Verifica se o trial expirou na hora
+          const isTrialExpired = empresa.plano === 'TRIAL' && empresa.trial_ends_at && new Date(empresa.trial_ends_at) < new Date();
+
+          if (empresa.status === 'BLOQUEADO' || isTrialExpired) {
+            isBlocked = true;
+          }
+        } else {
+          isBlocked = true;
+        }
       }
     } catch (error) {
       console.error("Erro ao validar status da empresa:", error);
@@ -47,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     }
   }
 
+  // 1. Tela de Bloqueio
   if (isBlocked) {
     return (
       <html lang="pt-BR" className="dark">
@@ -58,7 +74,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div>
               <h1 className="text-2xl font-black text-white uppercase tracking-tight">Acesso Bloqueado</h1>
               <p className="text-sm text-zinc-400 mt-2">
-                A conta da sua oficina está com pagamento pendente ou foi suspensa.
+                O período de testes da sua oficina expirou ou a conta está com pagamento pendente. 
                 Entre em contato com o suporte para regularizar a situação.
               </p>
             </div>
@@ -71,6 +87,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     );
   }
 
+  // 2. Se NÃO estiver autenticado
   if (!isAuthenticated) {
     return (
       <html lang="pt-BR" className="dark">
@@ -82,9 +99,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     );
   }
 
+  // 3. Autenticado
   return (
     <html lang="pt-BR" className="dark">
-      {/* ✅ ADICIONADO print:bg-white e print:text-black AQUI */}
       <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden print:bg-white print:text-black">
         <OnboardingTour /> 
         <DiagnosticsOverlay />
