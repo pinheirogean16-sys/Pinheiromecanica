@@ -9,19 +9,13 @@ import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import { ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
-import LayoutWrapper from '@/components/LayoutWrapper'; // <--- IMPORT ADICIONADO
+import LayoutWrapper from '@/components/LayoutWrapper';
 
 export const metadata: Metadata = {
-  title: {
-    default: BRANDING.name,
-    template: `%s | ${BRANDING.name}`,
-  },
+  title: { default: BRANDING.name, template: `%s | ${BRANDING.name}` },
   description: BRANDING.description,
   applicationName: BRANDING.name,
-  icons: {
-    icon: BRANDING.favicon,
-    apple: BRANDING.favicon,
-  },
+  icons: { icon: BRANDING.favicon, apple: BRANDING.favicon },
   manifest: '/manifest.json',
 };
 
@@ -32,11 +26,7 @@ export const viewport = {
   themeColor: BRANDING.colors.dark,
 };
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const token = (await cookies()).get('auth-token')?.value;
   let isBlocked = false;
   let isAuthenticated = !!token;
@@ -44,16 +34,12 @@ export default async function RootLayout({
   if (token) {
     try {
       const payload = await verifyTokenEdge(token);
-      
       if (payload && payload.empresa_id) {
         const empresa = await prisma.empresa.findUnique({
           where: { id: payload.empresa_id },
           select: { status: true }
         });
-        
-        if (!empresa || empresa.status === 'BLOQUEADO') {
-          isBlocked = true;
-        }
+        if (!empresa || empresa.status === 'BLOQUEADO') isBlocked = true;
       }
     } catch (error) {
       console.error("Erro ao validar status da empresa:", error);
@@ -61,7 +47,6 @@ export default async function RootLayout({
     }
   }
 
-  // 1. Tela de Bloqueio
   if (isBlocked) {
     return (
       <html lang="pt-BR" className="dark">
@@ -77,10 +62,7 @@ export default async function RootLayout({
                 Entre em contato com o suporte para regularizar a situação.
               </p>
             </div>
-            <Link 
-              href="/login" 
-              className="block w-full py-4 bg-zinc-950 border border-zinc-800 hover:bg-zinc-800 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition"
-            >
+            <Link href="/login" className="block w-full py-4 bg-zinc-950 border border-zinc-800 hover:bg-zinc-800 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition">
               Voltar para o Login
             </Link>
           </div>
@@ -89,7 +71,6 @@ export default async function RootLayout({
     );
   }
 
-  // 2. Se NÃO estiver autenticado (tela de login, register, recuperar senha)
   if (!isAuthenticated) {
     return (
       <html lang="pt-BR" className="dark">
@@ -101,19 +82,15 @@ export default async function RootLayout({
     );
   }
 
-  // 3. Se estiver autenticado (Sistema completo)
   return (
     <html lang="pt-BR" className="dark">
-      <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden">
+      {/* ✅ ADICIONADO print:bg-white e print:text-black AQUI */}
+      <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden print:bg-white print:text-black">
         <OnboardingTour /> 
-        
         <DiagnosticsOverlay />
-        
-        {/* ✅ AQUI ESTÁ A MÁGICA: O LayoutWrapper decide se mostra a Sidebar */}
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
-        
         <Toaster theme="dark" position="top-right" richColors />
       </body>
     </html>
