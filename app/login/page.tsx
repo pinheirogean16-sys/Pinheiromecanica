@@ -13,12 +13,10 @@ import { BRANDING } from '@/lib/branding';
 export default function AuthPage() {
   const router = useRouter();
   
-  // Estado que controla qual tela está visível
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [registerSuccess, setRegisterSuccess] = useState(false);
   
-  // Estados dos formulários
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [registerData, setRegisterData] = useState({
     invite_token: '',
@@ -29,9 +27,6 @@ export default function AuthPage() {
     senha: ''
   });
 
-  // ==========================================
-  // LÓGICA DE LOGIN
-  // ==========================================
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -59,9 +54,6 @@ export default function AuthPage() {
     }
   };
 
-  // ==========================================
-  // LÓGICA DE CADASTRO
-  // ==========================================
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -90,12 +82,9 @@ export default function AuthPage() {
     }
   };
 
-  // ==========================================
-  // TELA DE SUCESSO DO CADASTRO
-  // ==========================================
   if (registerSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-zinc-950">
+      <div className="min-h-[100dvh] flex items-center justify-center p-4 bg-zinc-950">
         <div className="w-full max-w-md p-8 bg-zinc-900 border border-zinc-800 rounded-3xl text-center space-y-4 shadow-2xl animate-in zoom-in-95 duration-300">
           <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
@@ -113,15 +102,12 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 relative overflow-hidden">
+    /* ✅ CORREÇÃO: min-h-[100dvh] evita bugs com a barra de endereço do iOS 
+       e removemos as divs com "blur-3xl" que causavam o quadrado preto */
+    <div className="min-h-[100dvh] w-full flex items-center justify-center p-4 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 relative overflow-hidden">
       
-      {/* Efeitos de fundo */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="w-full max-w-lg p-6 lg:p-10 bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-[2rem] shadow-2xl relative z-10 my-8">
+      <div className="w-full max-w-lg p-6 lg:p-10 bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-[2rem] shadow-2xl relative z-10 my-8">
         
-        {/* Cabeçalho com Logo Maior e Slogan */}
         <div className="text-center mb-8">
           <div className="w-36 h-36 mx-auto mb-4 flex items-center justify-center">
             <img 
@@ -140,7 +126,6 @@ export default function AuthPage() {
           </p>
         </div>
 
-        {/* FORMULÁRIO DE LOGIN */}
         {isLogin ? (
           <form onSubmit={handleLogin} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="space-y-2">
@@ -161,7 +146,6 @@ export default function AuthPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Senha de Acesso</label>
-                {/* 👇 LINK DE RECUPERAÇÃO DE SENHA ADICIONADO AQUI */}
                 <Link href="/recuperar-senha" className="text-[10px] font-bold text-orange-500 hover:underline">
                   Esqueceu a senha?
                 </Link>
@@ -202,7 +186,6 @@ export default function AuthPage() {
             </div>
           </form>
         ) : (
-          /* FORMULÁRIO DE CADASTRO */
           <form onSubmit={handleRegister} className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
