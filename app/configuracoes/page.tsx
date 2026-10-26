@@ -2,13 +2,14 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { memo, useState, useEffect, useCallback } from 'react';
+import Link from 'next/link'; // ✅ IMPORT ADICIONADO
 import { 
   User, Shield, Settings, Plus, Edit, Trash2, 
   Key, Save, AlertTriangle, 
   ShieldCheck, Wrench, Briefcase, UserCheck, Package,
   Building2, Landmark, FileText,
   ChevronRight, History, Upload, Eye, EyeOff, Loader2,
-  X, RefreshCw, Rocket
+  X, RefreshCw, Rocket, CreditCard // ✅ IMPORT ADICIONADO
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Pagination } from '@/components/Pagination';
@@ -562,6 +563,20 @@ export default function ConfiguracoesPage() {
               <ChevronRight className={`w-3 h-3 transition-transform ${activeTab === 'empresa' ? 'rotate-90' : ''}`} />
             </button>
           )}
+
+          {/* ✅ NOVO BOTÃO DE PLANOS ADICIONADO AQUI */}
+          {currentUser?.role === 'ADMIN' && (
+            <Link 
+              href="/configuracoes/plano" 
+              className="w-full flex items-center justify-between gap-3 px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 shadow-lg bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:text-white hover:bg-zinc-900"
+            >
+              <div className="flex items-center gap-3 truncate">
+                <CreditCard className="w-4 h-4 flex-shrink-0" /> Meu Plano
+              </div>
+              <ChevronRight className="w-3 h-3" />
+            </Link>
+          )}
+
           {currentUser?.role === 'ADMIN' && (
             <button 
               onClick={() => setActiveTab('logs')} 
