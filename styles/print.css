@@ -1,24 +1,9 @@
-/* ============================================================
-   ESTILOS GLOBAIS DE IMPRESSÃO
-   Importar uma vez por página de impressão:
-     import '@/styles/print.css';
-   ============================================================ */
-
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm 12mm;
-
-    @bottom-center {
-      content: "Página " counter(page) " de " counter(pages);
-      font-family: ui-sans-serif, system-ui, sans-serif;
-      font-size: 8pt;
-      color: #71717a;
-    }
+    margin: 12mm 15mm; /* Margens mais elegantes */
   }
 
-  /* 🔴 CRÍTICO: força backgrounds a imprimir.
-     Sem isso, bg-black + text-white vira texto branco no papel. */
   *,
   *::before,
   *::after {
@@ -29,7 +14,8 @@
 
   html, body {
     background: #fff !important;
-    color: #000 !important;
+    color: #27272a !important; /* zinc-800 para não ser um preto puro */
+    font-size: 10pt;
   }
 
   .no-print { display: none !important; }
@@ -40,17 +26,17 @@
     margin: 0 !important;
     padding: 0 !important;
     max-width: 100% !important;
+    min-height: 0 !important; /* Corrige o buraco no iOS */
   }
 
-  /* Tabelas: repete cabeçalho e rodapé em toda página */
+  /* Tabelas: Permite quebrar naturalmente, mas repete o cabeçalho */
+  table { page-break-inside: auto; }
   thead { display: table-header-group; }
-  tfoot { display: table-footer-group; }
-  tr { page-break-inside: avoid; }
-
-  /* Blocos que não devem quebrar */
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  
+  /* Blocos que NÃO devem quebrar de jeito nenhum */
   .avoid-break { page-break-inside: avoid; }
-  .page-break { page-break-before: always; }
-
-  a { color: inherit; text-decoration: none; }
-  img { max-width: 100% !important; }
+  
+  /* Blocos grandes que PODEM quebrar, mas não devem deixar linha órfã */
+  .breakable { page-break-inside: auto; }
 }
