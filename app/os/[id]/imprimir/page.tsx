@@ -108,43 +108,52 @@ export default function ImprimirOSPage() {
     <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 print:min-h-0 font-sans text-zinc-800">
       <style jsx global>{`
         @media print {
-          /* 1. Reseta o fundo global para branco e remove margens da tela */
+          /* 1. Reseta o fundo global e ignora alturas de tela do sistema */
           html, body {
             background: #ffffff !important;
             background-color: #ffffff !important;
             margin: 0 !important;
             padding: 0 !important;
             min-height: 0 !important;
+            height: auto !important;
           }
 
-          /* 2. Esconde a barra lateral, topo, botões e qualquer menu do sistema */
-          header, aside, nav, [role="navigation"], .no-print, button {
+          /* 2. Esconde agressivamente qualquer UI do sistema */
+          header, aside, nav, [role="navigation"], .no-print, button, .print\:hidden {
             display: none !important;
           }
 
-          /* 3. Isola o documento de impressão. Ele assume o topo da página e cobre o fundo */
+          /* 3. Limpa o fundo escuro e o flex de qualquer container pai */
+          main, #__next, body > div, .flex-1 {
+            background: transparent !important;
+            background-color: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            overflow: visible !important;
+            height: auto !important;
+            display: block !important;
+          }
+
+          /* 4. O documento assume o controle */
           .print-container {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: relative !important;
+            display: block !important;
             width: 100% !important;
+            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
             box-shadow: none !important;
             border: none !important;
-            z-index: 9999;
           }
 
-          /* 4. Configuração da folha A4 */
-          @page {
-            size: A4 portrait;
-            margin: 15mm 12mm;
-          }
-
-          /* 5. Força a quebra correta */
+          /* 5. Configuração da folha A4 e quebras */
+          @page { size: A4 portrait; margin: 12mm 15mm; }
           .avoid-break { page-break-inside: avoid; }
+          .breakable { page-break-inside: auto; }
           tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
         }
       `}</style>
 
@@ -311,8 +320,8 @@ export default function ImprimirOSPage() {
           </table>
         </div>
 
-        {/* OBSERVAÇÕES E TOTAIS */}
-        <div className="flex flex-col sm:flex-row gap-6 mb-8 avoid-break">
+        {/* OBSERVAÇÕES E TOTAIS - ✅ REMOVIDO O avoid-break DAQUI */}
+        <div className="flex flex-col sm:flex-row gap-6 mb-8 breakable">
           <div className="flex-1">
             <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Relato Técnico / Obs</h3>
             <p className="text-xs leading-relaxed text-zinc-700 whitespace-pre-wrap">{os.diagnostico || 'Nenhuma observação registrada.'}</p>
@@ -332,28 +341,28 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* EXTENSO */}
-        <div className="border border-zinc-200 bg-zinc-50 rounded-lg p-3 mb-8 avoid-break">
+        {/* EXTENSO - ✅ REMOVIDO O avoid-break */}
+        <div className="border border-zinc-200 bg-zinc-50 rounded-lg p-3 mb-8 breakable">
           <p className="text-[11px] text-zinc-600"><span className="font-bold uppercase text-zinc-900">Valor por extenso:</span> <span className="italic capitalize">{numeroPorExtenso(valorTotal)}</span></p>
         </div>
 
-        {/* DATAS E RESPONSÁVEIS */}
-        <div className="grid grid-cols-3 gap-4 mb-10 avoid-break">
+        {/* DATAS E RESPONSÁVEIS - ✅ REMOVIDO O avoid-break */}
+        <div className="grid grid-cols-3 gap-4 mb-10 breakable">
           <div className="bg-zinc-50 border border-zinc-200 p-3 rounded-lg"><p className="text-[9px] font-bold uppercase text-zinc-500 mb-1">Mecânico Resp.</p><p className="font-black text-xs uppercase truncate">{os.mecanico?.name || 'NÃO ESPECIFICADO'}</p></div>
           <div className="bg-zinc-50 border border-zinc-200 p-3 rounded-lg"><p className="text-[9px] font-bold uppercase text-zinc-500 mb-1">Abertura</p><p className="font-black text-xs">{formatDateTime(os.data_abertura || os.created_at)}</p></div>
           <div className="bg-zinc-50 border border-zinc-200 p-3 rounded-lg"><p className="text-[9px] font-bold uppercase text-zinc-500 mb-1">Pagamento</p><p className="font-black text-xs uppercase truncate">{os.forma_pagamento || 'A RECEBER'}{os.numero_parcelas > 1 ? ` (${os.numero_parcelas}x)` : ''}</p></div>
         </div>
 
-        {/* ASSINATURA DIGITAL */}
+        {/* ASSINATURA DIGITAL - ✅ REMOVIDO O avoid-break */}
         {os.assinatura_hash && (
-          <div className="border border-zinc-200 bg-zinc-50 p-3 rounded-lg mb-10 text-[9px] avoid-break">
+          <div className="border border-zinc-200 bg-zinc-50 p-3 rounded-lg mb-10 text-[9px] breakable">
             <p className="font-bold uppercase text-zinc-500 mb-1">Documento Assinado Digitalmente</p>
             <p className="break-all font-mono text-zinc-700">Hash: {os.assinatura_hash}</p>
             {os.assinatura_timestamp && <p className="mt-1 text-zinc-500"><span className="font-bold">Assinado em:</span> {formatDateTime(os.assinatura_timestamp)}</p>}
           </div>
         )}
 
-        {/* ASSINATURAS */}
+        {/* ASSINATURAS - ✅ MANTIDO O avoid-break PARA NÃO CORTAR A LINHA */}
         <div className="grid grid-cols-2 gap-16 pt-12 pb-8 px-8 avoid-break">
           <div className="border-t border-zinc-400 pt-2 text-center text-[10px]">
             <p className="font-black uppercase text-zinc-800">Responsável pela Oficina</p>
