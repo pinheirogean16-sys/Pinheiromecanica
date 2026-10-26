@@ -30,9 +30,14 @@
     border-color: hsl(var(--border));
   }
 
-  html {
+  /* ✅ CORREÇÃO DO QUADRADO PRETO: Trava a tela para não vazar para os lados */
+  html, body {
     scroll-behavior: smooth;
     -webkit-tap-highlight-color: transparent;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden !important;
+    position: relative;
   }
 
   body {
@@ -106,25 +111,21 @@ select:-webkit-autofill {
 
 /* ============================================================
    ✅ REGRAS GLOBAIS DE IMPRESSÃO (REDE DE SEGURANÇA)
-   Isso garante que QUALQUER página imprima em modo claro,
-   sem menus, sem fundo escuro e sem cortar o conteúdo.
    ============================================================ */
 @media print {
-  /* 1. Força o fundo geral a ser branco e o texto preto */
   html, body {
     background-color: #ffffff !important;
     background: #ffffff !important;
     color: #000000 !important;
     height: auto !important;
     overflow: visible !important;
+    max-width: none !important;
   }
 
-  /* 2. Esconde menus, botões e barras de navegação em todo o sistema */
   header, aside, nav, button, .no-print, [role="navigation"] {
     display: none !important;
   }
 
-  /* 3. Limpa qualquer fundo escuro do layout principal */
   main, #__next, body > div {
     background-color: transparent !important;
     background: transparent !important;
@@ -134,7 +135,6 @@ select:-webkit-autofill {
     height: auto !important;
   }
 
-  /* 4. Permite que o navegador imprima as cores de fundo dos elementos do documento */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
