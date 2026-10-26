@@ -15,7 +15,6 @@ import { Pagination } from '@/components/Pagination';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 
-// Componente de Linha Memoizado
 const OSRow = memo(({ 
   os, 
   formatCurrency, 
@@ -129,7 +128,6 @@ export default function OSListingPage() {
   const [tipoFilter, setTipoFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
 
-  // Estado para exclusão
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; numero: number } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -231,20 +229,24 @@ export default function OSListingPage() {
   };
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-hidden">
+    /* ✅ w-full e overflow-x-hidden para evitar que a tela "vaze" no iOS */
+    <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 space-y-8 py-6 md:py-10 pb-20 overflow-x-hidden">
+      
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-tight italic truncate">Ordens de Serviço</h1>
-          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1 truncate">Gestão de Manutenção e Fluxo Técnico</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+        <div className="min-w-0 flex-1">
+          {/* ✅ Removido o 'truncate' do h1 para ele quebrar a linha se precisar, em vez de cortar */}
+          <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight italic">Ordens de Serviço</h1>
+          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Gestão de Manutenção e Fluxo Técnico</p>
         </div>
-        <Link href="/os/nova" className="bg-orange-600 hover:bg-orange-500 text-white rounded-2xl px-8 py-4 font-black text-xs uppercase tracking-widest transition shadow-xl active:scale-95 flex items-center gap-2">
+        {/* ✅ Botão com w-full no mobile para não estourar a tela */}
+        <Link href="/os/nova" className="w-full md:w-auto bg-orange-600 hover:bg-orange-500 text-white rounded-2xl px-8 py-4 font-black text-xs uppercase tracking-widest transition shadow-xl active:scale-95 flex items-center justify-center gap-2">
           <Plus className="w-4 h-4" /> Nova Ordem de Serviço
         </Link>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5 w-full">
         {[
           { label: 'Abertas', key: 'ABERTA', icon: FileText, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
           { label: 'Diagnóstico', key: 'EM_DIAGNOSTICO', icon: Search, color: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -257,7 +259,9 @@ export default function OSListingPage() {
             key={idx}
             className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-2xl relative overflow-hidden group shadow-lg min-w-0"
           >
-            <div className={`absolute -top-6 -right-6 w-16 h-16 ${item.bg} blur-2xl group-hover:scale-150 transition-transform`} />
+            {/* ✅ REMOVIDO O EFEITO BLUR-2XL QUE CAUSAVA O QUADRADO PRETO NO SAFARI */}
+            <div className={`absolute -top-6 -right-6 w-16 h-16 ${item.bg} opacity-50 rounded-full`} />
+            
             <div className="flex items-center gap-2 mb-3">
               <item.icon className={`w-3.5 h-3.5 ${item.color}`} />
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest truncate">{item.label}</span>
@@ -275,14 +279,14 @@ export default function OSListingPage() {
       </div>
 
       {/* Filters & Listing */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl w-full">
         <div className="p-6 border-b border-zinc-800 flex flex-col lg:flex-row gap-4 items-stretch lg:items-center">
           <div className="flex-1 relative min-w-0">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
             <input 
               type="text" 
               placeholder="BUSCAR POR Nº DA OS, CLIENTE, PLACA OU SERVIÇO..." 
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-12 text-sm text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700 min-h-[48px]"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 pl-12 text-xs sm:text-sm text-white focus:border-orange-500 outline-none transition uppercase font-black tracking-widest placeholder:text-zinc-700 min-h-[48px]"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             />
@@ -434,7 +438,6 @@ export default function OSListingPage() {
                 </div>
               </div>
 
-              {/* Botões Mobile com Toque 44px */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                 <Link href={`/os/${os.id}`} className="min-h-[44px] flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white text-[9px] font-black uppercase tracking-widest transition" title="Visualizar">
                   <Eye size={12} /> Visualizar
@@ -458,7 +461,6 @@ export default function OSListingPage() {
           )}
         </div>
 
-        {/* Pagination */}
         <div className="p-6 border-t border-zinc-800 bg-zinc-950/20">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
             <p className="text-[10px] font-mono text-zinc-500 uppercase font-bold tracking-widest">
@@ -473,9 +475,6 @@ export default function OSListingPage() {
         </div>
       </div>
 
-      {/* ============================================================ */}
-      {/* MODAL DE EXCLUSÃO */}
-      {/* ============================================================ */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-red-500/20 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl">
