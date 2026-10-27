@@ -602,7 +602,8 @@ export default function ClientesPage() {
 
       {/* MODAL DE CADASTRO/EDIÇÃO */}
       {showModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center sm:p-4">
+        /* ✅ z-[1000000] GARANTE QUE O MODAL FICA NA FRENTE DO DRIVER.JS (999999) */
+        <div className="fixed inset-0 z-[1000000] flex items-center justify-center sm:p-4">
           <div 
             onClick={() => setShowModal(false)}
             className="absolute inset-0 bg-black/95 backdrop-blur-sm" 
