@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { parseHoras, roundDecimal } from '@/lib/utils';
 import { obterUnidadesCompativeis, converterUnidade } from '@/lib/unidades';
 import { BRANDING } from '@/lib/branding';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
 import QuickClientModal from '@/components/QuickClientModal';
 import QuickVehicleModal from '@/components/QuickVehicleModal';
 import StockPartsModal, { StockPartItem } from '@/components/StockPartsModal';
@@ -22,7 +24,6 @@ interface WorkOrderOfficeProps {
   initialData?: any;
 }
 
-// A16: helper para gerar data ao meio-dia UTC (evita deslocamento de fuso)
 function toMeioDiaUTC(dataStr: string | null | undefined): string | null {
   if (!dataStr) return null;
   const d = new Date(dataStr);
@@ -31,7 +32,6 @@ function toMeioDiaUTC(dataStr: string | null | undefined): string | null {
   return d.toISOString();
 }
 
-// A29: helper para gerar chave de rascunho escopada por empresa + usuário
 function chaveRascunho(empresaId: string, userId: string): string {
   return `os-draft-new-oficina:${empresaId}:${userId}`;
 }
@@ -41,7 +41,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   
-  // A29: contexto do usuário para escopar o rascunho
   const [usuarioCtx, setUsuarioCtx] = useState<{ id: string; empresa_id: string } | null>(null);
   
   // Modais
@@ -119,14 +118,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
 
   const isLoadedRef = useRef(false);
 
-  // ============================================================
-  // A29: carrega o contexto (usuário + empresa) para escopar rascunhos
-  // ============================================================
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/usuario', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+    apiFetch('/api/usuario', { credentials: 'include' })
+      .then((data: any) => {
         if (!cancelled && data?.id && data?.empresa_id) {
           setUsuarioCtx({ id: data.id, empresa_id: data.empresa_id });
         }
@@ -139,32 +134,25 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     };
   }, []);
 
-  // ============================================================
-  // ✅ CORRIGIDO: limit=1000 estourava o .max(100) do Zod
-  // ============================================================
   useEffect(() => {
     const controller = new AbortController();
     const loadBasics = async () => {
       setClientesLoading(true);
       setClientesError(false);
       try {
-        // ✅ Trocado limit=1000 por limit=100 (respeita o schema)
         const [cRes, mRes] = await Promise.all([
-          fetch('/api/clientes?limit=100', { signal: controller.signal }).catch(() => null),
-          fetch('/api/usuarios?limit=100', { signal: controller.signal }).catch(() => null),
+          apiFetch<any>('/api/clientes?limit=100', { signal: controller.signal }).catch(() => null),
+          apiFetch<any>('/api/usuarios?limit=100', { signal: controller.signal }).catch(() => null),
         ]);
         
-        if (cRes && cRes.ok) {
-          const data = await cRes.json();
-          // ✅ Trata array (legado) ou { items } (paginado)
-          setClientes(Array.isArray(data) ? data : (data.items || []));
+        if (cRes) {
+          setClientes(Array.isArray(cRes) ? cRes : (cRes.items || []));
         } else {
           setClientesError(true);
         }
         
-        if (mRes && mRes.ok) {
-          const data = await mRes.json();
-          const users = Array.isArray(data) ? data : (data.items || []);
+        if (mRes) {
+          const users = Array.isArray(mRes) ? mRes : (mRes.items || []);
           setMecanicos(users.filter((u: any) => u.role === 'MECANICO' || u.role === 'LIDER' || u.role === 'ADMIN'));
         }
       } catch (err: any) {
@@ -179,7 +167,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     return () => controller.abort();
   }, []);
 
-  // Busca de peças com debounce
   useEffect(() => {
     if (!pecaSearchQuery || pecaSearchQuery.trim().length < 2) {
       return;
@@ -189,16 +176,10 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     const timeoutId = setTimeout(async () => {
       setPecasLoading(true);
       try {
-        const res = await fetch(`/api/pecas?onlySearch=true&q=${encodeURIComponent(pecaSearchQuery.trim())}`, {
+        const data = await apiFetch<any>(`/api/pecas?onlySearch=true&q=${encodeURIComponent(pecaSearchQuery.trim())}`, {
           signal: controller.signal,
         });
-        if (res.ok) {
-          const data = await res.json();
-          // ✅ Trata array ou { items }
-          setAvailablePecas(Array.isArray(data) ? data : (data.items || []));
-        } else {
-          setAvailablePecas([]);
-        }
+        setAvailablePecas(Array.isArray(data) ? data : (data.items || []));
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           setAvailablePecas([]);
@@ -214,9 +195,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     };
   }, [pecaSearchQuery]);
 
-  // ============================================================
-  // A29: restaura rascunho escopado por empresa + usuário
-  // ============================================================
   useEffect(() => {
     if (!usuarioCtx) return;
     if (typeof window === 'undefined') return;
@@ -224,8 +202,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     try {
       const key = chaveRascunho(usuarioCtx.empresa_id, usuarioCtx.id);
 
-      // A29: migração silenciosa — se existir rascunho antigo sem escopo,
-      // remove para não vazar entre usuários do mesmo navegador.
       try {
         if (localStorage.getItem('os-draft-new-oficina')) {
           localStorage.removeItem('os-draft-new-oficina');
@@ -261,14 +237,11 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
             if (draft.fotosOficina) setFotosOficina(draft.fotosOficina);
             
             if (draft.selectedCliente?.id) {
-              // ✅ Adicionado limit=100 no fetch de veículos
-              fetch(`/api/veiculos?cliente_id=${draft.selectedCliente.id}&limit=100`)
-                .then((res) => res.json())
+              apiFetch<any>(`/api/veiculos?cliente_id=${draft.selectedCliente.id}&limit=100`)
                 .then((data) => setVeiculos(Array.isArray(data) ? data : (data.items || [])))
                 .catch(() => {});
 
-              fetch(`/api/clientes/${draft.selectedCliente.id}/historico`)
-                .then((res) => res.json())
+              apiFetch<any>(`/api/clientes/${draft.selectedCliente.id}/historico`)
                 .then(setClienteHistorico)
                 .catch(() => {});
             }
@@ -279,21 +252,17 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         }
       }
 
-      // Sem rascunho: verifica parâmetros de URL
       const urlVeiculoId = searchParams?.get('veiculo_id');
       const urlDiagnostico = searchParams?.get('diagnostico');
       if (urlDiagnostico) setDiagnostico(urlDiagnostico);
       if (urlVeiculoId) {
-        fetch(`/api/veiculos/${urlVeiculoId}`)
-          .then((res) => res.json())
+        apiFetch<any>(`/api/veiculos/${urlVeiculoId}`)
           .then((v) => {
             if (v && !v.error) {
               setSelectedVeiculo(v);
               if (v.cliente) {
                 setSelectedCliente(v.cliente);
-                // ✅ Adicionado limit=100 no fetch de veículos
-                fetch(`/api/veiculos?cliente_id=${v.cliente.id}&limit=100`)
-                  .then((r) => r.json())
+                apiFetch<any>(`/api/veiculos?cliente_id=${v.cliente.id}&limit=100`)
                   .then((data) => setVeiculos(Array.isArray(data) ? data : (data.items || [])))
                   .catch(() => {});
               }
@@ -307,7 +276,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     isLoadedRef.current = true;
   }, [usuarioCtx, searchParams]);
 
-  // Carregar preventivas do veículo
   useEffect(() => {
     if (selectedVeiculo?.id) {
       if (selectedVeiculo.quilometragem && !kmVeiculo) {
@@ -316,10 +284,8 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
       if (selectedVeiculo.horimetro_atual && !horimetroVeiculo) {
         setHorimetroVeiculo(String(selectedVeiculo.horimetro_atual));
       }
-      fetch(`/api/preventivas?veiculo_id=${selectedVeiculo.id}`)
-        .then((res) => res.json())
+      apiFetch<any>(`/api/preventivas?veiculo_id=${selectedVeiculo.id}`)
         .then((data) => {
-          // ✅ Trata array ou { items }
           const lista = Array.isArray(data) ? data : (data.items || []);
           if (lista.length > 0) {
             setPreventivasVeiculo(lista.filter((p: any) => p.ativo !== false));
@@ -332,7 +298,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     }
   }, [selectedVeiculo?.id]);
 
-  // Pré-selecionar preventiva vinda da URL
   useEffect(() => {
     const urlPrevId = searchParams?.get('preventiva_id');
     if (urlPrevId) {
@@ -340,7 +305,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     }
   }, [searchParams]);
 
-  // Hidratar dados existentes (edição)
   useEffect(() => {
     if (initialData) {
       if (initialData.cliente) setSelectedCliente(initialData.cliente);
@@ -358,9 +322,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     }
   }, [initialData]);
 
-  // ============================================================
-  // A29: salva rascunho escopado por empresa + usuário
-  // ============================================================
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!usuarioCtx) return;
@@ -398,16 +359,13 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     if (!id) return;
 
     try {
-      // ✅ Adicionado limit=100
-      const vRes = await fetch(`/api/veiculos?cliente_id=${id}&limit=100`);
-      if (vRes.ok) {
-        const data = await vRes.json();
-        setVeiculos(Array.isArray(data) ? data : (data.items || []));
-      }
-
-      const hRes = await fetch(`/api/clientes/${id}/historico`);
-      if (hRes.ok) setClienteHistorico(await hRes.json());
-      else setClienteHistorico({ totalOS: 0, totalGasto: 0 });
+      const [vData, hData] = await Promise.all([
+        apiFetch<any>(`/api/veiculos?cliente_id=${id}&limit=100`),
+        apiFetch<any>(`/api/clientes/${id}/historico`).catch(() => ({ totalOS: 0, totalGasto: 0 }))
+      ]);
+      
+      setVeiculos(Array.isArray(vData) ? vData : (vData.items || []));
+      setClienteHistorico(hData);
     } catch {
       // silencioso
     }
@@ -421,9 +379,8 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
     setSelectedCliente(newClient);
     setSelectedVeiculo(null);
     setVeiculos([]);
-    // ✅ Adicionado limit=100
-    fetch(`/api/veiculos?cliente_id=${newClient.id}&limit=100`)
-      .then((r) => r.json())
+    
+    apiFetch<any>(`/api/veiculos?cliente_id=${newClient.id}&limit=100`)
       .then((data) => setVeiculos(Array.isArray(data) ? data : (data.items || [])))
       .catch(() => setVeiculos([]));
   };
@@ -628,7 +585,6 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
       return;
     }
 
-    // Validação de estoque
     const pecasAgrupadas: Record<string, { totalQty: number; maxQty: number; descricao: string }> = {};
     for (const p of pecas) {
       const pId = p.peca_id;
@@ -710,28 +666,27 @@ export default function WorkOrderOffice({ onBack, initialData }: WorkOrderOffice
         preventivas_ids: selectedPreventivas,
       };
 
-      const res = await fetch('/api/ordens', {
+      // ✅ Usa apiFetch em vez de fetch (corrige tratamento de 402 e erros)
+      await apiFetch('/api/ordens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rawPayload),
+        body: rawPayload,
       });
-      if (res.ok) {
-        // A29: remove o rascunho escopado correto
-        if (typeof window !== 'undefined' && usuarioCtx) {
-          try {
-            localStorage.removeItem(chaveRascunho(usuarioCtx.empresa_id, usuarioCtx.id));
-          } catch {}
-        }
-        router.push('/os');
-        router.refresh();
-      } else {
-        const error = await res.json();
-        toast.error(error.error || 'Falha ao salvar a OS');
+
+      // Remove o rascunho
+      if (typeof window !== 'undefined' && usuarioCtx) {
+        try {
+          localStorage.removeItem(chaveRascunho(usuarioCtx.empresa_id, usuarioCtx.id));
+        } catch {}
       }
-    } catch {
-      toast.error('Erro de conexão com o banco.');
+
+      router.push('/os');
+      router.refresh();
+    } catch (err: any) {
+      // handleApiError já exibe toast e trata 402
+      handleApiError(err, { defaultMessage: 'Falha ao salvar a OS' });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
