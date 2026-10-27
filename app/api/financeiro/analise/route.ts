@@ -5,6 +5,7 @@ import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { roundDecimal } from '@/lib/utils';
+import { getPlanLimits, Plano } from '@/lib/plan-limits'; // ✅ IMPORT ADICIONADO
 import { z } from 'zod';
 
 // ============================================================
@@ -27,6 +28,37 @@ export async function GET(request: Request) {
 
     if (!checkPermission(user, 'financeiro', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
+    // ✅ BLOQUEIO DE PLANO (Análise/DRE = Financeiro Completo)
+    // ⚠️ Ajuste o nome do model/campo se no seu schema for diferente.
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: user.empresa_id },
+      select: { plano: true },
+    });
+
+    const planoAtual = (empresa?.plano?.toUpperCase() as Plano) || 'BASICO';
+    const limites = getPlanLimits(planoAtual);
+
+    if (!limites.financeiroCompleto) {
+      log(
+        'WARN',
+        'FINANCEIRO',
+        'Acesso à Análise/DRE bloqueado pelo plano',
+        { empresa_id: user.empresa_id, plano: planoAtual },
+        user.name
+      );
+
+      return NextResponse.json(
+        {
+          error: 'UPGRADE_REQUIRED',
+          code: 'UPGRADE_REQUIRED',
+          message: 'A Análise Financeira (DRE) está disponível apenas no plano PRO.',
+          planoAtual,
+          feature: 'financeiro_completo',
+        },
+        { status: 402 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -82,13 +114,12 @@ export async function GET(request: Request) {
       .sort((a, b) => b.saldo - a.saldo);
 
     // ============================================================
-    // 2. PREVISÃO FINANCEIRA (PRÓXIMOS 4 MESES) — ✅ OTIMIZADO
+    // 2. PREVISÃO FINANCEIRA (PRÓXIMOS 4 MESES)
     // ============================================================
     const hoje = new Date();
     const previsaoStart = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
     const previsaoEnd = new Date(hoje.getFullYear(), hoje.getMonth() + 4, 0, 23, 59, 59);
 
-    // Uma única consulta (em vez de 4)
     const movPrevistas = await prisma.movimentacaoFinanceira.findMany({
       where: {
         empresa_id,
@@ -154,14 +185,14 @@ export async function GET(request: Request) {
     );
 
     // ============================================================
-    // 4. CENTRO DE CUSTOS — ✅ AGORA FILTRA PELO ANO SELECIONADO
+    // 4. CENTRO DE CUSTOS — filtrado pelo ano selecionado
     // ============================================================
     const centroCustos = await prisma.movimentacaoFinanceira.groupBy({
       by: ['centro_custo'],
       where: {
         empresa_id,
         status: 'PAGO',
-        data: { gte: startOfYear, lte: endOfYear }, // 👈 filtro de ano adicionado
+        data: { gte: startOfYear, lte: endOfYear },
       },
       _sum: { valor: true },
       _count: { id: true },
