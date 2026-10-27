@@ -10,7 +10,6 @@ export default function OnboardingTour() {
   const router = useRouter();
   const [showIntro, setShowIntro] = useState(false);
 
-  // 1. Verifica se deve mostrar a introdução (apenas no dashboard e se nunca viu)
   useEffect(() => {
     const done = localStorage.getItem('@vehlox:tour_done');
     const step = localStorage.getItem('@vehlox:tour_step');
@@ -30,7 +29,6 @@ export default function OnboardingTour() {
     setShowIntro(false);
   };
 
-  // 2. Engine do Driver.js
   useEffect(() => {
     if (showIntro) return; 
     if (localStorage.getItem('@vehlox:tour_done')) return;
@@ -79,15 +77,13 @@ export default function OnboardingTour() {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        /* Fundo escuro com blur */
         .driver-overlay { 
-          background: rgba(0, 0, 0, 0.85) !important; 
-          backdrop-filter: blur(4px) !important; 
+          background: rgba(0, 0, 0, 0.75) !important; 
+          backdrop-filter: blur(2px) !important; 
         }
 
-        /* Card Principal */
         .driver-popover { 
-          background: #18181b !important; /* zinc-900 */
+          background: #18181b !important;
           border: 1px solid rgba(249, 115, 22, 0.3) !important; 
           border-radius: 24px !important; 
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important; 
@@ -98,9 +94,8 @@ export default function OnboardingTour() {
           overflow: hidden !important;
         }
 
-        /* Cabeçalho Customizado Injetado */
         .driver-custom-header {
-          background: #09090b !important; /* zinc-950 */
+          background: #09090b !important;
           padding: 16px 24px !important;
           border-bottom: 1px solid rgba(255,255,255,0.05) !important;
         }
@@ -144,7 +139,6 @@ export default function OnboardingTour() {
           letter-spacing: 0.05em !important;
         }
 
-        /* Título e Descrição */
         .driver-popover-title { 
           color: #ffffff !important; 
           font-size: 18px !important; 
@@ -165,7 +159,6 @@ export default function OnboardingTour() {
           margin: 0 !important;
         }
 
-        /* Rodapé */
         .driver-popover-footer { 
           margin: 0 !important; 
           padding: 16px 24px !important; 
@@ -176,7 +169,6 @@ export default function OnboardingTour() {
           align-items: center !important;
         }
 
-        /* Botão Avançar */
         .driver-popover-next-btn { 
           background: linear-gradient(to right, #ea580c, #f97316) !important; 
           color: #fff !important; 
@@ -197,7 +189,6 @@ export default function OnboardingTour() {
           box-shadow: 0 6px 20px 0 rgba(249, 115, 22, 0.5) !important; 
         }
 
-        /* Efeito de foco no elemento */
         .driver-active-element { 
           border-radius: 12px !important; 
           box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 0 0 8px rgba(249, 115, 22, 0.1) !important; 
@@ -321,14 +312,13 @@ export default function OnboardingTour() {
           overlayClickNext: false,
           showButtons: ['next'],
           nextBtnText: isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR',
+          zIndex: 9999, // ✅ Z-INDEX DO DRIVER.JS (Menor que o modal que é 10001)
           steps: [config],
           onPopoverRender: (popover: any, opts: any) => {
             
-            // ✅ INJEÇÃO DO CABEÇALHO PREMIUM
             const header = document.createElement('div');
             header.className = 'driver-custom-header';
 
-            // Barra de Progresso (Calculada de 1 a 15)
             const progressWrapper = document.createElement('div');
             progressWrapper.className = 'driver-custom-progress-wrapper';
             const progressBar = document.createElement('div');
@@ -338,7 +328,6 @@ export default function OnboardingTour() {
             progressBar.style.width = `${(stepIndex / totalSteps) * 100}%`;
             progressWrapper.appendChild(progressBar);
 
-            // Topo do cabeçalho (Tag de Fase + Contador)
             const headerTop = document.createElement('div');
             headerTop.className = 'driver-header-top';
 
@@ -362,16 +351,13 @@ export default function OnboardingTour() {
             header.appendChild(progressWrapper);
             header.appendChild(headerTop);
 
-            // Insere o cabeçalho no topo do balão
             popover.wrapper.insertBefore(header, popover.wrapper.firstChild);
 
-            // Corrige o texto do botão principal
             const nextBtn = popover.footerButtons.querySelector('.driver-popover-next-btn');
             if (nextBtn) {
               nextBtn.innerHTML = isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR';
             }
 
-            // Botão Pular Tour
             const skipBtn = document.createElement('button');
             skipBtn.innerText = 'PULAR TOUR';
             skipBtn.style.background = 'transparent';
@@ -483,13 +469,11 @@ export default function OnboardingTour() {
       <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-xl flex items-center justify-center p-4">
         <div className="relative bg-zinc-900 border border-zinc-800 max-w-xl w-full rounded-[2.5rem] p-8 md:p-12 text-center space-y-8 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
           
-          {/* Efeitos de fundo */}
           <div className="absolute -top-32 -right-32 w-64 h-64 bg-orange-600/20 blur-3xl rounded-full pointer-events-none" />
           <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-600/10 blur-3xl rounded-full pointer-events-none" />
 
           <div className="relative z-10 space-y-6">
             
-            {/* Logo da empresa no lugar do foguete */}
             <div className="w-28 h-28 bg-zinc-950/50 border-2 border-orange-500/20 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-orange-900/30 rotate-3 transition-transform hover:rotate-0 overflow-hidden p-3">
               {BRANDING.logo?.url ? (
                 <img src={BRANDING.logo.url} alt={BRANDING.name} className="w-full h-full object-contain drop-shadow-md" />
@@ -505,7 +489,6 @@ export default function OnboardingTour() {
               </p>
             </div>
 
-            {/* Checklist Visual */}
             <div className="bg-zinc-950/50 border border-zinc-800 rounded-2xl p-5 text-left space-y-4 max-w-sm mx-auto">
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center text-xs font-black">1</div>
@@ -521,7 +504,6 @@ export default function OnboardingTour() {
               </div>
             </div>
 
-            {/* Botões */}
             <div className="flex flex-col gap-3 pt-2">
               <button onClick={startTour} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-orange-950/40 active:scale-95 flex items-center justify-center gap-2">
                 Começar Tour Guiado <ChevronRight className="w-4 h-4" />
