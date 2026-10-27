@@ -10,15 +10,11 @@ import { verificarContasAtrasadas, verificarContasAVencer } from '@/lib/notifica
 function validarCronSecret(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
 
-  // Se a variável não estiver configurada, o endpoint fica bloqueado por padrão
   if (!secret) {
     log('ERROR', 'FINANCEIRO_CRON', 'CRON_SECRET não configurado no ambiente', {}, 'sistema');
     return false;
   }
 
-  // Aceita dois formatos de header:
-  // 1. Authorization: Bearer <secret>
-  // 2. x-cron-secret: <secret>
   const authHeader = req.headers.get('authorization');
   const cronHeader = req.headers.get('x-cron-secret');
 
@@ -50,14 +46,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // 2. Busca todas as empresas ativas (ignora bloqueadas)
+    // 2. Busca apenas empresas ativas que têm direito ao Financeiro Completo
+    // ✅ PRO: tem acesso a todos os recursos financeiros.
+    // ✅ TRIAL: tem acesso durante o período de testes (para avaliar o sistema).
+    // ❌ BASICO: não tem acesso ao financeiro completo, então ignoramos.
     const empresas = await prisma.empresa.findMany({
-      where: { status: { not: 'BLOQUEADO' } },
-      select: { id: true, nome: true },
+      where: {
+        status: { not: 'BLOQUEADO' },
+        plano: { in: ['PRO', 'TRIAL'] },
+      },
+      select: { id: true, nome: true, plano: true },
     });
 
     if (empresas.length === 0) {
-      log('INFO', 'FINANCEIRO_CRON', 'Nenhuma empresa ativa para verificar', {}, 'cron');
+      log('INFO', 'FINANCEIRO_CRON', 'Nenhuma empresa PRO/TRIAL ativa para verificar', {}, 'cron');
       return NextResponse.json({
         success: true,
         total: 0,
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
         resultados.push({
           empresa_id: empresa.id,
           empresa_nome: empresa.nome,
+          plano: empresa.plano,
           status: 'OK',
           tempo_ms: Date.now() - inicio,
         });
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
         resultados.push({
           empresa_id: empresa.id,
           empresa_nome: empresa.nome,
+          plano: empresa.plano,
           status: 'ERROR',
           erro: 'Falha na verificação',
           tempo_ms: Date.now() - inicio,
