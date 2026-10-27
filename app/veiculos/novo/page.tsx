@@ -52,7 +52,6 @@ const veiculoSchema = z.object({
     .transform((v) => v.toUpperCase().trim()),
   modelo: z.string().min(2, 'Modelo obrigatório').max(200, 'Modelo muito longo').trim(),
   marca: z.string().min(2, 'Marca obrigatória').max(100, 'Marca muito longa').trim(),
-  // ✅ NOVO: ano com validação numérica (espelha backend)
   ano: z
     .string()
     .min(1, 'Ano obrigatório')
@@ -63,9 +62,6 @@ const veiculoSchema = z.object({
       },
       `Ano deve estar entre ${ANO_MIN} e ${ANO_MAX}`
     ),
-  // ⚠️ Campos não persistidos no banco (ver comentário no topo).
-  //    Aceitamos como opcionais para não bloquear o submit,
-  //    mas são descartados silenciosamente pelo backend.
   cor: z.string().max(50).optional().nullable(),
   chassi: z.string().max(50).optional().nullable(),
   quilometragem: z.string().optional(),
@@ -130,9 +126,6 @@ function NovoVeiculoForm() {
   const tipoSelecionado = watch('tipo');
   const isEquipamento = EQUIPAMENTOS.includes(tipoSelecionado || '');
 
-  // ============================================================
-  // ✅ CORRIGIDO: limit=1000 + apiFetch + AbortController
-  // ============================================================
   useEffect(() => {
     const controller = new AbortController();
 
@@ -153,11 +146,7 @@ function NovoVeiculoForm() {
     return () => controller.abort();
   }, []);
 
-  // ============================================================
-  // SUBMIT
-  // ============================================================
   const onSubmit = async (data: VeiculoFormData) => {
-    // ✅ NOVO: validação de métrica mínima (espelha o refine do backend)
     const km = Number(data.quilometragem) || 0;
     const hor = Number(data.horimetro_atual) || 0;
 
@@ -168,7 +157,6 @@ function NovoVeiculoForm() {
 
     setLoading(true);
     try {
-      // ✅ CORRIGIDO: converte strings para números e omite campos não persistidos
       const payload = {
         cliente_id: data.cliente_id,
         placa: data.placa,
@@ -178,9 +166,6 @@ function NovoVeiculoForm() {
         tipo: data.tipo,
         quilometragem: km > 0 ? km : undefined,
         horimetro_atual: hor > 0 ? hor : undefined,
-        // ⚠️ cor e chassi são descartados pelo backend (não há coluna no banco).
-        //    Se quiser persistir, adicione colunas ao schema.prisma + ajuste
-        //    o veiculoSchema do app/api/veiculos/route.ts.
       };
 
       await apiFetch('/api/veiculos', {
