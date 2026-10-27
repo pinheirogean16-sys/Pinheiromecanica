@@ -10,6 +10,9 @@ import { verifyTokenEdge } from '@/lib/auth-edge';
 import { ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import LayoutWrapper from '@/components/LayoutWrapper';
+import IaSupportWidget from '@/components/IaSupportWidget';
+// ... dentro do return autenticado:
+<IaSupportWidget />
 
 export const metadata: Metadata = {
   title: { default: BRANDING.name, template: `%s | ${BRANDING.name}` },
