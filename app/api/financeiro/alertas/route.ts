@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/api-auth';
 import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
+import { getPlanLimits, Plano } from '@/lib/plan-limits'; // ✅ IMPORT ADICIONADO
 import { verificarContasAtrasadas, verificarContasAVencer } from '@/lib/notificacoes-financeiras';
 
 export async function GET(req: NextRequest) {
@@ -11,9 +12,39 @@ export async function GET(req: NextRequest) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // ✅ NOVO: exige permissão para visualizar dados financeiros
     if (!checkPermission(user, 'financeiro', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
+    // ✅ BLOQUEIO DE PLANO (Alertas Financeiros = Financeiro Completo)
+    // ⚠️ Ajuste o nome do model/campo se no seu schema for diferente.
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: user.empresa_id },
+      select: { plano: true },
+    });
+
+    const planoAtual = (empresa?.plano?.toUpperCase() as Plano) || 'BASICO';
+    const limites = getPlanLimits(planoAtual);
+
+    if (!limites.financeiroCompleto) {
+      log(
+        'WARN',
+        'FINANCEIRO',
+        'Acesso aos Alertas Financeiros bloqueado pelo plano',
+        { empresa_id: user.empresa_id, plano: planoAtual },
+        user.name
+      );
+
+      return NextResponse.json(
+        {
+          error: 'UPGRADE_REQUIRED',
+          code: 'UPGRADE_REQUIRED',
+          message: 'Os Alertas Financeiros estão disponíveis apenas no plano PRO.',
+          planoAtual,
+          feature: 'financeiro_completo',
+        },
+        { status: 402 }
+      );
     }
 
     const empresa_id = user.empresa_id;
@@ -22,7 +53,6 @@ export async function GET(req: NextRequest) {
     // ser feita via GET. Este endpoint apenas LÊ os alertas.
     // Para disparar a verificação, crie um POST separado ou use um cron job.
     // Exemplo de cron: chamar POST /api/financeiro/alertas/verificar
-    // (endpoint a ser criado) ou um endpoint de cron dedicado.
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -106,7 +136,6 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    // ✅ NOVO: tratamento de erro padronizado
     return apiError(error, 'FINANCEIRO', 'Erro ao buscar alertas financeiros');
   }
 }
