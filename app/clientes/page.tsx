@@ -14,7 +14,7 @@ import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 
 // ============================================================
-// HELPERS DE FORMATAÇÃO (fora do componente — evita recriação)
+// HELPERS DE FORMATAÇÃO
 // ============================================================
 const maskPhone = (v: string) => {
   v = v.replace(/\D/g, '');
@@ -190,9 +190,6 @@ export default function ClientesPage() {
     observacoes: ''
   });
 
-  // ============================================================
-  // Abertura do modal (useCallback — evita warning no useEffect)
-  // ============================================================
   const openNewModal = useCallback(() => {
     setEditingCliente(null);
     setFormData({ 
@@ -230,7 +227,6 @@ export default function ClientesPage() {
     };
   }, [openNewModal]);
 
-  // Debounce da busca
   useEffect(() => {
     const hand = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(hand);
@@ -238,9 +234,6 @@ export default function ClientesPage() {
 
   useEffect(() => { setPage(1); }, [search, filterType, filterStatus]);
 
-  // ============================================================
-  // Fetch paginado
-  // ============================================================
   const fetchClientes = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(false);
@@ -255,7 +248,6 @@ export default function ClientesPage() {
 
       const result = await apiFetch<any>(`/api/clientes?${params.toString()}`, { signal });
 
-      // ✅ Trata array (legado) ou { items } (paginado)
       const items = Array.isArray(result) ? result : (result.items || []);
       const total = typeof result.total === 'number' ? result.total : items.length;
       const totalPages = Math.max(1, result.totalPages || 1);
@@ -277,9 +269,6 @@ export default function ClientesPage() {
     return () => controller.abort();
   }, [fetchClientes]);
 
-  // ============================================================
-  // Edição
-  // ============================================================
   const openEditModal = useCallback((cliente: Cliente) => {
     setEditingCliente(cliente);
     setFormData({
@@ -303,7 +292,6 @@ export default function ClientesPage() {
     setShowModal(true);
   }, []);
 
-  // ✅ Ao trocar PF ↔ PJ, limpa o documento para não confundir
   const handleTipoChange = useCallback((novoTipo: 'PF' | 'PJ') => {
     setFormData((prev) => ({
       ...prev,
@@ -313,9 +301,6 @@ export default function ClientesPage() {
     }));
   }, []);
 
-  // ============================================================
-  // Submit
-  // ============================================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalLoading(true);
@@ -617,7 +602,7 @@ export default function ClientesPage() {
 
       {/* MODAL DE CADASTRO/EDIÇÃO */}
       {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center sm:p-4">
           <div 
             onClick={() => setShowModal(false)}
             className="absolute inset-0 bg-black/95 backdrop-blur-sm" 
