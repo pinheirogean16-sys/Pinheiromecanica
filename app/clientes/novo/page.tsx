@@ -208,7 +208,7 @@ export default function NovoClientePage() {
                 </label>
                 <input
                   type="text"
-                  id="field-cliente-nome" // ✅ ID ADICIONADO
+                  id="field-cliente-nome"
                   value={formData.nome}
                   onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 px-5 text-xs text-white focus:border-orange-500 outline-none transition font-bold uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
@@ -252,7 +252,7 @@ export default function NovoClientePage() {
                 </label>
                 <input
                   type="text"
-                  id="field-cliente-cpf" // ✅ ID ADICIONADO
+                  id="field-cliente-cpf"
                   inputMode="numeric"
                   value={mascaraCpfCnpj(formData.cpf_cnpj)}
                   onChange={(e) =>
@@ -304,7 +304,7 @@ export default function NovoClientePage() {
                   />
                   <input
                     type="tel"
-                    id="field-cliente-telefone" // ✅ ID ADICIONADO
+                    id="field-cliente-telefone"
                     inputMode="numeric"
                     value={maskPhone(formData.telefone)}
                     onChange={(e) =>
@@ -470,7 +470,7 @@ export default function NovoClientePage() {
           </Link>
           <button
             type="submit"
-            id="btn-salvar-cliente" // ✅ ID ADICIONADO
+            id="btn-salvar-cliente"
             disabled={loading}
             className="flex-[2] bg-orange-600 hover:bg-orange-500 text-white font-black uppercase text-xs tracking-[0.2em] py-6 rounded-2xl transition-all shadow-xl shadow-orange-950/20 disabled:opacity-50 flex items-center justify-center gap-3 italic transform active:scale-95 cursor-pointer"
           >
@@ -503,6 +503,7 @@ export default function NovoClientePage() {
           </Link>
           <button
             type="submit"
+            id="btn-salvar-cliente-mobile" /* ✅ ID ADICIONADO PARA O TOUR */
             disabled={loading}
             className="flex-[2] min-h-[50px] bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
           >
