@@ -17,7 +17,7 @@ export default function IaSupportWidget() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ✅ CAMINHO DA SUA IMAGEM AQUI
+  // ✅ CAMINHO DA SUA IMAGEM (salve a imagem como public/vehly-avatar.png)
   const vehlyAvatar = '/vehly-avatar.png'; 
 
   const getWelcomeMessage = (m: Mode) => {
@@ -72,24 +72,34 @@ export default function IaSupportWidget() {
 
   return (
     <>
-      {/* ✅ BOTÃO FLUTUANTE COM A IMAGEM DA VEHLY */}
+      {/* ✅ BOTÃO FLUTUANTE (Nome em cima + Avatar embaixo) */}
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-[99999] w-16 h-16 bg-zinc-900 border-2 border-orange-500 rounded-full shadow-2xl shadow-orange-900/40 transition-all active:scale-90 flex items-center justify-center overflow-hidden ${isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100 hover:scale-105'}`}
+        className={`fixed bottom-6 right-6 z-[99999] flex flex-col items-center gap-1.5 transition-all active:scale-90 ${
+          isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100'
+        }`}
         title="Falar com a Vehly AI"
       >
-        <img 
-          src={vehlyAvatar} 
-          alt="Vehly AI" 
-          className="w-full h-full object-cover" 
-          // Fallback caso a imagem não exista ou falhe
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
-          }}
-        />
-        {/* Bolinha verde de "Online" */}
-        <span className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-zinc-900 animate-pulse" />
+        {/* Etiqueta com o Nome */}
+        <span className="px-2.5 py-1 bg-zinc-900/90 border border-zinc-700/80 backdrop-blur-md text-[9px] font-black text-orange-400 uppercase tracking-widest rounded-full shadow-lg whitespace-nowrap">
+          Vehly AI
+        </span>
+
+        {/* Avatar Redondo */}
+        <div className="relative w-16 h-16 bg-zinc-900 border-2 border-orange-500 rounded-full shadow-2xl shadow-orange-900/40 flex items-center justify-center overflow-hidden hover:scale-105 transition-transform">
+          <img 
+            src={vehlyAvatar} 
+            alt="Vehly AI" 
+            className="w-full h-full object-cover" 
+            onError={(e) => {
+              // Fallback caso a imagem não exista
+              const target = e.target as HTMLImageElement;
+              target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
+            }}
+          />
+          {/* Bolinha verde de "Online" */}
+          <span className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-zinc-900 animate-pulse" />
+        </div>
       </button>
 
       {/* JANELA DO CHAT */}
@@ -101,7 +111,7 @@ export default function IaSupportWidget() {
             <div className="p-4 flex justify-between items-center pb-2">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  {/* ✅ IMAGEM NO CABEÇALHO */}
+                  {/* Imagem no Cabeçalho */}
                   <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden border border-zinc-700 shadow-lg">
                     <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                   </div>
@@ -143,7 +153,7 @@ export default function IaSupportWidget() {
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  // ✅ IMAGEM NAS MENSAGENS DA IA
+                  // Imagem nas mensagens da IA
                   <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1 border border-zinc-700 bg-zinc-800">
                     <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                   </div>
