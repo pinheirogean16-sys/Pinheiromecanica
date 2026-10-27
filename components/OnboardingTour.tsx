@@ -36,12 +36,13 @@ export default function OnboardingTour() {
     const currentStep = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
     if (currentStep < 2) return; 
 
+    // ✅ NOVA ROTA: Agora o cadastro de cliente é feito na página inteira (/clientes/novo)
     const stepRoutes: Record<number, string> = {
-      2: '/dashboard', 3: '/clientes', 4: '/clientes', 5: '/clientes',
-      6: '/clientes', 7: '/clientes', 8: '/veiculos/novo',
-      9: '/veiculos/novo', 10: '/veiculos/novo', 11: '/veiculos/novo',
-      12: '/veiculos/novo', 13: '/os/nova', 14: '/os/nova',
-      15: '/os/nova', 16: '/os/nova',
+      2: '/dashboard', 
+      3: '/clientes', 
+      4: '/clientes/novo', 5: '/clientes/novo', 6: '/clientes/novo', 7: '/clientes/novo',
+      8: '/veiculos/novo', 9: '/veiculos/novo', 10: '/veiculos/novo', 11: '/veiculos/novo', 12: '/veiculos/novo',
+      13: '/os/nova', 14: '/os/nova', 15: '/os/nova', 16: '/os/nova',
     };
 
     const expectedRoute = stepRoutes[currentStep];
@@ -77,7 +78,6 @@ export default function OnboardingTour() {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        /* Força o overlay a ficar em uma camada abaixo do modal */
         .driver-overlay { 
           background: rgba(0, 0, 0, 0.75) !important; 
           backdrop-filter: blur(2px) !important; 
@@ -94,7 +94,7 @@ export default function OnboardingTour() {
           font-family: inherit !important; 
           animation: driverFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
           overflow: hidden !important;
-          z-index: 1000000 !important; /* ✅ Balão acima de tudo */
+          z-index: 1000000 !important;
         }
 
         .driver-custom-header {
@@ -192,7 +192,6 @@ export default function OnboardingTour() {
           box-shadow: 0 6px 20px 0 rgba(249, 115, 22, 0.5) !important; 
         }
 
-        /* Garante que o elemento alvo fique visível acima do overlay */
         .driver-active-element { 
           border-radius: 12px !important; 
           box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 0 0 8px rgba(249, 115, 22, 0.1) !important; 
@@ -221,6 +220,14 @@ export default function OnboardingTour() {
       document.body.appendChild(script);
     };
 
+    // Helper para achar o botão de salvar correto (desktop ou mobile)
+    const getSaveButtonSelector = (type: 'cliente' | 'veiculo') => {
+      const isMobile = window.innerWidth < 1024;
+      if (type === 'cliente') return isMobile ? '#btn-salvar-cliente-mobile' : '#btn-salvar-cliente';
+      if (type === 'veiculo') return isMobile ? '#btn-salvar-veiculo-mobile' : '#btn-salvar-veiculo';
+      return '';
+    };
+
     const startDriverEngine = () => {
       // @ts-ignore
       const driver = window.driver.js.driver;
@@ -233,7 +240,7 @@ export default function OnboardingTour() {
             callback();
           } else {
             attempts++;
-            if (attempts > 100) { // ✅ 10 segundos de espera
+            if (attempts > 100) {
               clearInterval(interval);
               callback(); 
             }
@@ -253,11 +260,11 @@ export default function OnboardingTour() {
             route = '/clientes';
             break;
           case 3:
-            config = { element: '#btn-novo-cliente', popover: { title: 'Iniciando o Cadastro', description: 'Clique em Avançar e o sistema abrirá a janela de cadastro para você.', side: 'bottom' } };
-            action = 'vehlox:open-client-modal';
+            config = { element: '#btn-novo-cliente', popover: { title: 'Iniciando o Cadastro', description: 'Clique em Avançar para abrir o formulário de cadastro.', side: 'bottom' } };
+            route = '/clientes/novo';
             break;
           case 4:
-            config = { element: '#field-cliente-nome', popover: { title: 'Nome do Cliente', description: 'Digite o nome completo ou a razão social. É o primeiro dado essencial.', side: 'bottom' } };
+            config = { element: '#field-cliente-nome', popover: { title: 'Nome do Cliente', description: 'Digite o nome completo ou a razão social.', side: 'bottom' } };
             break;
           case 5:
             config = { element: '#field-cliente-cpf', popover: { title: 'CPF ou CNPJ', description: 'O sistema valida automaticamente se o documento é verdadeiro.', side: 'bottom' } };
@@ -266,8 +273,7 @@ export default function OnboardingTour() {
             config = { element: '#field-cliente-telefone', popover: { title: 'Contato', description: 'Para enviar o orçamento ou avisar quando o veículo estiver pronto.', side: 'bottom' } };
             break;
           case 7:
-            config = { element: '#btn-salvar-cliente', popover: { title: 'Salvar o Cliente', description: 'Depois de preencher, clique aqui. Vamos avançar para o cadastro do Veículo!', side: 'top' } };
-            action = 'vehlox:close-client-modal';
+            config = { element: getSaveButtonSelector('cliente'), popover: { title: 'Salvar o Cliente', description: 'Depois de preencher, clique aqui. Vamos avançar para o cadastro do Veículo!', side: 'top' } };
             route = '/veiculos/novo';
             break;
           case 8:
@@ -283,7 +289,7 @@ export default function OnboardingTour() {
             config = { element: '#field-veiculo-ano', popover: { title: 'Ano de Fabricação', description: 'Informe o ano do veículo. Essencial para buscar peças corretas.', side: 'bottom' } };
             break;
           case 12:
-            config = { element: '#form-veiculo', popover: { title: 'Salvar Veículo', description: 'Clique no botão de salvar (laranja). Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' } };
+            config = { element: getSaveButtonSelector('veiculo'), popover: { title: 'Salvar Veículo', description: 'Clique no botão de salvar (laranja). Em seguida, vamos abrir a Ordem de Serviço!', side: 'top' } };
             route = '/os/nova';
             break;
           case 13:
@@ -312,7 +318,6 @@ export default function OnboardingTour() {
         const { config, isLast, route, action } = getStepConfig(stepNum);
         if (!config) return;
 
-        // ✅ Delay extra para dar tempo do modal abrir
         setTimeout(() => {
           driverInstance = driver({
             showProgress: false,
@@ -320,7 +325,7 @@ export default function OnboardingTour() {
             overlayClickNext: false,
             showButtons: ['next'],
             nextBtnText: isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR',
-            zIndex: 999999, // ✅ Balão na frente do modal (que é 1000000)
+            zIndex: 999999,
             steps: [config],
             onPopoverRender: (popover: any, opts: any) => {
               
@@ -387,8 +392,6 @@ export default function OnboardingTour() {
                 localStorage.setItem('@vehlox:tour_done', 'true');
                 localStorage.setItem('@vehlox:tour_step', '0');
                 forceCleanupDriver(opts.driver);
-                window.dispatchEvent(new Event('vehlox:close-client-modal'));
-                
                 setTimeout(() => {
                   router.push('/dashboard');
                 }, 300);
@@ -399,25 +402,18 @@ export default function OnboardingTour() {
             onNextClick: () => {
               forceCleanupDriver(driverInstance);
               
-              if (action) {
-                if (action === 'vehlox:open-client-modal') {
-                  window.dispatchEvent(new Event(action));
-                } else if (action === 'vehlox:close-client-modal') {
-                  window.dispatchEvent(new Event(action));
-                } else if (action === 'click-oficina') {
-                  const btn = document.getElementById('btn-tipo-oficina');
-                  if (btn) {
-                    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                  }
+              if (action === 'click-oficina') {
+                const btn = document.getElementById('btn-tipo-oficina');
+                if (btn) {
+                  btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                  btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 }
               }
 
               if (isLast) {
                 localStorage.setItem('@vehlox:tour_done', 'true');
                 localStorage.setItem('@vehlox:tour_step', '0');
-                
                 setTimeout(() => {
                   if (route) router.push(route);
                 }, 300);
@@ -440,7 +436,6 @@ export default function OnboardingTour() {
                   } else {
                     const nextConfig = getStepConfig(nextStep).config;
                     if (nextConfig && nextConfig.element) {
-                      // ✅ Delay extra para o modal abrir antes de procurar o elemento
                       setTimeout(() => {
                         waitForElement(nextConfig.element, () => runStep(nextStep));
                       }, 500);
@@ -456,7 +451,7 @@ export default function OnboardingTour() {
           setTimeout(() => {
             driverInstance.drive();
           }, 300);
-        }, 300); // ✅ Delay para o modal abrir
+        }, 300);
       };
 
       const stepAtual = parseInt(localStorage.getItem('@vehlox:tour_step') || '2', 10);
