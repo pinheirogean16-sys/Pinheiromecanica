@@ -17,7 +17,8 @@ import { validarEProcessarLeiturasVeiculo } from '@/lib/odometro-horimetro';
 // CONSTANTES
 // ============================================================
 const MAX_ITENS = 200;
-const MAX_TEXTO = 5000;
+// ✅ CORRIGIDO: aumentado de 5000 para 50000 (relatos técnicos longos e JSONs de viagem)
+const MAX_TEXTO = 50000;
 
 // ============================================================
 // A07: alíquota de imposto por regime tributário da empresa
@@ -218,7 +219,6 @@ const preprocessQuantidade = (val: any) => {
 // ============================================================
 // SCHEMAS
 // ============================================================
-// ✅ PATCH: SEM .default() — campos não enviados são preservados
 const updateOsSchema = z
   .object({
     tipoOS: z.string().optional().nullable(),
@@ -292,7 +292,6 @@ const updateOsSchema = z
   })
   .partial();
 
-// ✅ PUT: substituição completa — defaults OK
 const putOsSchema = z.object({
   tipoOS: z.string().optional().nullable().default('OFICINA'),
   cliente_id: z.string({ required_error: 'Cliente é obrigatório' }).min(1, 'Cliente é obrigatório'),
@@ -466,7 +465,6 @@ export async function PATCH(
     });
     const aliquotaImpostoPatch = obterAliquotaImposto(configEmpresaPatch?.regime_tributario);
 
-    // A26: bloqueia alteração de assinatura se já existe hash registrado
     const querMexerEmAssinatura =
       body.assinatura_cliente !== undefined ||
       body.assinatura_mecanico !== undefined ||
@@ -482,7 +480,6 @@ export async function PATCH(
       }
     }
 
-    // A01: CANCELAMENTO
     if (body.status === 'CANCELADA') {
       const result = await prisma.$transaction(async (tx) => {
         if (antes.status === 'CANCELADA') throw new Error('OS já está cancelada');
@@ -546,7 +543,6 @@ export async function PATCH(
       return NextResponse.json(serializeDecimals(result));
     }
 
-    // ✅ NOVO: valida mecânico e preventivas por empresa (IDOR fix)
     if (body.mecanico_id) {
       await validarMecanicoEmpresa(body.mecanico_id, user.empresa_id);
     }
@@ -567,7 +563,6 @@ export async function PATCH(
       }
     }
 
-    // Leituras de veículo
     const veiculoId = antes.veiculo_id;
     let leiturasRes: any = { kmFinalAtualizar: null, horimetroFinalAtualizar: null, sucesso: true };
     if (body.km_veiculo !== undefined || body.horimetro_veiculo !== undefined) {
@@ -583,9 +578,6 @@ export async function PATCH(
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // ============================================================
-      // PEÇAS (adicionar) — agrega por peca_id para validar estoque
-      // ============================================================
       if (body.pecas && body.pecas.length > 0) {
         const pecaTotaisSolicitados: Record<string, number> = {};
         const pecaValoresEnviados: Record<string, number> = {};
@@ -612,7 +604,6 @@ export async function PATCH(
           }
         }
 
-        // A04: valida preço abaixo do custo
         for (const pecaId in pecaValoresEnviados) {
           const valorEnviado = pecaValoresEnviados[pecaId];
           const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: user.empresa_id } });
@@ -623,7 +614,6 @@ export async function PATCH(
           }
         }
 
-        // Valida estoque agregado
         for (const pecaId in pecaTotaisSolicitados) {
           const totalReq = pecaTotaisSolicitados[pecaId];
           const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: user.empresa_id } });
@@ -634,7 +624,6 @@ export async function PATCH(
           }
         }
 
-        // Cria as peças e decrementa
         for (const p of body.pecas) {
           const actualPecaId = p.peca_id || (p as any).pecaId;
           const qty = p.quantidade || 1;
@@ -686,7 +675,6 @@ export async function PATCH(
         }
       }
 
-      // SERVIÇOS (adicionar)
       if (body.servicos && body.servicos.length > 0) {
         await tx.servicoOS.createMany({
           data: (body.servicos as any[]).map((s: any) => {
@@ -701,7 +689,6 @@ export async function PATCH(
         });
       }
 
-      // Monta updateData
       const updateData: any = {};
       if (body.tipoOS !== undefined) updateData.tipoOS = body.tipoOS;
       if (body.status !== undefined) {
@@ -760,7 +747,6 @@ export async function PATCH(
 
       updateData.updated_by = user?.name || user?.email || 'Sistema';
 
-      // Recalcula totais
       const servicosSummary = await tx.servicoOS.aggregate({ where: { os_id: id }, _sum: { valor_total: true } });
       const pecasSummary = await tx.pecaAplicada.aggregate({ where: { os_id: id }, _sum: { valor_total: true } });
 
@@ -781,7 +767,6 @@ export async function PATCH(
 
       const totalDespesas = roundDecimal(currentPedagio + currentCombustivel + currentHospedagem + currentAlimentacao + currentDiariaTecnica + currentGuincho + currentOutros);
 
-      // ✅ Math.max(0, ...) para evitar total negativo
       updateData.valor_total = roundDecimal(
         Math.max(0, updateData.valor_servicos + updateData.valor_pecas + currentDeslocamento + totalDespesas + currentMaoObraExterna - currentDesconto)
       );
@@ -923,7 +908,6 @@ export async function PUT(
       return NextResponse.json({ error: 'Você só pode editar suas próprias OS' }, { status: 403 });
     }
 
-    // ✅ NOVO: PUT não cancela — orienta usar PATCH
     if (body.status === 'CANCELADA') {
       return NextResponse.json({
         error: 'Para cancelar uma OS, use a ação "Cancelar OS" (PATCH com status CANCELADA). O PUT não executa a devolução de estoque nem o cancelamento financeiro.',
@@ -937,7 +921,6 @@ export async function PUT(
     });
     const aliquotaImpostoPut = obterAliquotaImposto(configEmpresaPut?.regime_tributario);
 
-    // A26: mesma proteção no PUT
     const querMexerEmAssinaturaPut =
       body.assinatura_cliente !== undefined ||
       body.assinatura_mecanico !== undefined ||
@@ -953,7 +936,6 @@ export async function PUT(
       }
     }
 
-    // Valida vínculos
     if (body.cliente_id) {
       const clienteOk = await prisma.cliente.findFirst({ where: { id: body.cliente_id, empresa_id: user.empresa_id } });
       if (!clienteOk) return NextResponse.json({ error: 'Cliente não encontrado nesta empresa' }, { status: 400 });
@@ -963,7 +945,6 @@ export async function PUT(
       if (!veiculoOk) return NextResponse.json({ error: 'Veículo não encontrado nesta empresa' }, { status: 400 });
     }
 
-    // ✅ NOVO: IDOR fix
     if (body.mecanico_id) {
       await validarMecanicoEmpresa(body.mecanico_id, user.empresa_id);
     }
@@ -984,7 +965,6 @@ export async function PUT(
       }
     }
 
-    // Leituras de veículo
     const veiculoIdFinal = body.veiculo_id || antes.veiculo_id;
     let leiturasRes: any = { kmFinalAtualizar: null, horimetroFinalAtualizar: null, sucesso: true };
     if (body.km_veiculo !== undefined || body.horimetro_veiculo !== undefined) {
@@ -1054,12 +1034,10 @@ export async function PUT(
           assinatura_supervisor: body.assinatura_supervisor || null,
           assinatura_hash: body.assinatura_hash || null,
           assinatura_timestamp: parseDate(body.assinatura_timestamp),
-          // ✅ NOVO: data_finalizada quando FINALIZADA
           ...(body.status === 'FINALIZADA' ? { data_finalizada: new Date() } : {}),
         },
       });
 
-      // Serviços
       await tx.servicoOS.deleteMany({ where: { os_id: id } });
       if (body.servicos && body.servicos.length > 0) {
         await tx.servicoOS.createMany({
@@ -1072,7 +1050,6 @@ export async function PUT(
         });
       }
 
-      // Devolve estoque das peças antigas
       const pecasAntigas = await tx.pecaAplicada.findMany({ where: { os_id: id }, include: { Peca: true } });
       for (const p of pecasAntigas) {
         let originalQty = p.quantidade;
@@ -1087,7 +1064,6 @@ export async function PUT(
       }
       await tx.pecaAplicada.deleteMany({ where: { os_id: id } });
 
-      // Cria novas peças
       if (body.pecas && body.pecas.length > 0) {
         const pecaTotaisSolicitados: Record<string, number> = {};
         const pecaValoresEnviados: Record<string, number> = {};
@@ -1114,7 +1090,6 @@ export async function PUT(
           }
         }
 
-        // A04
         for (const pecaId in pecaValoresEnviados) {
           const valorEnviado = pecaValoresEnviados[pecaId];
           const peca = await tx.peca.findFirst({ where: { id: pecaId, empresa_id: user.empresa_id } });
@@ -1185,7 +1160,6 @@ export async function PUT(
         }
       }
 
-      // Recalcula totais
       const servicosSummary = await tx.servicoOS.aggregate({ where: { os_id: id }, _sum: { valor_total: true } });
       const pecasSummary = await tx.pecaAplicada.aggregate({ where: { os_id: id }, _sum: { valor_total: true } });
 
@@ -1199,7 +1173,6 @@ export async function PUT(
       );
       const totalMaoObraExterna = roundDecimal(body.mao_obra_externa_total || 0);
 
-      // ✅ Math.max(0, ...)
       const valor_total = roundDecimal(
         Math.max(0, valor_servicos + valor_pecas + totalDeslocamento + totalDespesas + totalMaoObraExterna - (body.desconto || 0))
       );
@@ -1281,7 +1254,6 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
-    // ✅ NOVO: mesmo tratamento de erros de negócio do PATCH
     if (
       error?.message?.includes('Estoque insuficiente') ||
       error?.message?.includes('Conversão incompatível') ||
