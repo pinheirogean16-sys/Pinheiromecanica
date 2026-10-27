@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Rocket, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Rocket, ChevronRight } from 'lucide-react';
+import { BRANDING } from '@/lib/branding';
 
 export default function OnboardingTour() {
   const pathname = usePathname();
@@ -74,39 +75,85 @@ export default function OnboardingTour() {
       style.id = styleId;
       style.innerHTML = `
         @keyframes driverFadeIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.98); }
+          from { opacity: 0; transform: translateY(15px) scale(0.98); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        .driver-popover { 
-          background: linear-gradient(145deg, #18181b, #09090b) !important; 
-          border: 1px solid #3f3f46 !important; 
-          border-radius: 20px !important; 
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important; 
-          color: #e4e4e7 !important; 
-          padding: 24px !important; 
-          max-width: 380px !important; 
-          font-family: inherit !important; 
-          animation: driverFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        /* Fundo escuro com blur */
+        .driver-overlay { 
+          background: rgba(0, 0, 0, 0.85) !important; 
+          backdrop-filter: blur(4px) !important; 
         }
 
+        /* Card Principal */
+        .driver-popover { 
+          background: #18181b !important; /* zinc-900 */
+          border: 1px solid rgba(249, 115, 22, 0.3) !important; 
+          border-radius: 24px !important; 
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important; 
+          padding: 0 !important; 
+          max-width: 420px !important; 
+          font-family: inherit !important; 
+          animation: driverFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+          overflow: hidden !important;
+        }
+
+        /* Cabeçalho Customizado Injetado */
+        .driver-custom-header {
+          background: #09090b !important; /* zinc-950 */
+          padding: 16px 24px !important;
+          border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+        }
+
+        .driver-custom-progress-wrapper {
+          height: 6px !important;
+          background: #27272a !important;
+          border-radius: 4px !important;
+          margin-bottom: 12px !important;
+          overflow: hidden !important;
+        }
+
+        .driver-custom-progress-bar {
+          height: 100% !important;
+          background: linear-gradient(90deg, #ea580c, #f97316, #fbbf24) !important;
+          transition: width 0.4s ease !important;
+        }
+
+        .driver-header-top {
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+        }
+
+        .driver-phase-badge {
+          font-size: 10px !important;
+          font-weight: 900 !important;
+          color: #f97316 !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.1em !important;
+          background: rgba(249, 115, 22, 0.1) !important;
+          padding: 4px 10px !important;
+          border-radius: 100px !important;
+        }
+
+        .driver-step-counter {
+          font-size: 10px !important;
+          font-weight: bold !important;
+          color: #71717a !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.05em !important;
+        }
+
+        /* Título e Descrição */
         .driver-popover-title { 
-          color: #f97316 !important; 
-          font-size: 16px !important; 
+          color: #ffffff !important; 
+          font-size: 18px !important; 
           font-weight: 900 !important; 
           text-transform: uppercase !important; 
           font-style: italic !important; 
-          margin-bottom: 8px !important; 
-          letter-spacing: -0.05em !important; 
-          display: flex !important; 
-          align-items: center !important; 
-          gap: 8px !important; 
-        }
-
-        .driver-popover-title::before { 
-          content: '✨' !important; 
-          font-size: 14px !important; 
-          font-style: normal !important; 
+          margin: 0 !important; 
+          padding: 20px 24px 8px 24px !important;
+          letter-spacing: -0.02em !important;
         }
 
         .driver-popover-description { 
@@ -114,46 +161,46 @@ export default function OnboardingTour() {
           font-size: 13px !important; 
           line-height: 1.6 !important; 
           font-weight: 500 !important; 
+          padding: 0 24px 24px 24px !important;
+          margin: 0 !important;
         }
 
+        /* Rodapé */
         .driver-popover-footer { 
-          margin-top: 20px !important; 
-          display: flex !important; 
-          align-items: center !important; 
-          justify-content: space-between !important; 
-          border-top: 1px solid #27272a !important; 
-          padding-top: 16px !important; 
+          margin: 0 !important; 
+          padding: 16px 24px !important; 
+          background: #09090b !important; 
+          border-top: 1px solid rgba(255,255,255,0.05) !important; 
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
         }
 
-        .driver-popover-footer button { 
-          background: #f97316 !important; 
+        /* Botão Avançar */
+        .driver-popover-next-btn { 
+          background: linear-gradient(to right, #ea580c, #f97316) !important; 
           color: #fff !important; 
           border: none !important; 
           border-radius: 10px !important; 
           padding: 10px 20px !important; 
-          font-weight: 800 !important; 
+          font-weight: 900 !important; 
           text-transform: uppercase !important; 
-          font-size: 10px !important; 
+          font-size: 11px !important; 
           letter-spacing: 0.1em !important; 
           transition: all 0.2s !important; 
-          text-shadow: none !important; 
           cursor: pointer !important; 
           box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.3) !important; 
-          margin: 0 !important;
         }
 
-        .driver-popover-footer button:hover { 
-          background: #ea580c !important; 
-          transform: translateY(-1px) !important; 
+        .driver-popover-next-btn:hover { 
+          transform: translateY(-2px) !important; 
+          box-shadow: 0 6px 20px 0 rgba(249, 115, 22, 0.5) !important; 
         }
 
-        .driver-popover-arrow { 
-          border-color: #18181b !important; 
-        }
-
+        /* Efeito de foco no elemento */
         .driver-active-element { 
           border-radius: 12px !important; 
-          box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3) !important; 
+          box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 0 0 8px rgba(249, 115, 22, 0.1) !important; 
           transition: box-shadow 0.3s ease !important;
         }
       `;
@@ -205,7 +252,7 @@ export default function OnboardingTour() {
 
         switch (stepNum) {
           case 2:
-            config = { element: '#action-new-client', popover: { title: 'Fase 1: O Cliente', description: 'Tudo começa pelo cliente. Clique em Avançar para irmos à tela de cadastro.', side: 'bottom' } };
+            config = { element: '#action-new-client', popover: { title: 'O Primeiro Cliente', description: 'Tudo começa pelo cliente. Clique em Avançar para irmos à tela de cadastro.', side: 'bottom' } };
             route = '/clientes';
             break;
           case 3:
@@ -227,7 +274,7 @@ export default function OnboardingTour() {
             route = '/veiculos/novo';
             break;
           case 8:
-            config = { element: 'form', popover: { title: 'Fase 2: O Veículo', description: 'Agora vamos cadastrar o veículo deste cliente. Preencha a placa e o modelo.', side: 'top' } };
+            config = { element: 'form', popover: { title: 'O Veículo', description: 'Agora vamos cadastrar o veículo deste cliente. Preencha a placa e o modelo.', side: 'top' } };
             break;
           case 9:
             config = { element: '#field-veiculo-placa', popover: { title: 'Placa do Veículo', description: 'Digite a placa (ex: ABC-1234). O sistema valida o formato.', side: 'bottom' } };
@@ -243,7 +290,7 @@ export default function OnboardingTour() {
             route = '/os/nova';
             break;
           case 13:
-            config = { element: '#btn-tipo-oficina', popover: { title: 'Fase 3: Escolha o Tipo', description: 'Vamos abrir uma OS de Oficina. Clique em Avançar.', side: 'bottom' } };
+            config = { element: '#btn-tipo-oficina', popover: { title: 'A Ordem de Serviço', description: 'Vamos abrir uma OS de Oficina. Clique em Avançar.', side: 'bottom' } };
             action = 'click-oficina';
             break;
           case 14:
@@ -269,20 +316,68 @@ export default function OnboardingTour() {
         if (!config) return;
 
         driverInstance = driver({
-          showProgress: false, // ✅ Desativado para não mostrar "1 de 1"
+          showProgress: false,
           allowClose: false,
           overlayClickNext: false,
           showButtons: ['next'],
-          nextBtnText: isLast ? 'Finalizar Tutorial' : 'Avançar',
+          nextBtnText: isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR',
           steps: [config],
           onPopoverRender: (popover: any, opts: any) => {
-            // ✅ Botão "Pular" redesenhado para ficar elegante
+            
+            // ✅ INJEÇÃO DO CABEÇALHO PREMIUM
+            const header = document.createElement('div');
+            header.className = 'driver-custom-header';
+
+            // Barra de Progresso (Calculada de 1 a 15)
+            const progressWrapper = document.createElement('div');
+            progressWrapper.className = 'driver-custom-progress-wrapper';
+            const progressBar = document.createElement('div');
+            progressBar.className = 'driver-custom-progress-bar';
+            const stepIndex = Math.max(1, stepNum - 1);
+            const totalSteps = 15;
+            progressBar.style.width = `${(stepIndex / totalSteps) * 100}%`;
+            progressWrapper.appendChild(progressBar);
+
+            // Topo do cabeçalho (Tag de Fase + Contador)
+            const headerTop = document.createElement('div');
+            headerTop.className = 'driver-header-top';
+
+            const phaseBadge = document.createElement('span');
+            phaseBadge.className = 'driver-phase-badge';
+            if (stepNum <= 7) {
+              phaseBadge.innerText = 'FASE 1: CLIENTE';
+            } else if (stepNum <= 12) {
+              phaseBadge.innerText = 'FASE 2: VEÍCULO';
+            } else {
+              phaseBadge.innerText = 'FASE 3: ORDEM DE SERVIÇO';
+            }
+
+            const stepCounter = document.createElement('span');
+            stepCounter.className = 'driver-step-counter';
+            stepCounter.innerText = `PASSO ${stepIndex} DE ${totalSteps}`;
+
+            headerTop.appendChild(phaseBadge);
+            headerTop.appendChild(stepCounter);
+
+            header.appendChild(progressWrapper);
+            header.appendChild(headerTop);
+
+            // Insere o cabeçalho no topo do balão
+            popover.wrapper.insertBefore(header, popover.wrapper.firstChild);
+
+            // Corrige o texto do botão principal
+            const nextBtn = popover.footerButtons.querySelector('.driver-popover-next-btn');
+            if (nextBtn) {
+              nextBtn.innerHTML = isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR';
+            }
+
+            // Botão Pular Tour
             const skipBtn = document.createElement('button');
-            skipBtn.innerText = 'Pular Tour';
+            skipBtn.innerText = 'PULAR TOUR';
             skipBtn.style.background = 'transparent';
             skipBtn.style.border = '1px solid #3f3f46';
             skipBtn.style.color = '#a1a1aa';
-            skipBtn.style.padding = '10px 16px';
+            skipBtn.style.padding = '8px 16px';
             skipBtn.style.borderRadius = '10px';
             skipBtn.style.cursor = 'pointer';
             skipBtn.style.fontSize = '10px';
@@ -386,7 +481,6 @@ export default function OnboardingTour() {
   if (showIntro) {
     return (
       <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-xl flex items-center justify-center p-4">
-        {/* ✅ NOVO MODAL DE BOAS-VINDAS PREMIUM */}
         <div className="relative bg-zinc-900 border border-zinc-800 max-w-xl w-full rounded-[2.5rem] p-8 md:p-12 text-center space-y-8 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
           
           {/* Efeitos de fundo */}
@@ -394,9 +488,14 @@ export default function OnboardingTour() {
           <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-600/10 blur-3xl rounded-full pointer-events-none" />
 
           <div className="relative z-10 space-y-6">
-            {/* Ícone Rotacionado */}
-            <div className="w-24 h-24 bg-gradient-to-br from-orange-500 to-orange-700 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-orange-900/50 rotate-3 transition-transform hover:rotate-0">
-              <Rocket className="w-12 h-12 text-white" />
+            
+            {/* Logo da empresa no lugar do foguete */}
+            <div className="w-28 h-28 bg-zinc-950/50 border-2 border-orange-500/20 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-orange-900/30 rotate-3 transition-transform hover:rotate-0 overflow-hidden p-3">
+              {BRANDING.logo?.url ? (
+                <img src={BRANDING.logo.url} alt={BRANDING.name} className="w-full h-full object-contain drop-shadow-md" />
+              ) : (
+                <Rocket className="w-12 h-12 text-orange-500" />
+              )}
             </div>
             
             <div className="space-y-3">
