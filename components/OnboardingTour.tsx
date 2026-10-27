@@ -312,7 +312,7 @@ export default function OnboardingTour() {
           overlayClickNext: false,
           showButtons: ['next'],
           nextBtnText: isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR',
-          zIndex: 9999, // ✅ Z-INDEX DO DRIVER.JS (Menor que o modal que é 10001)
+          zIndex: 10000, // ✅ Z-INDEX DO DRIVER.JS (Maior que o modal, que é 9999)
           steps: [config],
           onPopoverRender: (popover: any, opts: any) => {
             
