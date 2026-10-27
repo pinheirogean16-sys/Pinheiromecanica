@@ -10,6 +10,10 @@
     "lint": "next lint",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "prisma:studio": "prisma studio",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
@@ -50,7 +54,11 @@
     "openai": "^4.77.0",
     "react-markdown": "^9.0.1"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "vitest": "^2.1.9",
+    "@vitest/ui": "^2.1.9",
+    "@vitest/coverage-v8": "^2.1.9"
+  },
   "overrides": {
     "deepmerge-ts": ">=8.0.1",
     "postcss": ">=8.5.18"
