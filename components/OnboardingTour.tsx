@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Rocket, ChevronRight } from 'lucide-react';
+import { Rocket, ChevronRight, CheckCircle2 } from 'lucide-react';
 
 export default function OnboardingTour() {
   const pathname = usePathname();
@@ -37,7 +37,6 @@ export default function OnboardingTour() {
     const currentStep = parseInt(localStorage.getItem('@vehlox:tour_step') || '0', 10);
     if (currentStep < 2) return; 
 
-    // ✅ Mapeamento de qual rota cada step espera estar
     const stepRoutes: Record<number, string> = {
       2: '/dashboard', 3: '/clientes', 4: '/clientes', 5: '/clientes',
       6: '/clientes', 7: '/clientes', 8: '/veiculos/novo',
@@ -46,10 +45,8 @@ export default function OnboardingTour() {
       15: '/os/nova', 16: '/os/nova',
     };
 
-    // ✅ Se a rota atual não for a esperada para o step, cancela o tour.
     const expectedRoute = stepRoutes[currentStep];
     if (expectedRoute && pathname !== expectedRoute && !pathname.startsWith(expectedRoute + '/')) {
-      // O usuário saiu do fluxo do tour. Marca como concluído para não incomodar mais.
       localStorage.setItem('@vehlox:tour_done', 'true');
       localStorage.setItem('@vehlox:tour_step', '0');
       return;
@@ -76,16 +73,89 @@ export default function OnboardingTour() {
       const style = document.createElement('style');
       style.id = styleId;
       style.innerHTML = `
-        .driver-popover { background: linear-gradient(145deg, #18181b, #09090b) !important; border: 1px solid #3f3f46 !important; border-radius: 24px !important; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important; color: #e4e4e7 !important; padding: 28px !important; max-width: 360px !important; font-family: inherit !important; }
-        .driver-popover-title { color: #f97316 !important; font-size: 20px !important; font-weight: 900 !important; text-transform: uppercase !important; font-style: italic !important; margin-bottom: 12px !important; letter-spacing: -0.05em !important; display: flex !important; align-items: center !important; gap: 8px !important; }
-        .driver-popover-title::before { content: '✨' !important; font-size: 16px !important; font-style: normal !important; }
-        .driver-popover-description { color: #a1a1aa !important; font-size: 14px !important; line-height: 1.6 !important; font-weight: 500 !important; }
-        .driver-popover-footer { margin-top: 24px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; border-top: 1px solid #27272a !important; padding-top: 20px !important; }
-        .driver-popover-footer button { background: #f97316 !important; color: #fff !important; border: none !important; border-radius: 12px !important; padding: 12px 24px !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 11px !important; letter-spacing: 0.1em !important; transition: all 0.2s !important; text-shadow: none !important; cursor: pointer !important; box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.39) !important; }
-        .driver-popover-footer button:hover { background: #ea580c !important; transform: translateY(-2px) !important; }
-        .driver-popover-progress-text { color: #71717a !important; font-size: 11px !important; font-weight: 800 !important; text-transform: uppercase !important; letter-spacing: 0.1em !important; }
-        .driver-popover-arrow { border-color: #18181b !important; }
-        .driver-active-element { border-radius: 16px !important; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3) !important; }
+        @keyframes driverFadeIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .driver-popover { 
+          background: linear-gradient(145deg, #18181b, #09090b) !important; 
+          border: 1px solid #3f3f46 !important; 
+          border-radius: 20px !important; 
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05) !important; 
+          color: #e4e4e7 !important; 
+          padding: 24px !important; 
+          max-width: 380px !important; 
+          font-family: inherit !important; 
+          animation: driverFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        }
+
+        .driver-popover-title { 
+          color: #f97316 !important; 
+          font-size: 16px !important; 
+          font-weight: 900 !important; 
+          text-transform: uppercase !important; 
+          font-style: italic !important; 
+          margin-bottom: 8px !important; 
+          letter-spacing: -0.05em !important; 
+          display: flex !important; 
+          align-items: center !important; 
+          gap: 8px !important; 
+        }
+
+        .driver-popover-title::before { 
+          content: '✨' !important; 
+          font-size: 14px !important; 
+          font-style: normal !important; 
+        }
+
+        .driver-popover-description { 
+          color: #a1a1aa !important; 
+          font-size: 13px !important; 
+          line-height: 1.6 !important; 
+          font-weight: 500 !important; 
+        }
+
+        .driver-popover-footer { 
+          margin-top: 20px !important; 
+          display: flex !important; 
+          align-items: center !important; 
+          justify-content: space-between !important; 
+          border-top: 1px solid #27272a !important; 
+          padding-top: 16px !important; 
+        }
+
+        .driver-popover-footer button { 
+          background: #f97316 !important; 
+          color: #fff !important; 
+          border: none !important; 
+          border-radius: 10px !important; 
+          padding: 10px 20px !important; 
+          font-weight: 800 !important; 
+          text-transform: uppercase !important; 
+          font-size: 10px !important; 
+          letter-spacing: 0.1em !important; 
+          transition: all 0.2s !important; 
+          text-shadow: none !important; 
+          cursor: pointer !important; 
+          box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.3) !important; 
+          margin: 0 !important;
+        }
+
+        .driver-popover-footer button:hover { 
+          background: #ea580c !important; 
+          transform: translateY(-1px) !important; 
+        }
+
+        .driver-popover-arrow { 
+          border-color: #18181b !important; 
+        }
+
+        .driver-active-element { 
+          border-radius: 12px !important; 
+          box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3) !important; 
+          transition: box-shadow 0.3s ease !important;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -199,22 +269,31 @@ export default function OnboardingTour() {
         if (!config) return;
 
         driverInstance = driver({
-          showProgress: true,
+          showProgress: false, // ✅ Desativado para não mostrar "1 de 1"
           allowClose: false,
           overlayClickNext: false,
           showButtons: ['next'],
           nextBtnText: isLast ? 'Finalizar Tutorial' : 'Avançar',
           steps: [config],
           onPopoverRender: (popover: any, opts: any) => {
+            // ✅ Botão "Pular" redesenhado para ficar elegante
             const skipBtn = document.createElement('button');
-            skipBtn.innerText = 'Pular';
+            skipBtn.innerText = 'Pular Tour';
             skipBtn.style.background = 'transparent';
-            skipBtn.style.border = 'none';
-            skipBtn.style.color = '#ef4444';
+            skipBtn.style.border = '1px solid #3f3f46';
+            skipBtn.style.color = '#a1a1aa';
+            skipBtn.style.padding = '10px 16px';
+            skipBtn.style.borderRadius = '10px';
             skipBtn.style.cursor = 'pointer';
-            skipBtn.style.fontSize = '11px';
+            skipBtn.style.fontSize = '10px';
             skipBtn.style.fontWeight = 'bold';
             skipBtn.style.textTransform = 'uppercase';
+            skipBtn.style.letterSpacing = '0.1em';
+            skipBtn.style.transition = 'all 0.2s';
+            
+            skipBtn.onmouseover = () => { skipBtn.style.color = '#ef4444'; skipBtn.style.borderColor = '#ef4444'; };
+            skipBtn.onmouseout = () => { skipBtn.style.color = '#a1a1aa'; skipBtn.style.borderColor = '#3f3f46'; };
+            
             skipBtn.onclick = () => {
               localStorage.setItem('@vehlox:tour_done', 'true');
               localStorage.setItem('@vehlox:tour_step', '0');
@@ -225,14 +304,8 @@ export default function OnboardingTour() {
                 router.push('/dashboard');
               }, 300);
             };
+            
             popover.footerButtons.prepend(skipBtn);
-
-            setTimeout(() => {
-              const btns = document.querySelectorAll('.driver-popover-next-btn');
-              btns.forEach((btn: any) => {
-                btn.innerText = isLast ? 'Finalizar Tutorial' : 'Avançar';
-              });
-            }, 50);
           },
           onNextClick: () => {
             forceCleanupDriver(driverInstance);
@@ -312,24 +385,52 @@ export default function OnboardingTour() {
 
   if (showIntro) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-        <div className="bg-zinc-900 border border-zinc-800 max-w-lg w-full rounded-[2rem] p-8 md:p-10 text-center space-y-6 shadow-2xl animate-in zoom-in-95 duration-300">
-          <div className="w-20 h-20 bg-orange-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-orange-900/40">
-            <Rocket className="w-10 h-10 text-white" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-black text-white uppercase italic tracking-tight">Bem-vindo à VEHLOX</h1>
-            <p className="text-sm text-zinc-400 leading-relaxed">
-              Preparamos um tour guiado para você dominar o sistema. Vamos te mostrar como cadastrar seu primeiro Cliente, Veículo e Ordem de Serviço.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3">
-            <button onClick={startTour} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition flex items-center justify-center gap-2">
-              Começar Tour Guiado <ChevronRight className="w-4 h-4" />
-            </button>
-            <button onClick={skipTour} className="w-full py-4 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-500 font-bold text-[10px] uppercase tracking-widest rounded-2xl transition">
-              Pular e ir direto pro sistema
-            </button>
+      <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-xl flex items-center justify-center p-4">
+        {/* ✅ NOVO MODAL DE BOAS-VINDAS PREMIUM */}
+        <div className="relative bg-zinc-900 border border-zinc-800 max-w-xl w-full rounded-[2.5rem] p-8 md:p-12 text-center space-y-8 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+          
+          {/* Efeitos de fundo */}
+          <div className="absolute -top-32 -right-32 w-64 h-64 bg-orange-600/20 blur-3xl rounded-full pointer-events-none" />
+          <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-600/10 blur-3xl rounded-full pointer-events-none" />
+
+          <div className="relative z-10 space-y-6">
+            {/* Ícone Rotacionado */}
+            <div className="w-24 h-24 bg-gradient-to-br from-orange-500 to-orange-700 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl shadow-orange-900/50 rotate-3 transition-transform hover:rotate-0">
+              <Rocket className="w-12 h-12 text-white" />
+            </div>
+            
+            <div className="space-y-3">
+              <h1 className="text-3xl font-black text-white uppercase italic tracking-tight">Bem-vindo à VEHLOX</h1>
+              <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mx-auto">
+                Preparamos um tour guiado interativo para você dominar o sistema. Vamos te mostrar como cadastrar seu primeiro <strong className="text-orange-500">Cliente</strong>, <strong className="text-orange-500">Veículo</strong> e <strong className="text-orange-500">Ordem de Serviço</strong>.
+              </p>
+            </div>
+
+            {/* Checklist Visual */}
+            <div className="bg-zinc-950/50 border border-zinc-800 rounded-2xl p-5 text-left space-y-4 max-w-sm mx-auto">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center text-xs font-black">1</div>
+                <p className="text-xs text-zinc-300 font-bold uppercase tracking-wide">Cadastro de Cliente</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center text-xs font-black">2</div>
+                <p className="text-xs text-zinc-300 font-bold uppercase tracking-wide">Cadastro de Veículo</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center text-xs font-black">3</div>
+                <p className="text-xs text-zinc-300 font-bold uppercase tracking-wide">Criação da primeira OS</p>
+              </div>
+            </div>
+
+            {/* Botões */}
+            <div className="flex flex-col gap-3 pt-2">
+              <button onClick={startTour} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-orange-950/40 active:scale-95 flex items-center justify-center gap-2">
+                Começar Tour Guiado <ChevronRight className="w-4 h-4" />
+              </button>
+              <button onClick={skipTour} className="w-full py-4 bg-transparent hover:bg-zinc-800 border border-zinc-800 text-zinc-500 hover:text-zinc-300 font-bold text-[10px] uppercase tracking-widest rounded-2xl transition-all">
+                Pular e ir direto pro sistema
+              </button>
+            </div>
           </div>
         </div>
       </div>
