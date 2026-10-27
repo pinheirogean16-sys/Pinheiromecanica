@@ -5,14 +5,12 @@ import { Toaster } from 'sonner';
 import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
 import { BRANDING } from '@/lib/branding';
 import OnboardingTour from '@/components/OnboardingTour';
+import IaSupportWidget from '@/components/IaSupportWidget'; // ✅ IMPORT ADICIONADO
 import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import { ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import LayoutWrapper from '@/components/LayoutWrapper';
-import IaSupportWidget from '@/components/IaSupportWidget';
-// ... dentro do return autenticado:
-<IaSupportWidget />
 
 export const metadata: Metadata = {
   title: { default: BRANDING.name, template: `%s | ${BRANDING.name}` },
@@ -43,13 +41,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           where: { id: payload.empresa_id },
           select: { 
             status: true,
-            plano: true,          // ✅ Adicionado
-            trial_ends_at: true   // ✅ Adicionado
+            plano: true,
+            trial_ends_at: true
           }
         });
         
         if (empresa) {
-          // ✅ REDE DE SEGURANÇA: Verifica se o trial expirou na hora
           const isTrialExpired = empresa.plano === 'TRIAL' && empresa.trial_ends_at && new Date(empresa.trial_ends_at) < new Date();
 
           if (empresa.status === 'BLOQUEADO' || isTrialExpired) {
@@ -111,6 +108,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
+        
+        {/* ✅ WIDGET DE SUPORTE IA ADICIONADO AQUI */}
+        <IaSupportWidget />
+        
         <Toaster theme="dark" position="top-right" richColors />
       </body>
     </html>
