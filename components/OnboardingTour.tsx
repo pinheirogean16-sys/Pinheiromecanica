@@ -77,9 +77,11 @@ export default function OnboardingTour() {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
+        /* Força o overlay a ficar em uma camada abaixo do modal */
         .driver-overlay { 
           background: rgba(0, 0, 0, 0.75) !important; 
           backdrop-filter: blur(2px) !important; 
+          z-index: 999998 !important; 
         }
 
         .driver-popover { 
@@ -92,6 +94,7 @@ export default function OnboardingTour() {
           font-family: inherit !important; 
           animation: driverFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
           overflow: hidden !important;
+          z-index: 1000000 !important; /* ✅ Balão acima de tudo */
         }
 
         .driver-custom-header {
@@ -189,10 +192,13 @@ export default function OnboardingTour() {
           box-shadow: 0 6px 20px 0 rgba(249, 115, 22, 0.5) !important; 
         }
 
+        /* Garante que o elemento alvo fique visível acima do overlay */
         .driver-active-element { 
           border-radius: 12px !important; 
           box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 0 0 8px rgba(249, 115, 22, 0.1) !important; 
           transition: box-shadow 0.3s ease !important;
+          z-index: 999999 !important;
+          position: relative !important;
         }
       `;
       document.head.appendChild(style);
@@ -227,7 +233,7 @@ export default function OnboardingTour() {
             callback();
           } else {
             attempts++;
-            if (attempts > 50) { 
+            if (attempts > 100) { // ✅ 10 segundos de espera
               clearInterval(interval);
               callback(); 
             }
@@ -306,145 +312,151 @@ export default function OnboardingTour() {
         const { config, isLast, route, action } = getStepConfig(stepNum);
         if (!config) return;
 
-        driverInstance = driver({
-          showProgress: false,
-          allowClose: false,
-          overlayClickNext: false,
-          showButtons: ['next'],
-          nextBtnText: isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR',
-          zIndex: 10000, // ✅ Z-INDEX DO DRIVER.JS (Maior que o modal, que é 9999)
-          steps: [config],
-          onPopoverRender: (popover: any, opts: any) => {
-            
-            const header = document.createElement('div');
-            header.className = 'driver-custom-header';
-
-            const progressWrapper = document.createElement('div');
-            progressWrapper.className = 'driver-custom-progress-wrapper';
-            const progressBar = document.createElement('div');
-            progressBar.className = 'driver-custom-progress-bar';
-            const stepIndex = Math.max(1, stepNum - 1);
-            const totalSteps = 15;
-            progressBar.style.width = `${(stepIndex / totalSteps) * 100}%`;
-            progressWrapper.appendChild(progressBar);
-
-            const headerTop = document.createElement('div');
-            headerTop.className = 'driver-header-top';
-
-            const phaseBadge = document.createElement('span');
-            phaseBadge.className = 'driver-phase-badge';
-            if (stepNum <= 7) {
-              phaseBadge.innerText = 'FASE 1: CLIENTE';
-            } else if (stepNum <= 12) {
-              phaseBadge.innerText = 'FASE 2: VEÍCULO';
-            } else {
-              phaseBadge.innerText = 'FASE 3: ORDEM DE SERVIÇO';
-            }
-
-            const stepCounter = document.createElement('span');
-            stepCounter.className = 'driver-step-counter';
-            stepCounter.innerText = `PASSO ${stepIndex} DE ${totalSteps}`;
-
-            headerTop.appendChild(phaseBadge);
-            headerTop.appendChild(stepCounter);
-
-            header.appendChild(progressWrapper);
-            header.appendChild(headerTop);
-
-            popover.wrapper.insertBefore(header, popover.wrapper.firstChild);
-
-            const nextBtn = popover.footerButtons.querySelector('.driver-popover-next-btn');
-            if (nextBtn) {
-              nextBtn.innerHTML = isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR';
-            }
-
-            const skipBtn = document.createElement('button');
-            skipBtn.innerText = 'PULAR TOUR';
-            skipBtn.style.background = 'transparent';
-            skipBtn.style.border = '1px solid #3f3f46';
-            skipBtn.style.color = '#a1a1aa';
-            skipBtn.style.padding = '8px 16px';
-            skipBtn.style.borderRadius = '10px';
-            skipBtn.style.cursor = 'pointer';
-            skipBtn.style.fontSize = '10px';
-            skipBtn.style.fontWeight = 'bold';
-            skipBtn.style.textTransform = 'uppercase';
-            skipBtn.style.letterSpacing = '0.1em';
-            skipBtn.style.transition = 'all 0.2s';
-            
-            skipBtn.onmouseover = () => { skipBtn.style.color = '#ef4444'; skipBtn.style.borderColor = '#ef4444'; };
-            skipBtn.onmouseout = () => { skipBtn.style.color = '#a1a1aa'; skipBtn.style.borderColor = '#3f3f46'; };
-            
-            skipBtn.onclick = () => {
-              localStorage.setItem('@vehlox:tour_done', 'true');
-              localStorage.setItem('@vehlox:tour_step', '0');
-              forceCleanupDriver(opts.driver);
-              window.dispatchEvent(new Event('vehlox:close-client-modal'));
+        // ✅ Delay extra para dar tempo do modal abrir
+        setTimeout(() => {
+          driverInstance = driver({
+            showProgress: false,
+            allowClose: false,
+            overlayClickNext: false,
+            showButtons: ['next'],
+            nextBtnText: isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR',
+            zIndex: 999999, // ✅ Balão na frente do modal (que é 1000000)
+            steps: [config],
+            onPopoverRender: (popover: any, opts: any) => {
               
-              setTimeout(() => {
-                router.push('/dashboard');
-              }, 300);
-            };
-            
-            popover.footerButtons.prepend(skipBtn);
-          },
-          onNextClick: () => {
-            forceCleanupDriver(driverInstance);
-            
-            if (action) {
-              if (action === 'vehlox:open-client-modal') {
-                window.dispatchEvent(new Event(action));
-              } else if (action === 'vehlox:close-client-modal') {
-                window.dispatchEvent(new Event(action));
-              } else if (action === 'click-oficina') {
-                const btn = document.getElementById('btn-tipo-oficina');
-                if (btn) {
-                  btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                  btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              const header = document.createElement('div');
+              header.className = 'driver-custom-header';
+
+              const progressWrapper = document.createElement('div');
+              progressWrapper.className = 'driver-custom-progress-wrapper';
+              const progressBar = document.createElement('div');
+              progressBar.className = 'driver-custom-progress-bar';
+              const stepIndex = Math.max(1, stepNum - 1);
+              const totalSteps = 15;
+              progressBar.style.width = `${(stepIndex / totalSteps) * 100}%`;
+              progressWrapper.appendChild(progressBar);
+
+              const headerTop = document.createElement('div');
+              headerTop.className = 'driver-header-top';
+
+              const phaseBadge = document.createElement('span');
+              phaseBadge.className = 'driver-phase-badge';
+              if (stepNum <= 7) {
+                phaseBadge.innerText = 'FASE 1: CLIENTE';
+              } else if (stepNum <= 12) {
+                phaseBadge.innerText = 'FASE 2: VEÍCULO';
+              } else {
+                phaseBadge.innerText = 'FASE 3: ORDEM DE SERVIÇO';
+              }
+
+              const stepCounter = document.createElement('span');
+              stepCounter.className = 'driver-step-counter';
+              stepCounter.innerText = `PASSO ${stepIndex} DE ${totalSteps}`;
+
+              headerTop.appendChild(phaseBadge);
+              headerTop.appendChild(stepCounter);
+
+              header.appendChild(progressWrapper);
+              header.appendChild(headerTop);
+
+              popover.wrapper.insertBefore(header, popover.wrapper.firstChild);
+
+              const nextBtn = popover.footerButtons.querySelector('.driver-popover-next-btn');
+              if (nextBtn) {
+                nextBtn.innerHTML = isLast ? 'FINALIZAR TUTORIAL' : 'AVANÇAR';
+              }
+
+              const skipBtn = document.createElement('button');
+              skipBtn.innerText = 'PULAR TOUR';
+              skipBtn.style.background = 'transparent';
+              skipBtn.style.border = '1px solid #3f3f46';
+              skipBtn.style.color = '#a1a1aa';
+              skipBtn.style.padding = '8px 16px';
+              skipBtn.style.borderRadius = '10px';
+              skipBtn.style.cursor = 'pointer';
+              skipBtn.style.fontSize = '10px';
+              skipBtn.style.fontWeight = 'bold';
+              skipBtn.style.textTransform = 'uppercase';
+              skipBtn.style.letterSpacing = '0.1em';
+              skipBtn.style.transition = 'all 0.2s';
+              
+              skipBtn.onmouseover = () => { skipBtn.style.color = '#ef4444'; skipBtn.style.borderColor = '#ef4444'; };
+              skipBtn.onmouseout = () => { skipBtn.style.color = '#a1a1aa'; skipBtn.style.borderColor = '#3f3f46'; };
+              
+              skipBtn.onclick = () => {
+                localStorage.setItem('@vehlox:tour_done', 'true');
+                localStorage.setItem('@vehlox:tour_step', '0');
+                forceCleanupDriver(opts.driver);
+                window.dispatchEvent(new Event('vehlox:close-client-modal'));
+                
+                setTimeout(() => {
+                  router.push('/dashboard');
+                }, 300);
+              };
+              
+              popover.footerButtons.prepend(skipBtn);
+            },
+            onNextClick: () => {
+              forceCleanupDriver(driverInstance);
+              
+              if (action) {
+                if (action === 'vehlox:open-client-modal') {
+                  window.dispatchEvent(new Event(action));
+                } else if (action === 'vehlox:close-client-modal') {
+                  window.dispatchEvent(new Event(action));
+                } else if (action === 'click-oficina') {
+                  const btn = document.getElementById('btn-tipo-oficina');
+                  if (btn) {
+                    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                  }
                 }
               }
-            }
 
-            if (isLast) {
-              localStorage.setItem('@vehlox:tour_done', 'true');
-              localStorage.setItem('@vehlox:tour_step', '0');
-              
-              setTimeout(() => {
-                if (route) router.push(route);
-              }, 300);
-            } else {
-              const nextStep = stepNum + 1;
-              localStorage.setItem('@vehlox:tour_step', nextStep.toString());
-              
-              if (route) {
-                router.push(route);
+              if (isLast) {
+                localStorage.setItem('@vehlox:tour_done', 'true');
+                localStorage.setItem('@vehlox:tour_step', '0');
+                
+                setTimeout(() => {
+                  if (route) router.push(route);
+                }, 300);
               } else {
-                if (action === 'click-oficina') {
-                  setTimeout(() => {
+                const nextStep = stepNum + 1;
+                localStorage.setItem('@vehlox:tour_step', nextStep.toString());
+                
+                if (route) {
+                  router.push(route);
+                } else {
+                  if (action === 'click-oficina') {
+                    setTimeout(() => {
+                      const nextConfig = getStepConfig(nextStep).config;
+                      if (nextConfig && nextConfig.element) {
+                        waitForElement(nextConfig.element, () => runStep(nextStep));
+                      } else {
+                        runStep(nextStep);
+                      }
+                    }, 1000);
+                  } else {
                     const nextConfig = getStepConfig(nextStep).config;
                     if (nextConfig && nextConfig.element) {
-                      waitForElement(nextConfig.element, () => runStep(nextStep));
+                      // ✅ Delay extra para o modal abrir antes de procurar o elemento
+                      setTimeout(() => {
+                        waitForElement(nextConfig.element, () => runStep(nextStep));
+                      }, 500);
                     } else {
-                      runStep(nextStep);
+                      setTimeout(() => runStep(nextStep), 500);
                     }
-                  }, 1000);
-                } else {
-                  const nextConfig = getStepConfig(nextStep).config;
-                  if (nextConfig && nextConfig.element) {
-                    waitForElement(nextConfig.element, () => runStep(nextStep));
-                  } else {
-                    setTimeout(() => runStep(nextStep), 500);
                   }
                 }
               }
             }
-          }
-        });
-        
-        setTimeout(() => {
-          driverInstance.drive();
-        }, 300);
+          });
+          
+          setTimeout(() => {
+            driverInstance.drive();
+          }, 300);
+        }, 300); // ✅ Delay para o modal abrir
       };
 
       const stepAtual = parseInt(localStorage.getItem('@vehlox:tour_step') || '2', 10);
@@ -466,7 +478,7 @@ export default function OnboardingTour() {
 
   if (showIntro) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-xl flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[9999999] bg-zinc-950/80 backdrop-blur-xl flex items-center justify-center p-4">
         <div className="relative bg-zinc-900 border border-zinc-800 max-w-xl w-full rounded-[2.5rem] p-8 md:p-12 text-center space-y-8 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
           
           <div className="absolute -top-32 -right-32 w-64 h-64 bg-orange-600/20 blur-3xl rounded-full pointer-events-none" />
