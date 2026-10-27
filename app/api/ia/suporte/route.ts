@@ -92,9 +92,9 @@ Suas regras:
 - O usuário atual é: ${user.name} (${user.role}).`;
     }
 
-    // ✅ CHAMADA PARA A GROQ USANDO O MODELO LLAMA 3.3
+    // ✅ CHAMADA PARA A GROQ USANDO O MODELO ATUAL (GPT OSS 120B)
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile', 
+      model: 'openai/gpt-oss-120b', // 👈 MODELO ATUALIZADO
       messages: [
         { role: 'system', content: systemPrompt },
         ...parsed.messages,
