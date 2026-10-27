@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2, Sparkles, User, Monitor, Wrench } from 'lucide-react';
+import { X, Send, Loader2, User, Monitor, Wrench } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 import ReactMarkdown from 'react-markdown';
@@ -17,28 +17,27 @@ export default function IaSupportWidget() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Mensagem inicial baseada no modo escolhido
+  // ✅ CAMINHO DA SUA IMAGEM AQUI
+  const vehlyAvatar = '/vehly-avatar.png'; 
+
   const getWelcomeMessage = (m: Mode) => {
     return m === 'sistema'
       ? 'Olá! Sou a **Vehly**. Estou aqui para te ajudar a usar o sistema VEHLOX. O que você precisa saber? 💻'
       : 'Olá, chefe! Sou o **Mecânico IA**. Descreva o sintoma do veículo (não esqueça de dizer o modelo) e eu te ajudo a diagnosticar. 🔧';
   };
 
-  // Reseta as mensagens ao trocar de aba
   const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
     setMessages([{ role: 'assistant', content: getWelcomeMessage(newMode) }]);
     setInput('');
   };
 
-  // Inicializa a primeira mensagem
   useEffect(() => {
     if (messages.length === 0) {
       setMessages([{ role: 'assistant', content: getWelcomeMessage(mode) }]);
     }
   }, []);
 
-  // Auto-scroll para a última mensagem
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -65,7 +64,7 @@ export default function IaSupportWidget() {
       setMessages((prev) => [...prev, { role: 'assistant', content: res.resposta }]);
     } catch (err: any) {
       handleApiError(err, { defaultMessage: 'A IA está indisponível no momento.' });
-      setMessages((prev) => prev.slice(0, -1)); // Remove a msg de erro
+      setMessages((prev) => prev.slice(0, -1));
     } finally {
       setLoading(false);
     }
@@ -73,17 +72,27 @@ export default function IaSupportWidget() {
 
   return (
     <>
-      {/* Botão Flutuante */}
+      {/* ✅ BOTÃO FLUTUANTE COM A IMAGEM DA VEHLY */}
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-[99999] p-4 bg-orange-600 hover:bg-orange-500 text-white rounded-full shadow-2xl shadow-orange-900/40 transition-all active:scale-90 flex items-center justify-center ${isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100'}`}
-        title="Suporte com IA"
+        className={`fixed bottom-6 right-6 z-[99999] w-16 h-16 bg-zinc-900 border-2 border-orange-500 rounded-full shadow-2xl shadow-orange-900/40 transition-all active:scale-90 flex items-center justify-center overflow-hidden ${isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100 hover:scale-105'}`}
+        title="Falar com a Vehly AI"
       >
-        <MessageCircle size={28} />
-        <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse" />
+        <img 
+          src={vehlyAvatar} 
+          alt="Vehly AI" 
+          className="w-full h-full object-cover" 
+          // Fallback caso a imagem não exista ou falhe
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
+          }}
+        />
+        {/* Bolinha verde de "Online" */}
+        <span className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-zinc-900 animate-pulse" />
       </button>
 
-      {/* Janela do Chat */}
+      {/* JANELA DO CHAT */}
       {isOpen && (
         <div className="fixed bottom-6 right-6 z-[99999] w-[calc(100vw-3rem)] sm:w-[400px] h-[600px] max-h-[85vh] bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300">
           
@@ -92,13 +101,14 @@ export default function IaSupportWidget() {
             <div className="p-4 flex justify-between items-center pb-2">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-purple-600 rounded-full flex items-center justify-center text-white shadow-lg">
-                    <Sparkles size={20} />
+                  {/* ✅ IMAGEM NO CABEÇALHO */}
+                  <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden border border-zinc-700 shadow-lg">
+                    <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                   </div>
                   <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-zinc-950" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white uppercase italic tracking-tight">Vehly Inteligência</h3>
+                  <h3 className="text-sm font-black text-white uppercase italic tracking-tight">Vehly AI</h3>
                   <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">IA Integrada • Online</p>
                 </div>
               </div>
@@ -133,8 +143,9 @@ export default function IaSupportWidget() {
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${mode === 'sistema' ? 'bg-orange-600/20 text-orange-500' : 'bg-purple-600/20 text-purple-500'}`}>
-                    <Sparkles size={14} />
+                  // ✅ IMAGEM NAS MENSAGENS DA IA
+                  <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1 border border-zinc-700 bg-zinc-800">
+                    <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${
@@ -160,8 +171,8 @@ export default function IaSupportWidget() {
             
             {loading && (
               <div className="flex gap-2.5 justify-start">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${mode === 'sistema' ? 'bg-orange-600/20 text-orange-500' : 'bg-purple-600/20 text-purple-500'}`}>
-                  <Sparkles size={14} />
+                <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1 border border-zinc-700 bg-zinc-800">
+                  <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                 </div>
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl rounded-tl-sm px-4 py-3">
                   <div className="flex space-x-1.5 items-center h-4">
