@@ -5,6 +5,7 @@ import { checkPermission } from '@/lib/rbac';
 import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { roundDecimal } from '@/lib/utils';
+import { getPlanLimits, Plano } from '@/lib/plan-limits'; // ✅ IMPORT ADICIONADO
 import { z } from 'zod';
 
 // ============================================================
@@ -22,6 +23,37 @@ export async function GET(request: Request) {
 
     if (!checkPermission(user, 'financeiro', 'visualizar')) {
       return NextResponse.json({ error: 'Permissão negada' }, { status: 403 });
+    }
+
+    // ✅ BLOQUEIO DE PLANO (DRE = Financeiro Completo)
+    // ⚠️ Se o model/campo do plano tiver outro nome no seu schema, ajuste aqui.
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: user.empresa_id },
+      select: { plano: true },
+    });
+
+    const planoAtual = (empresa?.plano?.toUpperCase() as Plano) || 'BASICO';
+    const limites = getPlanLimits(planoAtual);
+
+    if (!limites.financeiroCompleto) {
+      log(
+        'WARN',
+        'FINANCEIRO',
+        'Acesso ao DRE bloqueado pelo plano',
+        { empresa_id: user.empresa_id, plano: planoAtual },
+        user.name
+      );
+
+      return NextResponse.json(
+        {
+          error: 'UPGRADE_REQUIRED',
+          code: 'UPGRADE_REQUIRED',
+          message: 'O DRE e Relatórios Financeiros Avançados estão disponíveis apenas no plano PRO.',
+          planoAtual,
+          feature: 'financeiro_completo',
+        },
+        { status: 402 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
