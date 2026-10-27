@@ -1,27 +1,21 @@
 'use client';
 
+import '@/styles/print.css';
 import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Printer, ChevronLeft, AlertTriangle, Loader2 } from 'lucide-react';
+import { Printer, ChevronLeft, AlertTriangle, Loader2, RefreshCw, MapPin, Truck, Users, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { BRANDING } from '@/lib/branding';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
-
-// ============================================================
-// HELPERS (fora do componente)
-// ============================================================
-function formatCurrency(val: number | null | undefined): string {
-  if (typeof val !== 'number' || isNaN(val)) return 'R$ 0,00';
-  return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatDateTime(ts: string | null | undefined): string {
-  if (!ts) return '';
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return '';
-  return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-}
+import {
+  formatCurrency,
+  formatDateTime,
+  formatCpfCnpj,
+  formatCNPJ,
+  numeroPorExtenso,
+  waitForPrint,
+} from '@/lib/print';
 
 function ViagemPrintContent() {
   const searchParams = useSearchParams();
@@ -31,12 +25,13 @@ function ViagemPrintContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [company, setCompany] = useState<any>(null);
+  const [printing, setPrinting] = useState(false);
+  const [emitidoEm] = useState(() => new Date());
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(false);
     try {
-      // A31: usa a rota pública (acessível a todos os papéis)
       const compData = await apiFetch<any>('/api/configuracoes/empresa/publico', { signal }).catch(() => null);
       if (compData && Object.keys(compData).length > 0) {
         setCompany(compData);
@@ -64,12 +59,23 @@ function ViagemPrintContent() {
     return () => controller.abort();
   }, [fetchData]);
 
+  const handlePrint = useCallback(async () => {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      await waitForPrint();
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
+  }, [printing]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-10">
+      <div className="min-h-screen bg-white flex items-center justify-center p-10 print:hidden">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-10 h-10 text-zinc-900 animate-spin" />
-          <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">Carregando Relatório de Viagem...</p>
+          <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+          <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">Carregando Relatório...</p>
         </div>
       </div>
     );
@@ -77,13 +83,13 @@ function ViagemPrintContent() {
 
   if (error || !os) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center text-zinc-900 p-10 gap-6">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center text-zinc-900 p-10 gap-6 print:hidden">
         <AlertTriangle className="w-12 h-12 text-red-500" />
         <h1 className="text-xl font-black uppercase tracking-tighter text-center">Ordem de Serviço não encontrada</h1>
         <p className="text-sm text-zinc-500 text-center max-w-md">Não foi possível carregar os dados da viagem. Verifique o ID ou tente novamente.</p>
         <div className="flex gap-4">
-          <button onClick={() => fetchData()} className="px-6 py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition">
-            Tentar Novamente
+          <button onClick={() => fetchData()} className="flex items-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition">
+            <RefreshCw size={14} /> Tentar Novamente
           </button>
           <Link href="/os" className="px-6 py-3 border border-zinc-300 text-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition">
             Voltar para Listagem
@@ -97,19 +103,10 @@ function ViagemPrintContent() {
 
   // Parse seguro de JSONs
   let timeline: any[] = [];
-  try {
-    timeline = typeof os.timeline_viagem === 'string' ? JSON.parse(os.timeline_viagem || '[]') : (os.timeline_viagem || []);
-  } catch { timeline = []; }
+  try { timeline = typeof os.timeline_viagem === 'string' ? JSON.parse(os.timeline_viagem || '[]') : (os.timeline_viagem || []); } catch { timeline = []; }
 
   let equipe: any[] = [];
-  try {
-    equipe = typeof os.mao_obra_equipe === 'string' ? JSON.parse(os.mao_obra_equipe || '[]') : (os.mao_obra_equipe || []);
-  } catch { equipe = []; }
-
-  let comprovantes: any = {};
-  try {
-    comprovantes = typeof os.despesas_comprovantes === 'string' ? JSON.parse(os.despesas_comprovantes || '{}') : (os.despesas_comprovantes || {});
-  } catch { comprovantes = {}; }
+  try { equipe = typeof os.mao_obra_equipe === 'string' ? JSON.parse(os.mao_obra_equipe || '[]') : (os.mao_obra_equipe || []); } catch { equipe = []; }
 
   // Cálculos
   const totalDespesas = (
@@ -128,139 +125,276 @@ function ViagemPrintContent() {
   const totalMaoObraExterna = Number(os.mao_obra_externa_total || 0);
   const desconto = Number(os.desconto || 0);
 
-  // ✅ CORRIGIDO: Valor total usa os.valor_total se disponível para bater com o banco, 
-  // caso contrário calcula (mas agora subtrai o desconto).
   const totalGeralOS = os.valor_total !== undefined 
     ? Number(os.valor_total) 
     : (totalDeslocamento + subtotalPecas + subtotalServicos + totalDespesas + totalMaoObraExterna - desconto);
 
+  const dataFormatada = new Date().toLocaleDateString('pt-BR', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  }).toUpperCase();
+
+  const despesasList = [
+    { label: 'Pedágio', value: os.despesa_pedagio },
+    { label: 'Combustível', value: os.despesa_combustivel },
+    { label: 'Hospedagem', value: os.despesa_hospedagem },
+    { label: 'Alimentação', value: os.despesa_alimentacao },
+    { label: 'Diária Técnica', value: os.despesa_diaria_tecnica },
+    { label: 'Guincho / Reboque', value: os.despesa_guincho },
+    { label: 'Outros', value: os.despesa_outros },
+  ].filter(d => Number(d.value || 0) > 0);
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 font-mono print:text-black">
-      <style>{`
+    <div className="min-h-screen bg-zinc-100 py-10 px-4 print:bg-white print:py-0 print:px-0 print:min-h-0 font-sans text-zinc-800">
+      <style jsx global>{`
         @media print {
-          @page { size: A4; margin: 10mm; }
-          body { background: white !important; color: black !important; }
-          .no-print { display: none !important; }
-          .print-bg-white { background-color: white !important; color: black !important; border-color: black !important; }
-          .print-text-black { color: black !important; }
-          .print-border-black { border-color: black !important; }
-          .print-divider-black { border-bottom: 1px solid black !important; }
-          .print-bg-zinc-100 { background-color: #f4f4f5 !important; color: black !important; }
+          html, body {
+            background: #ffffff !important; background-color: #ffffff !important;
+            margin: 0 !important; padding: 0 !important; min-height: 0 !important; height: auto !important;
+          }
+          header, aside, nav, [role="navigation"], .no-print, button, .print\:hidden { display: none !important; }
+          main, #__next, body > div, .flex-1 {
+            background: transparent !important; background-color: transparent !important;
+            padding: 0 !important; margin: 0 !important; box-shadow: none !important;
+            overflow: visible !important; height: auto !important; display: block !important;
+          }
+          .print-container {
+            position: relative !important; display: block !important; width: 100% !important;
+            max-width: 100% !important; margin: 0 !important; padding: 0 !important;
+            background: #ffffff !important; box-shadow: none !important; border: none !important;
+          }
+          @page { size: A4 portrait; margin: 12mm 15mm; }
+          .avoid-break { page-break-inside: avoid; }
+          .breakable { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
         }
       `}</style>
 
-      <div className="max-w-4xl mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl border border-zinc-800">
+      {/* Barra de Ações */}
+      <div className="max-w-[210mm] mx-auto mb-6 bg-zinc-900 p-4 rounded-2xl flex items-center justify-between no-print shadow-xl print:hidden">
         <Link href={`/os/${os.id}`} className="flex items-center gap-2 text-zinc-400 hover:text-white transition text-[10px] font-black uppercase tracking-widest">
           <ChevronLeft size={16} /> Voltar para OS
         </Link>
-        <button onClick={() => window.print()} className="px-8 py-3 bg-amber-600 hover:bg-amber-500 text-black font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-2 transition shadow-lg shadow-amber-900/40">
-          <Printer size={16} /> Imprimir Relatório
+        <button onClick={handlePrint} disabled={printing} className="px-8 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition">
+          {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+          {printing ? 'Preparando...' : 'Imprimir Relatório'}
         </button>
       </div>
 
-      <div className="max-w-4xl mx-auto bg-zinc-900 text-zinc-100 shadow-2xl p-8 print:shadow-none print:p-0 border border-amber-500/40 rounded-3xl print:rounded-none print:border-black print:bg-white print:text-black print-bg-white">
+      {/* Documento */}
+      <div className="max-w-[210mm] mx-auto bg-white shadow-2xl p-8 sm:p-12 print:p-0 print:shadow-none print-container">
         
         {/* CABEÇALHO */}
-        <div className="flex border-b border-zinc-800 pb-4 mb-4 print:border-black">
-          <div className="w-1/3 flex items-center justify-center border-r border-zinc-800 pr-4 print:border-black">
+        <div className="flex items-center justify-between border-b-2 border-zinc-200 pb-6 mb-8 avoid-break">
+          <div className="flex items-center gap-6">
             {logo ? (
-              <img src={logo} alt={BRANDING.name} className="max-h-24 object-contain brightness-100 print:brightness-100" />
+              <img src={logo} alt="Logo" className="h-20 max-w-[160px] object-contain" />
             ) : (
-              <div className="text-xl font-black italic uppercase leading-none text-center text-amber-500 print:text-black">
-                {BRANDING.name}
-              </div>
+              <div className="text-2xl font-black italic uppercase">{BRANDING.name}</div>
             )}
-          </div>
-          <div className="w-2/3 pl-4 space-y-1">
-            <h1 className="text-lg font-black uppercase text-amber-500 print:text-black">
-              {company?.razao_social || company?.nome_fantasia || 'RAZÃO SOCIAL NÃO CONFIGURADA'}
-            </h1>
-            <p className="text-[10px] leading-tight text-zinc-400 print:text-black">
-              CNPJ: {company?.cnpj || '—'} | IE: {company?.inscricao_estadual || 'ISENTO'}
-            </p>
-            <p className="text-[10px] leading-tight text-zinc-400 print:text-black">
-              {company?.endereco ? `${company.endereco}${company.numero ? `, ${company.numero}` : ''}${company.cidade ? ` - ${company.cidade}` : ''}${company.uf ? `/${company.uf}` : ''}` : 'Endereço não configurado'}
-            </p>
-            <p className="text-[10px] leading-tight text-zinc-400 print:text-black">
-              TEL: {company?.telefone || '—'} | EMAIL: {company?.email || '—'}
-            </p>
+            <div>
+              <h1 className="text-xl font-black uppercase text-zinc-900 leading-tight">
+                {company?.razao_social || company?.nome_fantasia || 'EMPRESA NÃO CONFIGURADA'}
+              </h1>
+              {company?.nome_fantasia && company.nome_fantasia !== company.razao_social && (
+                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wide">{company.nome_fantasia}</p>
+              )}
+              <div className="text-[11px] text-zinc-600 mt-2 space-y-0.5">
+                <p><span className="font-bold text-zinc-800">CNPJ:</span> {formatCNPJ(company?.cnpj)} | <span className="font-bold text-zinc-800">TEL:</span> {company?.telefone || '—'}</p>
+                <p>{company?.endereco || 'Endereço não configurado'}{company?.numero ? `, ${company.numero}` : ''} {company?.cidade ? `- ${company.cidade}` : ''}{company?.uf ? `/${company.uf}` : ''}</p>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* TÍTULO */}
-        <div className="bg-amber-600 text-black py-2 px-4 text-center font-black uppercase tracking-widest text-sm mb-4 rounded-xl print:rounded-none print:bg-black print:text-white">
-          RELATÓRIO DE ATENDIMENTO EXTERNO E CONTROLE DE KM - PROTOCOLO #{os.numero || os.id.slice(0,6).toUpperCase()}
+        <div className="flex items-stretch border border-zinc-200 rounded-xl overflow-hidden mb-8 shadow-sm avoid-break">
+          <div className="flex-1 p-4 bg-zinc-50 flex flex-col justify-center border-r border-zinc-200">
+            <h2 className="text-2xl font-black uppercase text-zinc-900 tracking-tight">Relatório de Atendimento Externo</h2>
+            <p className="text-[10px] font-bold uppercase text-orange-600 tracking-widest mt-1">Controle de Deslocamento e Viagem</p>
+          </div>
+          <div className="w-48 p-4 text-center flex flex-col justify-center bg-white">
+            <p className="text-[10px] font-bold uppercase text-zinc-500 mb-1">PROTOCOLO</p>
+            <p className="text-2xl font-black text-zinc-900 leading-none">#{os.numero || os.id.slice(0,6).toUpperCase()}</p>
+          </div>
         </div>
 
-        {/* ... (MANTIDAS AS SEÇÕES 1, 2, 3, 4, 5, 6 E TIMELINE SEM ALTERAÇÕES) ... */}
-        {/* Para economizar espaço, as tabelas e grids das seções 1 a 7 continuam EXATAMENTE como no seu código original, pois já estavam perfeitas. */}
+        {/* DADOS CLIENTE E VEÍCULO */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 avoid-break">
+          <div>
+            <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Dados do Cliente</h3>
+            <div className="text-xs space-y-1.5">
+              <p><span className="font-bold text-zinc-900">NOME:</span> {os.cliente?.nome || '—'}</p>
+              <p><span className="font-bold text-zinc-900">CPF/CNPJ:</span> {formatCpfCnpj(os.cliente?.cpf_cnpj)}</p>
+              <p><span className="font-bold text-zinc-900">TELEFONE:</span> {os.cliente?.telefone || '—'}</p>
+            </div>
+          </div>
+          
+          <div>
+            <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Dados do Veículo</h3>
+            <div className="text-xs space-y-2">
+              <div className="flex gap-4">
+                <div>
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase">Placa</p>
+                  <p className="font-black text-sm border border-zinc-300 px-2 py-1 rounded bg-zinc-50">{os.veiculo?.placa || '—'}</p>
+                </div>
+                <div className="flex-1">
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase">Marca / Modelo</p>
+                  <p className="font-bold uppercase">{os.veiculo?.marca || '—'} {os.veiculo?.modelo || ''}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        {/* CONSOLIDAÇÃO FINAL (CORRIGIDA) */}
-        <div className="border border-zinc-800 mb-8 rounded-2xl overflow-hidden bg-zinc-950/40 print:rounded-none print:border-black print:bg-white print-bg-white mt-6">
-          <div className="bg-zinc-950 px-4 py-2 font-black uppercase text-xs tracking-wider flex justify-between text-amber-500 print:bg-black print:text-white print:border-black">
-            <span>RESUMO TÉCNICO E CONSOLIDADO MONETÁRIO DE ATENDIMENTO DE CAMPO</span>
-            <span>OS #{os.numero || os.id.slice(0,6).toUpperCase()}</span>
+        {/* LOGÍSTICA E EQUIPE */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 avoid-break">
+          <div>
+            <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Logística de Campo</h3>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 flex gap-6">
+               <div>
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">KM Rodado</p>
+                  <p className="font-black text-lg">{os.km_rodado || 0} KM</p>
+               </div>
+               <div>
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Data de Saída</p>
+                  <p className="font-bold text-xs">{formatDateTime(os.data_saida)}</p>
+               </div>
+               <div>
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Retorno</p>
+                  <p className="font-bold text-xs">{formatDateTime(os.data_retorno)}</p>
+               </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-right divide-y md:divide-y-0 md:divide-x divide-zinc-800 text-zinc-300 print:text-black print:divide-black">
-            <div className="py-2 md:py-0 md:pr-2">
-              <p className="text-[9px] text-zinc-500 uppercase">Peças + Mat.</p>
-              <p className="text-xs font-black mt-1 font-mono text-zinc-100 print:text-black">{formatCurrency(subtotalPecas)}</p>
-            </div>
-            <div className="py-2 md:py-0 md:px-2">
-              <p className="text-[9px] text-zinc-500 uppercase">Serviços / M.O</p>
-              <p className="text-xs font-black mt-1 font-mono text-zinc-100 print:text-black">{formatCurrency(subtotalServicos)}</p>
-            </div>
-            <div className="py-2 md:py-0 md:px-2">
-              <p className="text-[9px] text-zinc-500 uppercase">Logística / KM</p>
-              <p className="text-xs font-black mt-1 font-mono text-zinc-100 print:text-black">{formatCurrency(totalDeslocamento)}</p>
-            </div>
-            <div className="py-2 md:py-0 md:px-2">
-              <p className="text-[9px] text-zinc-500 uppercase">Despesas + M.O Ext</p>
-              <p className="text-xs font-black mt-1 font-mono text-zinc-100 print:text-black">{formatCurrency(totalDespesas + totalMaoObraExterna)}</p>
-            </div>
-            
-            {/* ✅ NOVO: Exibe o desconto se houver */}
-            <div className="py-2 md:py-0 md:pl-2">
-              {desconto > 0 && (
-                <>
-                  <p className="text-[9px] text-red-500 uppercase font-black">Desconto Aplicado</p>
-                  <p className="text-xs font-black mt-1 font-mono text-red-400 print:text-black">- {formatCurrency(desconto)}</p>
-                </>
+          
+          <div>
+            <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Equipe Técnica Externa</h3>
+            <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4">
+              {equipe.length > 0 ? (
+                <ul className="text-xs space-y-1">
+                  {equipe.map((m: any, i: number) => (
+                    <li key={i} className="flex justify-between border-b border-zinc-200 pb-1 last:border-0 last:pb-0">
+                      <span className="font-bold uppercase">{m.nome || m.name}</span>
+                      <span className="text-zinc-500">{m.funcao || 'Técnico'}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-zinc-500 italic">Nenhum membro externo listado.</p>
               )}
-              <p className="text-[10px] text-amber-500 font-extrabold uppercase print:text-black mt-2">TOTAL GERAL DA OS</p>
-              <p className="text-base font-black text-amber-500 mt-1 font-mono print:text-black">
-                {formatCurrency(totalGeralOS)}
-              </p>
             </div>
           </div>
+        </div>
+
+        {/* DESPESAS DE VIAGEM */}
+        {despesasList.length > 0 && (
+          <div className="mb-8 breakable">
+            <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Despesas de Deslocamento</h3>
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-zinc-100 text-zinc-900 border-b-2 border-zinc-300">
+                  <th className="py-2 px-2 font-bold uppercase">Descrição da Despesa</th>
+                  <th className="py-2 px-2 font-bold uppercase text-right w-32">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {despesasList.map((d, i) => (
+                  <tr key={i} className="border-b border-zinc-200 even:bg-zinc-50/50">
+                    <td className="py-2 px-2 uppercase">{d.label}</td>
+                    <td className="py-2 px-2 text-right font-bold">{formatCurrency(Number(d.value))}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-zinc-300 bg-zinc-50">
+                  <td className="py-2 px-2 text-right font-bold uppercase text-zinc-600 text-[10px]">Subtotal Despesas:</td>
+                  <td className="py-2 px-2 text-right font-black">{formatCurrency(totalDespesas)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {/* SERVIÇOS E PEÇAS */}
+        <div className="mb-8 breakable">
+          <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Serviços Executados e Peças Aplicadas</h3>
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-zinc-100 text-zinc-900 border-b-2 border-zinc-300">
+                <th className="py-2 px-2 font-bold uppercase">Descrição</th>
+                <th className="py-2 px-2 font-bold uppercase text-center w-16">Qtd/Hrs</th>
+                <th className="py-2 px-2 font-bold uppercase text-right w-24">Vlr. Unit</th>
+                <th className="py-2 px-2 font-bold uppercase text-right w-24">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {os.servicos?.map((s: any) => (
+                <tr key={s.id} className="border-b border-zinc-200 even:bg-zinc-50/50">
+                  <td className="py-2 px-2 uppercase">{s.descricao} (M.O)</td>
+                  <td className="py-2 px-2 text-center">{s.horas}h</td>
+                  <td className="py-2 px-2 text-right">{formatCurrency(s.valor_hora)}</td>
+                  <td className="py-2 px-2 text-right font-bold">{formatCurrency(s.valor_total)}</td>
+                </tr>
+              ))}
+              {os.pecas_aplicadas?.map((p: any) => (
+                <tr key={p.id} className="border-b border-zinc-200 even:bg-zinc-50/50">
+                  <td className="py-2 px-2 uppercase">{p.peca?.descricao || p.descricao} (Peça)</td>
+                  <td className="py-2 px-2 text-center">{p.quantidade}</td>
+                  <td className="py-2 px-2 text-right">{formatCurrency(p.valor_unit)}</td>
+                  <td className="py-2 px-2 text-right font-bold">{formatCurrency(p.valor_total)}</td>
+                </tr>
+              ))}
+              {(!os.servicos?.length && !os.pecas_aplicadas?.length) && (
+                <tr><td colSpan={4} className="py-4 text-center italic text-zinc-400">Nenhum serviço ou peça registrado.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* CONSOLIDAÇÃO FINAL E TOTAIS */}
+        <div className="flex flex-col sm:flex-row gap-6 mb-8 breakable">
+          <div className="flex-1">
+            <h3 className="text-[11px] font-black uppercase text-orange-600 border-b border-zinc-200 pb-1 mb-2 tracking-wider">Observações / Relato</h3>
+            <p className="text-xs leading-relaxed text-zinc-700 whitespace-pre-wrap">{os.diagnostico || 'Nenhuma observação registrada.'}</p>
+          </div>
+          
+          <div className="w-full sm:w-80 bg-zinc-50 border border-zinc-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-3 flex justify-between text-xs border-b border-zinc-200 text-zinc-600"><span className="font-bold uppercase">Peças + Mat.</span><span className="font-bold">{formatCurrency(subtotalPecas)}</span></div>
+            <div className="p-3 flex justify-between text-xs border-b border-zinc-200 text-zinc-600"><span className="font-bold uppercase">Serviços / M.O</span><span className="font-bold">{formatCurrency(subtotalServicos)}</span></div>
+            <div className="p-3 flex justify-between text-xs border-b border-zinc-200 text-zinc-600"><span className="font-bold uppercase">Logística / KM</span><span className="font-bold">{formatCurrency(totalDeslocamento)}</span></div>
+            <div className="p-3 flex justify-between text-xs border-b border-zinc-200 text-zinc-600"><span className="font-bold uppercase">Despesas + M.O Ext</span><span className="font-bold">{formatCurrency(totalDespesas + totalMaoObraExterna)}</span></div>
+            {desconto > 0 && <div className="p-3 flex justify-between text-xs border-b border-zinc-200 text-red-600"><span className="font-bold uppercase">Desconto</span><span className="font-bold">- {formatCurrency(desconto)}</span></div>}
+            <div className="p-4 flex justify-between items-center bg-zinc-900 text-white">
+              <span className="text-[10px] font-black uppercase tracking-widest">Total Geral</span>
+              <span className="text-xl font-black">{formatCurrency(totalGeralOS)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* EXTENSO */}
+        <div className="border border-zinc-200 bg-zinc-50 rounded-lg p-3 mb-10 breakable">
+          <p className="text-[11px] text-zinc-600"><span className="font-bold uppercase text-zinc-900">Valor por extenso:</span> <span className="italic capitalize">{numeroPorExtenso(totalGeralOS)}</span></p>
         </div>
 
         {/* ASSINATURAS */}
-        <div className="grid grid-cols-2 gap-8 pt-8 text-center text-zinc-300 print:text-black">
-          <div className="flex flex-col justify-end h-32 items-center">
-            <div className="w-11/12 border-b border-zinc-800 print:border-black"></div>
-            <p className="text-[10px] uppercase font-black tracking-wider mt-2 text-zinc-200 print:text-black">DADOS / ASSINATURA DO TÉCNICO ENCARREGADO</p>
-            <p className="text-[9px] text-zinc-500 uppercase font-bold text-amber-500 print:text-black">{os.mecanico?.name || 'Mecânico Técnico'}</p>
+        <div className="grid grid-cols-2 gap-16 pt-12 pb-8 px-8 avoid-break">
+          <div className="border-t border-zinc-400 pt-2 text-center text-[10px]">
+            <p className="font-black uppercase text-zinc-800">Técnico Encarregado</p>
+            <p className="text-zinc-500">{os.mecanico?.name || 'Assinatura'}</p>
           </div>
-
-          <div className="flex flex-col justify-end h-32 items-center">
-            <div className="w-11/12 border-b border-zinc-800 print:border-black"></div>
-            <p className="text-[10px] uppercase font-black tracking-wider mt-2 text-zinc-200 print:text-black">ASSINATURA DO CLIENTE / RESPONSÁVEL</p>
-            <p className="text-[9px] text-zinc-500 uppercase font-bold text-amber-500 print:text-black">{os.cliente?.nome || 'Cliente'}</p>
+          <div className="border-t border-zinc-400 pt-2 text-center text-[10px]">
+            <p className="font-black uppercase text-zinc-800">Cliente / Responsável</p>
+            <p className="text-zinc-500">{os.cliente?.nome || 'Assinatura'}</p>
           </div>
         </div>
 
         {/* RODAPÉ */}
-        <div className="mt-12 pt-4 border-t border-zinc-800 text-center text-[8px] text-zinc-500 leading-tight print:border-black">
-          A responsabilidade técnico-metrológica de quilometragem e tempo de parada declarados competem sob os critérios contratuais de atendimento extramuros.
-          {company?.rodape_personalizado && (
-            <>
-              <br />
-              {company.rodape_personalizado}
-            </>
-          )}
-          <br />
-          {BRANDING.name} — {BRANDING.slogan}
+        <div className="text-center pt-6 border-t border-zinc-200 avoid-break">
+          <p className="text-[9px] uppercase text-zinc-400">A responsabilidade técnico-metrológica de quilometragem e tempo de parada declarados competem sob os critérios contratuais de atendimento extramuros.</p>
+          {company?.rodape_personalizado && <p className="text-[10px] text-zinc-600 mt-2 italic whitespace-pre-wrap">{company.rodape_personalizado}</p>}
+          <p className="text-[10px] uppercase font-bold text-zinc-800 mt-4">{company?.cidade || 'CIDADE'}, {dataFormatada}</p>
+          <p className="text-[9px] text-zinc-500 mt-1">Emitido em {emitidoEm.toLocaleString('pt-BR')}</p>
+          <p className="text-[9px] font-bold text-zinc-300 mt-1 uppercase tracking-widest">{BRANDING.name}</p>
         </div>
 
       </div>
@@ -271,7 +405,7 @@ function ViagemPrintContent() {
 export default function ViagemPrintPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-white flex items-center justify-center p-10">
+      <div className="min-h-screen bg-white flex items-center justify-center p-10 print:hidden">
         <Loader2 className="w-10 h-10 text-zinc-900 animate-spin" />
       </div>
     }>
