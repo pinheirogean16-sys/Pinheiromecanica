@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api-auth';
 import { apiError } from '@/lib/api-error';
 import { prisma } from '@/lib/prisma';
-import { getPlanLimits, Plano } from '@/lib/plan-limits';
 import OpenAI from 'openai';
 import { z } from 'zod';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// ✅ CONFIGURAÇÃO DA GROQ (Compatível com OpenAI SDK)
+const groq = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: 'https://api.groq.com/openai/v1',
 });
 
 const chatSchema = z.object({
@@ -25,12 +26,12 @@ export async function POST(request: Request) {
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // ✅ Bloqueio de Plano (Opcional: Deixar apenas para PRO)
+    // ✅ Bloqueio de Plano (IA só no PRO)
     const empresa = await prisma.empresa.findUnique({
       where: { id: user.empresa_id },
       select: { plano: true },
     });
-    const planoAtual = (empresa?.plano?.toUpperCase() as Plano) || 'BASICO';
+    const planoAtual = empresa?.plano?.toUpperCase() || 'BASICO';
 
     if (planoAtual !== 'PRO') {
       return NextResponse.json(
@@ -70,7 +71,6 @@ Suas regras:
     // PERSONALIDADE 2: MECÂNICO CHEFE (DIAGNÓSTICO)
     // ============================================================
     else {
-      // Busca as peças em estoque para dar contexto
       const pecasEstoque = await prisma.peca.findMany({
         where: { empresa_id: user.empresa_id, quantidade: { gt: 0 } },
         select: { descricao: true, codigo: true, quantidade: true },
@@ -92,13 +92,14 @@ Suas regras:
 - O usuário atual é: ${user.name} (${user.role}).`;
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+    // ✅ CHAMADA PARA A GROQ USANDO O MODELO LLAMA 3.3
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile', 
       messages: [
         { role: 'system', content: systemPrompt },
         ...parsed.messages,
       ],
-      temperature: parsed.mode === 'mecanico' ? 0.3 : 0.5, // Mecânico é mais objetivo
+      temperature: parsed.mode === 'mecanico' ? 0.3 : 0.5,
       max_tokens: 800,
     });
 
@@ -109,7 +110,7 @@ Suas regras:
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
     }
-    console.error('Erro na IA:', error);
+    console.error('Erro na IA (Groq):', error);
     return apiError(error, 'IA', 'Erro ao processar mensagem do suporte IA');
   }
 }
