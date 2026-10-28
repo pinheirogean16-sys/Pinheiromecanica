@@ -123,7 +123,6 @@ export default function ImprimirOSPage() {
             max-width: 100% !important; margin: 0 !important; padding: 0 !important;
             background: #ffffff !important; box-shadow: none !important; border: none !important;
           }
-          /* Margem da folha A4 reduzida para ganhar espaço vertical */
           @page { size: A4 portrait; margin: 10mm 15mm; }
           .avoid-break { page-break-inside: avoid; }
           .breakable { page-break-inside: auto; }
@@ -147,21 +146,21 @@ export default function ImprimirOSPage() {
       <div className="max-w-[210mm] mx-auto bg-white shadow-2xl p-8 sm:p-12 print:p-0 print:shadow-none print-container">
         
         {/* CABEÇALHO DA EMPRESA */}
-        <div className="flex items-center justify-between border-b-2 border-zinc-200 pb-4 mb-4 avoid-break">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between border-b-2 border-zinc-200 py-6 mb-6 avoid-break">
+          <div className="flex items-center gap-6">
             {logo ? (
-              <img src={logo} alt="Logo" className="h-16 max-w-[140px] object-contain" />
+              <img src={logo} alt="Logo" className="h-24 max-w-[180px] object-contain" />
             ) : (
-              <div className="text-2xl font-black italic uppercase">{BRANDING.name}</div>
+              <div className="text-3xl font-black italic uppercase">{BRANDING.name}</div>
             )}
             <div>
-              <h1 className="text-lg font-black uppercase text-zinc-900 leading-tight">
+              <h1 className="text-xl font-black uppercase text-zinc-900 leading-tight">
                 {company?.razao_social || company?.nome_fantasia || 'EMPRESA NÃO CONFIGURADA'}
               </h1>
               {company?.nome_fantasia && company.nome_fantasia !== company.razao_social && (
-                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wide">{company.nome_fantasia}</p>
+                <p className="text-sm font-bold text-zinc-500 uppercase tracking-wide">{company.nome_fantasia}</p>
               )}
-              <div className="text-[10px] text-zinc-600 mt-1 space-y-0.5">
+              <div className="text-xs text-zinc-600 mt-2 space-y-1">
                 <p><span className="font-bold text-zinc-800">CNPJ:</span> {formatCNPJ(company?.cnpj)} | <span className="font-bold text-zinc-800">IE:</span> {company?.inscricao_estadual || 'ISENTO'}</p>
                 <p>{company?.endereco || 'Endereço não configurado'}{company?.numero ? `, ${company.numero}` : ''} {company?.cidade ? `- ${company.cidade}` : ''}{company?.uf ? `/${company.uf}` : ''}</p>
                 <p><span className="font-bold text-zinc-800">TEL:</span> {company?.telefone || '—'} | <span className="font-bold text-zinc-800">EMAIL:</span> {company?.email || '—'}</p>
@@ -170,23 +169,28 @@ export default function ImprimirOSPage() {
           </div>
         </div>
 
-        {/* TÍTULO CENTRALIZADO E COMPACTO */}
-        <div className="border border-zinc-200 rounded-lg mb-4 shadow-sm avoid-break p-4 text-center bg-white">
-          <h2 className="text-2xl font-black uppercase text-zinc-900 tracking-widest">ORDEM DE SERVIÇO</h2>
-          <p className="text-[9px] font-bold uppercase text-orange-600 tracking-widest mt-0.5">{tipoOSLabel}</p>
-          
-          <div className="mt-3 flex justify-center items-center gap-6">
-             <div className="text-center">
-               <p className="text-[8px] font-bold uppercase text-zinc-500 mb-0.5">NÚMERO</p>
-               {/* ✅ Fonte do número reduzida */}
-               <p className="text-lg font-black text-zinc-900 leading-none">#{numeroOS}</p>
-             </div>
-             <div className="w-px h-6 bg-zinc-300" />
-             <div className="text-center">
-               <p className="text-[8px] font-bold uppercase text-zinc-500 mb-0.5">STATUS</p>
-               {/* ✅ Fonte do status reduzida */}
-               <p className="text-xs font-black text-zinc-900 uppercase mt-0.5">{os.status?.replace(/_/g, ' ')}</p>
-             </div>
+        {/* TÍTULO CENTRALIZADO COM EXTREMIDADES */}
+        <div className="border border-zinc-200 rounded-lg mb-4 shadow-sm avoid-break px-6 py-4 bg-white relative">
+          <div className="grid grid-cols-3 items-center">
+            
+            {/* Lado Esquerdo - Número */}
+            <div className="text-left">
+              <p className="text-[8px] font-bold uppercase text-zinc-500 mb-0.5">NÚMERO</p>
+              <p className="text-xl font-black text-zinc-900 leading-none">#{numeroOS}</p>
+            </div>
+
+            {/* Centro - Título */}
+            <div className="text-center">
+              <h2 className="text-2xl font-black uppercase text-zinc-900 tracking-widest leading-none">ORDEM DE SERVIÇO</h2>
+              <p className="text-[9px] font-bold uppercase text-orange-600 tracking-widest mt-1">{tipoOSLabel}</p>
+            </div>
+
+            {/* Lado Direito - Status */}
+            <div className="text-right">
+              <p className="text-[8px] font-bold uppercase text-zinc-500 mb-0.5">STATUS</p>
+              <p className="text-xs font-black text-zinc-900 uppercase mt-1">{os.status?.replace(/_/g, ' ')}</p>
+            </div>
+
           </div>
         </div>
 
