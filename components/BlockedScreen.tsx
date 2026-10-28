@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -9,23 +9,28 @@ import Link from 'next/link';
 
 export default function BlockedScreen() {
   const [loadingPlano, setLoadingPlano] = useState<'BASICO' | 'PRO' | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleAssinar = async (plano: 'BASICO' | 'PRO') => {
     setLoadingPlano(plano);
+    setError(null);
     try {
       const res = await apiFetch<{ paymentId: string }>('/api/pagamento/assinar', {
         method: 'POST',
         body: { plano },
+        silentError: true, // Vamos controlar o erro na tela
       });
 
       if (res.paymentId) {
         router.push(`/checkout/${res.paymentId}`);
       } else {
-        toast.error('Erro ao gerar pagamento. Tente novamente.');
+        setError('Erro ao gerar pagamento. Tente novamente.');
       }
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao gerar assinatura. Verifique seu CNPJ.');
+      const msg = err.message || 'Erro ao gerar assinatura. Verifique seu CNPJ.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoadingPlano(null);
     }
@@ -46,6 +51,13 @@ export default function BlockedScreen() {
             Escolha um dos planos abaixo para desbloquear o acesso imediatamente.
           </p>
         </div>
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-left">
+            <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
+            <p className="text-xs text-red-400 font-bold">{error}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
           {/* Card Básico */}
