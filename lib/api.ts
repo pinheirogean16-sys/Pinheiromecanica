@@ -1,12 +1,10 @@
 /**
  * Centralized API Fetch Utility with Deduplication, Telemetry, and Resilient Backoff Caching
- * Developed for robust performance in shared and low-resource hosting (such as Hostinger Business).
- * Features Client-side rate-limit recovery and stale-while-revalidate protection.
  */
 
 import { toast } from 'sonner';
 import { requestManager } from './request-manager';
-import { showUpgradeModal } from '@/components/UpgradeModal'; // ✅ UPGRADE
+import { showUpgradeModal } from '@/components/UpgradeModal';
 
 export class ApiError extends Error {
   status: number;
@@ -34,7 +32,6 @@ export interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'priority'> 
   silentError?: boolean;
 }
 
-// Keep track of counts for Ctrl + Shift + D Diagnostic UI
 export const apiTelemetry = {
   get totalRequests() { return requestManager.telemetry.totalRequests; },
   get activeRequests() { return (requestManager as any).activeConnections || 0; },
@@ -44,12 +41,10 @@ export const apiTelemetry = {
   lastRequestsLog: [] as { path: string; timestamp: string; status: number; duration: number }[]
 };
 
-// Expose to window for real-time live debugging
 if (typeof window !== 'undefined') {
   (window as any).__api_telemetry = apiTelemetry;
 }
 
-// ✅ UPGRADE: extrai o payload do erro independente de onde o requestManager guardou
 function extractErrorPayload(err: any): any {
   return err?.info ?? err?.data ?? err?.body ?? null;
 }
@@ -62,7 +57,6 @@ export async function apiFetch<T = any>(
   try {
     const result = await requestManager.request<T>(path, options);
 
-    // Append to telemetry trace log
     apiTelemetry.lastRequestsLog.unshift({
       path,
       timestamp: new Date().toLocaleTimeString(),
@@ -78,7 +72,6 @@ export async function apiFetch<T = any>(
     const status = err.status || 0;
     const payload = extractErrorPayload(err);
 
-    // Append error trace log
     apiTelemetry.lastRequestsLog.unshift({
       path,
       timestamp: new Date().toLocaleTimeString(),
@@ -89,8 +82,7 @@ export async function apiFetch<T = any>(
       apiTelemetry.lastRequestsLog.pop();
     }
 
-    // ✅ UPGRADE: detecta 402 UPGRADE_REQUIRED e dispara o modal global
-    // Não mostra o modal se a chamada marcou silentError (ex.: polling em background)
+    // ✅ UPGRADE: detecta 402, dispara o modal e lança um ApiError oficial
     if (
       status === 402 &&
       payload?.code === 'UPGRADE_REQUIRED' &&
@@ -103,11 +95,15 @@ export async function apiFetch<T = any>(
         total: payload?.total,
         feature: payload?.feature,
       });
+      
+      // ✅ AQUI ESTÁ A CORREÇÃO: Lança o erro com as propriedades certas
+      throw new ApiError(payload?.message || 'UPGRADE_REQUIRED', 402, 'Payment Required', payload);
     }
 
-    if (err instanceof Error) {
+    if (err instanceof ApiError) {
       throw err;
     }
+    
     throw new ApiError(err.message || 'Erro de rede ou API', status, err.statusText || 'Error', payload);
   }
 }
