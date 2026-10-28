@@ -15,11 +15,10 @@ async function asaasFetch<T>(endpoint: string, options: RequestInit = {}): Promi
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent': ASAAS_USER_AGENT, // ✅ Header obrigatório
-      'access_token': ASAAS_API_KEY,   // ✅ Autenticação do Asaas
+      'User-Agent': ASAAS_USER_AGENT,
+      'access_token': ASAAS_API_KEY,
       ...options.headers,
     },
-    // Evita cache agressivo do Next.js nas chamadas do Asaas
     cache: 'no-store',
   });
 
@@ -42,7 +41,7 @@ async function asaasFetch<T>(endpoint: string, options: RequestInit = {}): Promi
 // ============================================================
 export async function criarClienteAsaas(params: {
   name: string;
-  cpfCnpj?: string; // ✅ Opcional: nem toda empresa tem CNPJ no cadastro
+  cpfCnpj?: string;
   email: string;
   externalReference: string;
 }) {
@@ -52,7 +51,6 @@ export async function criarClienteAsaas(params: {
   });
 }
 
-// ✅ Atualizar cliente (necessário para injetar o CNPJ antes da assinatura)
 export async function atualizarClienteAsaas(
   customerId: string,
   params: { cpfCnpj?: string; name?: string; email?: string }
@@ -67,10 +65,10 @@ export async function atualizarClienteAsaas(
 // SUBSCRIPTIONS
 // ============================================================
 export async function criarAssinaturaAsaas(params: {
-  customer: string; // asaas_customer_id
+  customer: string;
   billingType: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
   value: number;
-  nextDueDate: string; // "YYYY-MM-DD"
+  nextDueDate: string;
   cycle: 'MONTHLY' | 'YEARLY';
   description: string;
 }) {
@@ -87,10 +85,18 @@ export type AsaasPayment = {
   id: string;
   status: string;
   value: number;
+  netValue?: number;
+  billingType: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED'; // ✅ ADICIONADO
   dueDate: string;
   invoiceUrl: string;
-  bankSlipUrl?: string;
   invoiceNumber?: string;
+  bankSlipUrl?: string;
+  subscription?: string; // ✅ ADICIONADO
+  customer?: string;
+  description?: string;
+  paymentDate?: string;
+  clientPaymentDate?: string;
+  confirmedDate?: string;
 };
 
 export async function listarPagamentosAssinatura(subscriptionId: string) {
@@ -98,7 +104,7 @@ export async function listarPagamentosAssinatura(subscriptionId: string) {
 }
 
 // ============================================================
-// CHECKOUT & PIX (✅ NOVAS FUNÇÕES ADICIONADAS)
+// CHECKOUT & PIX
 // ============================================================
 
 export async function obterPagamento(paymentId: string) {
@@ -106,8 +112,8 @@ export async function obterPagamento(paymentId: string) {
 }
 
 export type AsaasPixQrCode = {
-  encodedImage: string; // Base64 da imagem
-  payload: string;      // Código copia e cola
+  encodedImage: string;
+  payload: string;
   expirationDate: string;
 };
 
