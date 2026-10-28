@@ -1,8 +1,10 @@
 import { toast } from 'sonner';
 
 export function handleApiError(error: any, options: { defaultMessage?: string } = {}) {
-  // ✅ 1. TRAVA DE SEGURANÇA ABSOLUTA PARA O 402
+  // Transforma o erro em string para garantir que não vamos perder o código
   const errorString = JSON.stringify(error || {});
+  
+  // Verifica em todas as propriedades possíveis (status, message, string do objeto inteiro)
   const isUpgradeRequired = 
     error?.status === 402 || 
     error?.statusCode === 402 ||
@@ -12,11 +14,12 @@ export function handleApiError(error: any, options: { defaultMessage?: string } 
     error?.message?.includes('UPGRADE_REQUIRED') ||
     errorString.includes('UPGRADE_REQUIRED');
 
+  // ✅ Se for bloqueio de plano, IGNORA O TOAST completamente.
   if (isUpgradeRequired) {
-    return; // Ignora completamente o toast
+    return; 
   }
 
-  // 2. Se for erro real, mostra o toast
+  // 2. Se for erro real (rede, 500, etc), mostra o toast
   const message = error?.message || options?.defaultMessage || 'Ocorreu um erro inesperado.';
   toast.error(message);
 }
