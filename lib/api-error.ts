@@ -13,6 +13,24 @@ export function apiError(
 ): NextResponse {
   const err = error as any;
 
+  // ✅ TRATAMENTO ESPECIAL PARA BLOQUEIO DE PLANO (402)
+  // Não mostra como erro crítico no log e envia o "code" para o frontend
+  if (status === 402) {
+    log('WARN', modulo, 'Bloqueio de plano (402)', {
+      message: err?.message || mensagemPublica,
+    });
+
+    return NextResponse.json(
+      {
+        error: 'UPGRADE_REQUIRED',
+        code: 'UPGRADE_REQUIRED',
+        message: mensagemPublica,
+      },
+      { status: 402 }
+    );
+  }
+
+  // Log normal para erros reais (500, 400, etc)
   log('ERROR', modulo, 'Erro na API', {
     message: err?.message,
     stack: err?.stack,
