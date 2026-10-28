@@ -49,8 +49,6 @@ export async function POST(request: Request) {
     // ============================================================
     // 2. IDEMPOTÊNCIA — EVITAR PROCESSAMENTO DUPLICADO
     // ============================================================
-    // O Asaas usa modelo "at least once": o mesmo evento pode chegar várias vezes.
-    // Usamos a tabela AuditLog como controle temporário (sem alterar o schema).
     const jaProcessado = await prisma.auditLog.findFirst({
       where: {
         modulo: 'ASAAS_WEBHOOK',
@@ -78,21 +76,22 @@ export async function POST(request: Request) {
           event,
           customerId: payment.customer,
         }, 'ASAAS');
-        // Registra o evento como processado mesmo assim, para não retentar eternamente
       } else {
-        // ✅ Pagamento confirmado/recebido → ATIVA a empresa
+        // ✅ Pagamento confirmado/recebido → ATIVA a empresa e muda o plano para PRO
         if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
-          if (empresa.status !== 'ATIVO') {
-            await prisma.empresa.update({
-              where: { id: empresa.id },
-              data: { status: 'ATIVO', asaas_status: 'ACTIVE' },
-            });
-            log('INFO', 'ASAAS_WEBHOOK', 'Empresa ATIVADA por pagamento', {
-              eventId,
-              empresaId: empresa.id,
-              event,
-            }, 'ASAAS');
-          }
+          await prisma.empresa.update({
+            where: { id: empresa.id },
+            data: { 
+              status: 'ATIVO', 
+              asaas_status: 'ACTIVE',
+              plano: 'PRO' // ✅ CORRIGIDO: Seta o plano para PRO ao pagar
+            },
+          });
+          log('INFO', 'ASAAS_WEBHOOK', 'Empresa ATIVADA e Plano alterado para PRO', {
+            eventId,
+            empresaId: empresa.id,
+            event,
+          }, 'ASAAS');
         }
 
         // ⚠️ Pagamento vencido → BLOQUEIA a empresa
@@ -155,8 +154,6 @@ export async function POST(request: Request) {
     // ============================================================
     // 5. REGISTRAR EVENTO COMO PROCESSADO (IDEMPOTÊNCIA)
     // ============================================================
-    // Usamos AuditLog como controle. Em produção, considere criar uma tabela
-    // dedicada (ex: AsaasWebhookEvent) para não misturar com logs de auditoria.
     await prisma.auditLog.create({
       data: {
         id: eventId, // ✅ Usa o ID do evento do Asaas para garantir unicidade
@@ -179,7 +176,6 @@ export async function POST(request: Request) {
     }, 'ASAAS');
 
     // ⚠️ Retornar 200 mesmo em erro evita que o Asaas entre em loop de retentativas.
-    // O erro já foi logado para investigação manual.
     return NextResponse.json({ received: true, error: true });
   }
 }
