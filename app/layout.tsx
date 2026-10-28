@@ -5,7 +5,8 @@ import { Toaster } from 'sonner';
 import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
 import { BRANDING } from '@/lib/branding';
 import OnboardingTour from '@/components/OnboardingTour';
-import IaSupportWidget from '@/components/IaSupportWidget'; // ✅ IMPORT ADICIONADO
+import IaSupportWidget from '@/components/IaSupportWidget';
+import { UpgradeModalHost } from '@/components/UpgradeModal'; // ✅ IMPORT ADICIONADO
 import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import { ShieldAlert } from 'lucide-react';
@@ -109,8 +110,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {children}
         </LayoutWrapper>
         
-        {/* ✅ WIDGET DE SUPORTE IA ADICIONADO AQUI */}
         <IaSupportWidget />
+        
+        {/* ✅ MODAL DE UPGRADE ADICIONADO AQUI */}
+        <UpgradeModalHost />
         
         <Toaster theme="dark" position="top-right" richColors />
       </body>
