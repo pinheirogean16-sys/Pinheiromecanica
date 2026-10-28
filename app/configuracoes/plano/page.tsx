@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation'; // ✅ IMPORT ADICIONADO
 import Link from 'next/link';
 import {
   ArrowLeft, ShieldCheck, AlertTriangle,
   CheckCircle2, XCircle, Clock, Zap, Loader2, Sparkles, Users, MessageCircle
 } from 'lucide-react';
-import { toast } from 'sonner'; // ✅ IMPORT ADICIONADO
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 
@@ -30,10 +31,11 @@ const WHATSAPP_SUPORTE =
 const EMAIL_SUPORTE = 'suporte@vehlox.com.br';
 
 export default function PlanoPage() {
+  const router = useRouter(); // ✅ ROUTER ADICIONADO
   const [data, setData] = useState<PlanoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [loadingCheckout, setLoadingCheckout] = useState(false); // ✅ ESTADO DO CHECKOUT
+  const [loadingCheckout, setLoadingCheckout] = useState(false);
 
   const fetchPlano = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -61,18 +63,23 @@ export default function PlanoPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  // ✅ NOVA FUNÇÃO: Chama a API do Asaas e abre o checkout
+  // ✅ FUNÇÃO ATUALIZADA: Redireciona para a nossa página de checkout interna
   const handleUpgradeClick = async () => {
     if (loadingCheckout || !data) return;
     setLoadingCheckout(true);
     
     try {
-      const res = await apiFetch<{ invoiceUrl: string; message?: string }>('/api/pagamento/assinar', {
+      // A API agora retorna o paymentId
+      const res = await apiFetch<{ paymentId: string; invoiceUrl: string; message?: string }>('/api/pagamento/assinar', {
         method: 'POST',
       });
 
-      if (res.invoiceUrl) {
-        toast.success('Redirecionando para o pagamento seguro...');
+      if (res.paymentId) {
+        toast.success('Redirecionando para o checkout seguro...');
+        router.push(`/checkout/${res.paymentId}`); // ✅ REDIRECIONA PARA O CHECKOUT PREMIUM
+      } else if (res.invoiceUrl) {
+        // Fallback: Se por algum motivo não vier o paymentId, abre o link do Asaas
+        toast.success('Redirecionando para o pagamento...');
         window.open(res.invoiceUrl, '_blank');
       } else {
         toast.info(res.message || 'Assinatura gerada. Verifique seu e-mail para o link de pagamento.');
@@ -224,7 +231,6 @@ export default function PlanoPage() {
               )}
 
               <div className="pt-4">
-                {/* ✅ BOTÃO ATUALIZADO COM LOADING E CHECKOUT */}
                 <button
                   onClick={isPro ? handleSuporteClick : handleUpgradeClick}
                   disabled={loadingCheckout}
