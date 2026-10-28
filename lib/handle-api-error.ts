@@ -1,21 +1,22 @@
 import { toast } from 'sonner';
-import { ApiError } from './api';
 
 export function handleApiError(error: any, options: { defaultMessage?: string } = {}) {
-  // 1. Verifica se é bloqueio de plano de TODAS as formas possíveis
+  // ✅ 1. TRAVA DE SEGURANÇA ABSOLUTA PARA O 402
+  const errorString = JSON.stringify(error || {});
   const isUpgradeRequired = 
     error?.status === 402 || 
+    error?.statusCode === 402 ||
     error?.response?.status === 402 ||
     error?.info?.code === 'UPGRADE_REQUIRED' ||
     error?.data?.code === 'UPGRADE_REQUIRED' ||
-    error?.message?.includes('UPGRADE_REQUIRED');
+    error?.message?.includes('UPGRADE_REQUIRED') ||
+    errorString.includes('UPGRADE_REQUIRED');
 
-  // ✅ Se for bloqueio de plano, IGNORA O TOAST. O modal já foi aberto pelo apiFetch.
   if (isUpgradeRequired) {
-    return; 
+    return; // Ignora completamente o toast
   }
 
-  // 2. Se for erro real (rede, 500, etc), mostra o toast
+  // 2. Se for erro real, mostra o toast
   const message = error?.message || options?.defaultMessage || 'Ocorreu um erro inesperado.';
   toast.error(message);
 }
