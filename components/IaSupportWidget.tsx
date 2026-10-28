@@ -5,6 +5,7 @@ import { X, Send, Loader2, User, Monitor, Wrench } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 import ReactMarkdown from 'react-markdown';
+import { useRouter } from 'next/navigation'; // ✅ IMPORTADO PARA O BOTÃO DE UPGRADE
 
 type Message = { role: 'user' | 'assistant'; content: string };
 type Mode = 'sistema' | 'mecanico';
@@ -16,8 +17,8 @@ export default function IaSupportWidget() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const router = useRouter(); // ✅ ROUTER ADICIONADO
 
-  // ✅ CAMINHO DA SUA IMAGEM (salve a imagem como public/vehly-avatar.png)
   const vehlyAvatar = '/vehly-avatar.png'; 
 
   const getWelcomeMessage = (m: Mode) => {
@@ -59,12 +60,23 @@ export default function IaSupportWidget() {
       const res = await apiFetch<{ resposta: string }>('/api/ia/suporte', {
         method: 'POST',
         body: { mode, messages: newMessages },
+        silentError: true, // ✅ SILENCIA O TOAST VERMELHO GLOBAL
       });
 
       setMessages((prev) => [...prev, { role: 'assistant', content: res.resposta }]);
     } catch (err: any) {
-      handleApiError(err, { defaultMessage: 'A IA está indisponível no momento.' });
-      setMessages((prev) => prev.slice(0, -1));
+      // ✅ SE FOR ERRO DE PLANO (402), A VEHLY AVISA AMIGAVELMENTE
+      if (err.status === 402 || err.message?.includes('UPGRADE_REQUIRED')) {
+        const msgUpgrade = mode === 'sistema'
+          ? 'Ops! Meus circuitos de suporte avançado estão disponíveis apenas no **Plano PRO**. 🚀\n\nPara eu poder te ajudar com todas as dúvidas, faça o upgrade na tela de planos!'
+          : 'Eita, chefe! Para eu liberar meus diagnósticos avançados de mecânica, você precisa ativar o **Plano PRO**. 🔧\n\nVá em Configurações > Meu Plano para liberar meu cérebro completo!';
+        
+        setMessages((prev) => [...prev, { role: 'assistant', content: msgUpgrade }]);
+      } else {
+        // Outros erros (ex: rede)
+        handleApiError(err, { defaultMessage: 'A IA está indisponível no momento.' });
+        setMessages((prev) => prev.slice(0, -1)); // Remove a mensagem do usuário
+      }
     } finally {
       setLoading(false);
     }
@@ -72,7 +84,7 @@ export default function IaSupportWidget() {
 
   return (
     <>
-      {/* ✅ BOTÃO FLUTUANTE (Nome em cima + Avatar embaixo) */}
+      {/* Botão Flutuante */}
       <button
         onClick={() => setIsOpen(true)}
         className={`fixed bottom-6 right-6 z-[99999] flex flex-col items-center gap-1.5 transition-all active:scale-90 ${
@@ -80,38 +92,31 @@ export default function IaSupportWidget() {
         }`}
         title="Falar com a Vehly AI"
       >
-        {/* Etiqueta com o Nome */}
         <span className="px-2.5 py-1 bg-zinc-900/90 border border-zinc-700/80 backdrop-blur-md text-[9px] font-black text-orange-400 uppercase tracking-widest rounded-full shadow-lg whitespace-nowrap">
           Vehly AI
         </span>
-
-        {/* Avatar Redondo */}
         <div className="relative w-16 h-16 bg-zinc-900 border-2 border-orange-500 rounded-full shadow-2xl shadow-orange-900/40 flex items-center justify-center overflow-hidden hover:scale-105 transition-transform">
           <img 
             src={vehlyAvatar} 
             alt="Vehly AI" 
             className="w-full h-full object-cover" 
             onError={(e) => {
-              // Fallback caso a imagem não exista
               const target = e.target as HTMLImageElement;
               target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
             }}
           />
-          {/* Bolinha verde de "Online" */}
           <span className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-zinc-900 animate-pulse" />
         </div>
       </button>
 
-      {/* JANELA DO CHAT */}
+      {/* Janela do Chat */}
       {isOpen && (
         <div className="fixed bottom-6 right-6 z-[99999] w-[calc(100vw-3rem)] sm:w-[400px] h-[600px] max-h-[85vh] bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300">
           
-          {/* Header com Abas */}
           <div className="bg-zinc-950 border-b border-zinc-800 shrink-0">
             <div className="p-4 flex justify-between items-center pb-2">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  {/* Imagem no Cabeçalho */}
                   <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center overflow-hidden border border-zinc-700 shadow-lg">
                     <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                   </div>
@@ -127,7 +132,6 @@ export default function IaSupportWidget() {
               </button>
             </div>
 
-            {/* Tabs */}
             <div className="flex px-4 gap-2 pb-2">
               <button
                 onClick={() => handleModeChange('sistema')}
@@ -148,12 +152,10 @@ export default function IaSupportWidget() {
             </div>
           </div>
 
-          {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-zinc-900/50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  // Imagem nas mensagens da IA
                   <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1 border border-zinc-700 bg-zinc-800">
                     <img src={vehlyAvatar} alt="Vehly" className="w-full h-full object-cover" />
                   </div>
@@ -166,6 +168,18 @@ export default function IaSupportWidget() {
                   {msg.role === 'assistant' ? (
                     <div className="prose prose-invert prose-xs max-w-none prose-p:leading-relaxed">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      {/* ✅ SE A MENSAGEM FOR DE UPGRADE, MOSTRA O BOTÃO */}
+                      {msg.content.includes('Plano PRO') && (
+                        <button
+                          onClick={() => {
+                            setIsOpen(false);
+                            router.push('/configuracoes/plano');
+                          }}
+                          className="mt-3 w-full py-2 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition"
+                        >
+                          Fazer Upgrade Agora
+                        </button>
+                      )}
                     </div>
                   ) : (
                     msg.content
@@ -195,7 +209,6 @@ export default function IaSupportWidget() {
             )}
           </div>
 
-          {/* Input */}
           <form onSubmit={handleSend} className="p-4 bg-zinc-950 border-t border-zinc-800 shrink-0 flex gap-2">
             <input
               type="text"
