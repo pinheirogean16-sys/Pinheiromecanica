@@ -17,9 +17,6 @@ export interface ProcessedError {
 
 /**
  * Centralized API error handler for Next.js App Router (Hostinger Business lightweight compatible).
- * Formats standard HTTP statuses, handles special cases (timeout, offline, network errors),
- * preserves backend-specific messages, triggers user-friendly toasts, and returns
- * a standardized error payload for future-proofing (e.g., TanStack Query).
  */
 export function handleApiError(error: any, options: HandleErrorOptions = {}): ProcessedError {
   const { showToast = true, defaultMessage = 'Ocorreu um erro inesperado' } = options;
@@ -37,7 +34,18 @@ export function handleApiError(error: any, options: HandleErrorOptions = {}): Pr
     info = error.info;
     message = error.message;
 
-    // Standard high-level translation of HTTP statuses if no custom backend-provided message exists
+    // ✅ TRATAMENTO DO ERRO 402 (UPGRADE REQUIRED)
+    if (status === 402 || info?.code === 'UPGRADE_REQUIRED') {
+      return {
+        message: info?.message || error.message || 'Recurso exclusivo do plano PRO',
+        status: 402,
+        statusText: 'Payment Required',
+        info,
+        isNetworkError: false,
+        isTimeout: false,
+      };
+    }
+
     switch (status) {
       case 400:
         if (!error.message || error.message.includes('Erro HTTP 400') || error.message.includes('HTTP 400')) {
@@ -48,7 +56,6 @@ export function handleApiError(error: any, options: HandleErrorOptions = {}): Pr
         if (!error.message || error.message.includes('Erro HTTP 401') || error.message.includes('HTTP 401')) {
           message = 'Sessão expirada ou não autorizada. Faça login novamente.';
         }
-        // Trigger global session expired event to do client-side cleanups and redirection
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth-expired'));
         }
@@ -100,13 +107,13 @@ export function handleApiError(error: any, options: HandleErrorOptions = {}): Pr
     message = error;
   }
 
-  // Ensure message is never empty
   if (!message) {
     message = defaultMessage;
   }
 
-  // Display user-friendly notification
-  if (showToast) {
+  // ✅ SÓ MOSTRA O TOAST SE NÃO FOR ERRO DE PLANO (402)
+  const isUpgradeRequired = status === 402 || info?.code === 'UPGRADE_REQUIRED';
+  if (showToast && !isUpgradeRequired) {
     toast.error(message);
   }
 
