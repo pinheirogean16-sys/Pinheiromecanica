@@ -6,6 +6,7 @@ import {
   ArrowLeft, ShieldCheck, AlertTriangle,
   CheckCircle2, XCircle, Clock, Zap, Loader2, Sparkles, Users, MessageCircle
 } from 'lucide-react';
+import { toast } from 'sonner'; // ✅ IMPORT ADICIONADO
 import { apiFetch } from '@/lib/api';
 import { handleApiError } from '@/lib/handle-api-error';
 
@@ -15,7 +16,7 @@ interface PlanoData {
   trial_ends_at: string | null;
   diasRestantes: number;
   limites: {
-    usuarios: number | null; // null = ilimitado
+    usuarios: number | null;
     portalCliente: boolean;
     financeiroCompleto: boolean;
   };
@@ -25,13 +26,14 @@ interface PlanoData {
 }
 
 const WHATSAPP_SUPORTE =
-  process.env.NEXT_PUBLIC_WHATSAPP_SUPORTE || '5511999999999'; // ⚠️ troque pelo seu número
+  process.env.NEXT_PUBLIC_WHATSAPP_SUPORTE || '5511999999999';
 const EMAIL_SUPORTE = 'suporte@vehlox.com.br';
 
 export default function PlanoPage() {
   const [data, setData] = useState<PlanoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [loadingCheckout, setLoadingCheckout] = useState(false); // ✅ ESTADO DO CHECKOUT
 
   const fetchPlano = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -59,10 +61,27 @@ export default function PlanoPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleUpgradeClick = () => {
-    if (!data) return;
-    const msg = `Olá! Quero fazer upgrade do plano ${data.plano} do VEHLOX para o PRO.`;
-    abrirWhatsApp(msg);
+  // ✅ NOVA FUNÇÃO: Chama a API do Asaas e abre o checkout
+  const handleUpgradeClick = async () => {
+    if (loadingCheckout || !data) return;
+    setLoadingCheckout(true);
+    
+    try {
+      const res = await apiFetch<{ invoiceUrl: string; message?: string }>('/api/pagamento/assinar', {
+        method: 'POST',
+      });
+
+      if (res.invoiceUrl) {
+        toast.success('Redirecionando para o pagamento seguro...');
+        window.open(res.invoiceUrl, '_blank');
+      } else {
+        toast.info(res.message || 'Assinatura gerada. Verifique seu e-mail para o link de pagamento.');
+      }
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Erro ao gerar assinatura. Verifique o CNPJ da empresa.' });
+    } finally {
+      setLoadingCheckout(false);
+    }
   };
 
   const handleSuporteClick = () => {
@@ -205,12 +224,25 @@ export default function PlanoPage() {
               )}
 
               <div className="pt-4">
+                {/* ✅ BOTÃO ATUALIZADO COM LOADING E CHECKOUT */}
                 <button
-                  onClick={handleUpgradeClick}
-                  className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3"
+                  onClick={isPro ? handleSuporteClick : handleUpgradeClick}
+                  disabled={loadingCheckout}
+                  className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
                 >
-                  <Zap size={18} className="fill-white" />
-                  {isPro ? 'Falar com Suporte' : data.plano === 'TRIAL' ? 'Fazer Upgrade Agora' : 'Fazer Upgrade para PRO'}
+                  {loadingCheckout ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Zap size={18} className="fill-white" />
+                  )}
+                  {loadingCheckout 
+                    ? 'Gerando Pagamento...' 
+                    : isPro 
+                      ? 'Falar com Suporte' 
+                      : data.plano === 'TRIAL' 
+                        ? 'Fazer Upgrade Agora' 
+                        : 'Fazer Upgrade para PRO'
+                  }
                 </button>
               </div>
             </div>
