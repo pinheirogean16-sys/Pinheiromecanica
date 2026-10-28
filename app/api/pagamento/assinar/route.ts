@@ -11,31 +11,29 @@ import {
   listarPagamentosAssinatura,
 } from '@/lib/asaas';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    // 1. Autenticação
     const { error, user } = await requireAuth();
     if (error) return error;
 
-    // 2. Busca dados da empresa (incluindo o e-mail do Admin para o Asaas)
+    // ✅ NOVO: Pega o plano escolhido (padrão PRO)
+    const body = await request.json().catch(() => ({}));
+    const planoEscolhido = body.plano === 'BASICO' ? 'BASICO' : 'PRO';
+    const valorAssinatura = planoEscolhido === 'BASICO' ? 89.90 : 149.90;
+    const descricaoAssinatura = planoEscolhido === 'BASICO' 
+      ? 'Assinatura VEHLOX - Plano Básico' 
+      : 'Assinatura VEHLOX - Plano PRO';
+
     const empresa = await prisma.empresa.findUnique({
       where: { id: user.empresa_id },
-      include: { 
-        User: { 
-          where: { role: 'ADMIN' }, 
-          take: 1 
-        } 
-      }
+      include: { User: { where: { role: 'ADMIN' }, take: 1 } }
     });
 
-    if (!empresa) {
-      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
-    }
+    if (!empresa) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
 
-    // 3. Validação do CNPJ (O Asaas exige para criar assinaturas)
     if (!empresa.cnpj) {
       return NextResponse.json(
-        { error: 'Para assinar o plano PRO, preencha o CNPJ da sua empresa em Configurações > Empresa.' },
+        { error: 'Para assinar, preencha o CNPJ da sua empresa em Configurações > Empresa.' },
         { status: 400 }
       );
     }
@@ -44,7 +42,6 @@ export async function POST() {
     const adminEmail = empresa.User[0]?.email || user.email;
     let customerId = empresa.asaas_customer_id;
 
-    // 4. Cria ou atualiza o cliente no Asaas
     if (!customerId) {
       const cliente = await criarClienteAsaas({
         name: empresa.nome,
@@ -53,50 +50,34 @@ export async function POST() {
         externalReference: empresa.id,
       });
       customerId = cliente.id;
-
-      await prisma.empresa.update({
-        where: { id: empresa.id },
-        data: { asaas_customer_id: customerId },
-      });
+      await prisma.empresa.update({ where: { id: empresa.id }, data: { asaas_customer_id: customerId } });
     } else {
-      await atualizarClienteAsaas(customerId, {
-        cpfCnpj: cnpjLimpo,
-        name: empresa.nome,
-        email: adminEmail,
-      }).catch(err => console.error('Erro ao atualizar cliente Asaas:', err));
+      await atualizarClienteAsaas(customerId, { cpfCnpj: cnpjLimpo, name: empresa.nome, email: adminEmail })
+        .catch(err => console.error('Erro ao atualizar cliente Asaas:', err));
     }
 
-    // 5. Cria a Assinatura (R$ 149,90 / mês) via PIX
     const hoje = new Date();
-    hoje.setDate(hoje.getDate() + 1); // Vencimento amanhã
+    hoje.setDate(hoje.getDate() + 1);
     const nextDueDate = hoje.toISOString().split('T')[0];
 
     const assinatura = await criarAssinaturaAsaas({
       customer: customerId,
-      billingType: 'PIX', // ✅ ALTERADO: Força PIX para gerar o QR Code na hora
-      value: 149.90,
+      billingType: 'PIX',
+      value: valorAssinatura, // ✅ Usa o valor dinâmico
       nextDueDate,
       cycle: 'MONTHLY',
-      description: 'Assinatura VEHLOX - Plano PRO',
+      description: descricaoAssinatura, // ✅ Usa a descrição dinâmica
     });
 
-    // 6. Salva os dados da assinatura no banco
     await prisma.empresa.update({
       where: { id: empresa.id },
-      data: { 
-        asaas_subscription_id: assinatura.id,
-        asaas_status: 'PENDING'
-      },
+      data: { asaas_subscription_id: assinatura.id, asaas_status: 'PENDING' },
     });
 
-    // 7. Busca a primeira fatura gerada para pegar o link e o ID
-    log('INFO', 'PAGAMENTO', 'Aguardando fatura do Asaas...', { assinatura_id: assinatura.id }, user.name);
-    
     let pagamentos = await listarPagamentosAssinatura(assinatura.id);
     let primeiraFatura = pagamentos.data?.[0];
-
-    // ✅ NOVO: Retry loop para esperar o Asaas gerar a fatura (evita devolver null)
     let attempts = 0;
+
     while (!primeiraFatura && attempts < 3) {
       await new Promise(resolve => setTimeout(resolve, 1500));
       pagamentos = await listarPagamentosAssinatura(assinatura.id);
@@ -105,31 +86,17 @@ export async function POST() {
     }
 
     if (!primeiraFatura) {
-      log('WARN', 'PAGAMENTO', 'Assinatura criada, mas fatura não gerada', { empresa_id: empresa.id }, user.name);
-      return NextResponse.json({
-        success: true,
-        message: 'Assinatura criada, mas a fatura ainda está sendo gerada. Tente novamente em instantes.',
-        invoiceUrl: null,
-        paymentId: null,
-      });
+      return NextResponse.json({ success: true, message: 'Assinatura criada, aguardando fatura.', invoiceUrl: null, paymentId: null });
     }
 
-    log('INFO', 'PAGAMENTO', 'Fatura PIX gerada com sucesso', { 
-      empresa_id: empresa.id, 
-      assinatura_id: assinatura.id,
-      fatura_id: primeiraFatura.id
-    }, user.name);
-
-    // 8. Retorna o ID e o link para o frontend
     return NextResponse.json({
       success: true,
-      paymentId: primeiraFatura.id, // ✅ NOVO: Retorna o ID para a nossa página de Checkout
+      paymentId: primeiraFatura.id,
       invoiceUrl: primeiraFatura.invoiceUrl,
       subscriptionId: assinatura.id,
     });
 
   } catch (error: any) {
-    console.error('Erro ao gerar assinatura:', error);
-    return apiError(error, 'PAGAMENTO', 'Erro ao gerar assinatura. Verifique os dados da empresa e tente novamente.');
+    return apiError(error, 'PAGAMENTO', 'Erro ao gerar assinatura.');
   }
 }
