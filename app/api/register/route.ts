@@ -10,7 +10,7 @@ import { criarClienteAsaas } from '@/lib/asaas';
 // ============================================================
 // CONFIGURAÇÃO DO TRIAL
 // ============================================================
-const DIAS_TRIAL = Number(process.env.TRIAL_DIAS ?? 14);
+const DIAS_TRIAL = Number(process.env.TRIAL_DIAS ?? 7); // ✅ ALTERADO DE 14 PARA 7
 
 function calcularFimTrial(): Date {
   return new Date(Date.now() + DIAS_TRIAL * 24 * 60 * 60 * 1000);
