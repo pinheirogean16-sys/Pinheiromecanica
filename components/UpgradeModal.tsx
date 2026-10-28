@@ -47,87 +47,94 @@ export function UpgradeModalHost() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[1000000] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upgrade-title"
     >
+      {/* Fundo escuro com blur */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-zinc-950/80 backdrop-blur-md"
         onClick={() => setOpen(false)}
       />
 
-      <div className="relative w-full max-w-lg rounded-2xl border border-orange-500/30 bg-zinc-900 p-6 shadow-2xl">
+      {/* Card do Modal */}
+      <div className="relative w-full max-w-lg rounded-[2.5rem] border border-zinc-800 bg-zinc-900 p-8 sm:p-10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+        
+        {/* Efeitos de fundo */}
+        <div className="absolute -top-32 -right-32 w-64 h-64 bg-orange-600/20 blur-3xl rounded-full pointer-events-none" />
+        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-orange-600/10 blur-3xl rounded-full pointer-events-none" />
+
         <button
           onClick={() => setOpen(false)}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+          className="absolute right-5 top-5 z-10 rounded-xl p-2 bg-zinc-950 border border-zinc-800 text-zinc-500 transition hover:text-white"
           aria-label="Fechar"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-orange-600/20 text-orange-400">
-          <Sparkles className="h-6 w-6" />
-        </div>
+        <div className="relative z-10">
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-xl shadow-orange-900/40 rotate-3">
+            <Sparkles className="h-8 w-8" />
+          </div>
 
-        <h2 id="upgrade-title" className="text-xl font-semibold text-white">
-          Faça upgrade para o PRO
-        </h2>
+          <h2 id="upgrade-title" className="text-2xl sm:text-3xl font-black text-white uppercase italic tracking-tighter">
+            Faça upgrade para o PRO
+          </h2>
 
-        <p className="mt-2 text-sm text-zinc-400">
-          {info.message ||
-            'Você atingiu o limite do plano Básico. Faça upgrade para continuar sem restrições.'}
-        </p>
-
-        {(info.planoAtual || info.feature) && (
-          <p className="mt-2 text-xs text-zinc-500">
-            {info.planoAtual && (
-              <>
-                Plano atual:{' '}
-                <strong className="text-zinc-300">{info.planoAtual}</strong>
-              </>
-            )}
-            {info.feature && (
-              <>
-                {info.planoAtual ? ' · ' : ''}
-                Recurso: <strong className="text-zinc-300">{info.feature}</strong>
-              </>
-            )}
+          <p className="mt-2 text-xs sm:text-sm text-zinc-400 leading-relaxed font-medium">
+            {info.message ||
+              'Você atingiu o limite do plano Básico ou tentou acessar um recurso exclusivo. Faça upgrade para continuar sem restrições.'}
           </p>
-        )}
 
-        <div className="mt-5 space-y-2 rounded-xl bg-zinc-950/60 p-4 text-sm text-zinc-300">
-          <p className="mb-2 font-medium text-white">O que você ganha no PRO:</p>
-          {[
-            'Usuários ilimitados',
-            'Portal do Cliente',
-            'Relatórios avançados',
-            'Financeiro completo (DRE, Curva ABC)',
-            'Suporte prioritário',
-          ].map((item) => (
-            <div key={item} className="flex items-start gap-2">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
-              <span>{item}</span>
+          {(info.planoAtual || info.feature) && (
+            <div className="mt-4 inline-flex flex-wrap gap-2">
+              {info.planoAtual && (
+                <span className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                  Plano Atual: <strong className="text-orange-500">{info.planoAtual}</strong>
+                </span>
+              )}
+              {info.feature && (
+                <span className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                  Recurso: <strong className="text-orange-500">{info.feature}</strong>
+                </span>
+              )}
             </div>
-          ))}
-        </div>
+          )}
 
-        <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-          <button
-            onClick={() => setOpen(false)}
-            className="flex-1 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800"
-          >
-            Agora não
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              router.push('/configuracoes/plano');
-            }}
-            className="flex-1 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-500"
-          >
-            Ver planos
-          </button>
+          <div className="mt-8 space-y-3 rounded-2xl bg-zinc-950/80 p-6 text-sm text-zinc-300 border border-zinc-800/50">
+            <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-white">O que você desbloqueia no PRO:</p>
+            {[
+              'Usuários ilimitados',
+              'Portal do Cliente',
+              'Relatórios e DRE Completo',
+              'Assistente Inteligente (Vehly AI)',
+              'Suporte prioritário'
+            ].map((item) => (
+              <div key={item} className="flex items-start gap-3">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                <span className="font-bold uppercase tracking-wide text-[11px]">{item}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => setOpen(false)}
+              className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition hover:text-white hover:bg-zinc-800"
+            >
+              Agora não
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                router.push('/configuracoes/plano');
+              }}
+              className="flex-[2] rounded-xl bg-orange-600 px-4 py-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-orange-500 shadow-xl shadow-orange-950/30"
+            >
+              Ver planos e Fazer Upgrade
+            </button>
+          </div>
         </div>
       </div>
     </div>
