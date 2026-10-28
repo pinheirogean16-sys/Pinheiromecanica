@@ -173,10 +173,8 @@ export default function FinanceiroDashboard() {
   const [analise, setAnalise] = useState<any>(null);
   const [analiseLoading, setAnaliseLoading] = useState(false);
   
-  // ✅ CORRIGIDO: totalPages inicia em 1
   const [data, setData] = useState<{ items: any[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   
-  // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('TODOS');
@@ -187,7 +185,6 @@ export default function FinanceiroDashboard() {
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState('');
 
-  // Debounce search
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm);
@@ -197,44 +194,39 @@ export default function FinanceiroDashboard() {
 
   const fetchDashboardData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        q: debouncedSearch,
-        tipo: filterTipo,
-        status: filterStatus,
-        page: String(page),
-        limit: '10',
-      });
+    const params = new URLSearchParams({
+      q: debouncedSearch,
+      tipo: filterTipo,
+      status: filterStatus,
+      page: String(page),
+      limit: '10',
+    });
 
-      // ✅ CORREÇÃO: allSettled dispara o modal imediatamente, sem esperar a outra requisição
-      const [summaryResult, listResult] = await Promise.allSettled([
-        apiFetch<any>('/api/financeiro/resumo', { signal }),
-        apiFetch<any>(`/api/financeiro?${params.toString()}`, { signal })
-      ]);
-
-      if (summaryResult.status === 'fulfilled') {
-        setSummary(summaryResult.value);
+    // ✅ CORREÇÃO DA VELOCIDADE: 
+    // Disparamos independentemente. Se o resumo der 402, o modal abre na hora.
+    const loadResumo = async () => {
+      try {
+        const res = await apiFetch<any>('/api/financeiro/resumo', { signal });
+        setSummary(res);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') handleApiError(err, { defaultMessage: 'Erro ao carregar resumo' });
       }
+    };
 
-      if (listResult.status === 'fulfilled') {
-        const listData = listResult.value;
+    const loadLista = async () => {
+      try {
+        const listData = await apiFetch<any>(`/api/financeiro?${params.toString()}`, { signal });
         const items = Array.isArray(listData) ? listData : (listData.items || []);
         const total = typeof listData.total === 'number' ? listData.total : items.length;
         const totalPages = Math.max(1, listData.totalPages || 1);
         setData({ items, total, totalPages });
+      } catch (err: any) {
+        if (err.name !== 'AbortError') handleApiError(err, { defaultMessage: 'Erro ao carregar lançamentos' });
       }
+    };
 
-      // Se qualquer uma falhou, lança o erro para o catch disparar o handleApiError
-      const error = summaryResult.status === 'rejected' ? summaryResult.reason : 
-                   (listResult.status === 'rejected' ? listResult.reason : null);
-      if (error) throw error;
-
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      handleApiError(err, { defaultMessage: 'Erro ao carregar dados financeiros' });
-    } finally {
-      setLoading(false);
-    }
+    await Promise.all([loadResumo(), loadLista()]);
+    setLoading(false);
   }, [debouncedSearch, filterTipo, filterStatus, page]);
 
   const fetchAnaliseData = useCallback(async (signal?: AbortSignal) => {
@@ -281,7 +273,6 @@ export default function FinanceiroDashboard() {
     } else if (filterQuick === 'PARCELADOS') {
       setFilterTipo('TODOS');
       setFilterStatus('TODOS');
-      // ✅ Filtro "PARCELADOS" força busca por "Parcela"
       setDebouncedSearch('Parcela');
     }
     setPage(1);
@@ -324,7 +315,6 @@ export default function FinanceiroDashboard() {
       const formData = new FormData();
       formData.append('file', file);
 
-      // ✅ Upload usa fetch direto (apiFetch não suporta FormData nativamente)
       const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
