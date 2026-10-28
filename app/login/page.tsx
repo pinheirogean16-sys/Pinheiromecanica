@@ -9,6 +9,7 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
+import { apiFetch } from '@/lib/api'; // ✅ IMPORT ADICIONADO
 
 export default function AuthPage() {
   const router = useRouter();
@@ -32,23 +33,18 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      // ✅ TROCADO FETCH POR APIFETCH
+      const data = await apiFetch<{ redirect?: string }>('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData)
+        body: loginData,
+        silentError: true, // Evita toast duplicado, vamos tratar manualmente
       });
 
-      const data = await res.json();
-
-      if (res.ok) {
-        toast.success('Login realizado com sucesso!');
-        router.push(data.redirect || '/dashboard');
-        router.refresh();
-      } else {
-        toast.error(data.error || 'E-mail ou senha incorretos.');
-      }
-    } catch {
-      toast.error('Erro de conexão com o servidor.');
+      toast.success('Login realizado com sucesso!');
+      router.push(data.redirect || '/dashboard');
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || 'E-mail ou senha incorretos.');
     } finally {
       setLoading(false);
     }
@@ -59,24 +55,21 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/register', {
+      // ✅ TROCADO FETCH POR APIFETCH
+      const data = await apiFetch<{ success: boolean }>('/api/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registerData)
+        body: registerData,
+        silentError: true,
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.success) {
+      if (data.success) {
         setRegisterSuccess(true);
         setTimeout(() => {
           router.push('/bem-vindo');
         }, 3000);
-      } else {
-        toast.error(data.error || 'Erro ao realizar cadastro.');
       }
-    } catch {
-      toast.error('Erro de conexão ao criar conta.');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao realizar cadastro.');
     } finally {
       setLoading(false);
     }
@@ -102,8 +95,6 @@ export default function AuthPage() {
   }
 
   return (
-    /* ✅ CORREÇÃO: min-h-[100dvh] evita bugs com a barra de endereço do iOS 
-       e removemos as divs com "blur-3xl" que causavam o quadrado preto */
     <div className="min-h-[100dvh] w-full flex items-center justify-center p-4 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 relative overflow-hidden">
       
       <div className="w-full max-w-lg p-6 lg:p-10 bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-[2rem] shadow-2xl relative z-10 my-8">
