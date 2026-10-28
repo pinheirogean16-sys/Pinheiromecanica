@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react'; // ✅ Adicionado Suspense
+import { useRouter, useSearchParams } from 'next/navigation'; // ✅ Adicionado useSearchParams
 import { 
   Lock, Mail, Building, CreditCard, ChevronRight, KeyRound, 
   User, ArrowRight, ArrowLeft, CheckCircle2, Loader2
@@ -9,12 +9,15 @@ import {
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { BRANDING } from '@/lib/branding';
-import { apiFetch } from '@/lib/api'; // ✅ IMPORT ADICIONADO
+import { apiFetch } from '@/lib/api';
 
-export default function AuthPage() {
+function AuthContent() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // ✅ Lê os parâmetros da URL
   
-  const [isLogin, setIsLogin] = useState(true);
+  // ✅ Se a URL tiver ?mode=register, inicia na aba de cadastro
+  const [isLogin, setIsLogin] = useState(searchParams.get('mode') !== 'register');
+  
   const [loading, setLoading] = useState(false);
   const [registerSuccess, setRegisterSuccess] = useState(false);
   
@@ -33,11 +36,10 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
-      // ✅ TROCADO FETCH POR APIFETCH
       const data = await apiFetch<{ redirect?: string }>('/api/auth/login', {
         method: 'POST',
         body: loginData,
-        silentError: true, // Evita toast duplicado, vamos tratar manualmente
+        silentError: true,
       });
 
       toast.success('Login realizado com sucesso!');
@@ -55,7 +57,6 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
-      // ✅ TROCADO FETCH POR APIFETCH
       const data = await apiFetch<{ success: boolean }>('/api/register', {
         method: 'POST',
         body: registerData,
@@ -296,5 +297,18 @@ export default function AuthPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// ✅ O Next.js exige que o useSearchParams esteja dentro de um Suspense
+export default function AuthPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[100dvh] flex items-center justify-center bg-zinc-950">
+        <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+      </div>
+    }>
+      <AuthContent />
+    </Suspense>
   );
 }
