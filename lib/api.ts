@@ -54,26 +54,23 @@ export async function apiFetch<T = any>(
     return result;
   } catch (err: any) {
     const payload = extractErrorPayload(err);
-    // Garante que o status venha do erro ou do payload
-    const status = err.status || payload?.status || 0; 
+    // Captura o status de todas as formas possíveis
+    const status = err.status || err.statusCode || err.response?.status || payload?.status || 0; 
+    const isUpgrade = status === 402 || payload?.code === 'UPGRADE_REQUIRED' || err.message?.includes('UPGRADE_REQUIRED');
 
     // ✅ UPGRADE: detecta 402, dispara o modal e lança um ApiError oficial
-    if (
-      (status === 402 || payload?.code === 'UPGRADE_REQUIRED' || err.message?.includes('UPGRADE_REQUIRED')) &&
-      !options.silentError
-    ) {
-      // ✅ Abre o modal imediatamente
+    if (isUpgrade && !options.silentError) {
       showUpgradeModal({
-        message: payload?.message || err.message,
+        message: payload?.message || 'Recurso exclusivo do plano PRO',
         planoAtual: payload?.planoAtual,
         limite: payload?.limite,
         total: payload?.total,
         feature: payload?.feature,
       });
       
-      // Lança o erro com as propriedades corretas para o frontend ignorar o toast
+      // ✅ A CORREÇÃO: Lança o erro com as propriedades certas para o handleApiError ignorar
       throw new ApiError(
-        'UPGRADE_REQUIRED', // Força a mensagem padrão para o handleApiError reconhecer
+        'UPGRADE_REQUIRED', 
         402, 
         'Payment Required', 
         { ...payload, code: 'UPGRADE_REQUIRED' }
@@ -81,6 +78,7 @@ export async function apiFetch<T = any>(
     }
 
     if (err instanceof ApiError) throw err;
+    
     throw new ApiError(err.message || 'Erro de rede ou API', status, err.statusText || 'Error', payload);
   }
 }
