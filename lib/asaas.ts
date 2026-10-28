@@ -96,3 +96,21 @@ export type AsaasPayment = {
 export async function listarPagamentosAssinatura(subscriptionId: string) {
   return asaasFetch<{ data: AsaasPayment[] }>(`/subscriptions/${subscriptionId}/payments`);
 }
+
+// ============================================================
+// CHECKOUT & PIX (✅ NOVAS FUNÇÕES ADICIONADAS)
+// ============================================================
+
+export async function obterPagamento(paymentId: string) {
+  return asaasFetch<AsaasPayment>(`/payments/${paymentId}`);
+}
+
+export type AsaasPixQrCode = {
+  encodedImage: string; // Base64 da imagem
+  payload: string;      // Código copia e cola
+  expirationDate: string;
+};
+
+export async function obterQrCodePix(paymentId: string) {
+  return asaasFetch<AsaasPixQrCode>(`/payments/${paymentId}/pixQrCode`);
+}
