@@ -46,7 +46,6 @@ export async function POST() {
 
     // 4. Cria ou atualiza o cliente no Asaas
     if (!customerId) {
-      // Se ainda não existe cliente no Asaas, cria um novo
       const cliente = await criarClienteAsaas({
         name: empresa.nome,
         cpfCnpj: cnpjLimpo,
@@ -55,13 +54,11 @@ export async function POST() {
       });
       customerId = cliente.id;
 
-      // Salva o ID do cliente no banco para as próximas compras
       await prisma.empresa.update({
         where: { id: empresa.id },
         data: { asaas_customer_id: customerId },
       });
     } else {
-      // Se já existe, garante que o CNPJ e o nome estão atualizados
       await atualizarClienteAsaas(customerId, {
         cpfCnpj: cnpjLimpo,
         name: empresa.nome,
@@ -69,14 +66,14 @@ export async function POST() {
       }).catch(err => console.error('Erro ao atualizar cliente Asaas:', err));
     }
 
-    // 5. Cria a Assinatura (R$ 149,90 / mês)
+    // 5. Cria a Assinatura (R$ 149,90 / mês) via PIX
     const hoje = new Date();
     hoje.setDate(hoje.getDate() + 1); // Vencimento amanhã
     const nextDueDate = hoje.toISOString().split('T')[0];
 
     const assinatura = await criarAssinaturaAsaas({
       customer: customerId,
-      billingType: 'UNDEFINED', // Permite o cliente escolher PIX, Boleto ou Cartão
+      billingType: 'PIX', // ✅ ALTERADO: Força PIX para gerar o QR Code na hora
       value: 149.90,
       nextDueDate,
       cycle: 'MONTHLY',
@@ -92,28 +89,41 @@ export async function POST() {
       },
     });
 
-    // 7. Busca a primeira fatura gerada para pegar o link de pagamento
-    const pagamentos = await listarPagamentosAssinatura(assinatura.id);
-    const primeiraFatura = pagamentos.data?.[0];
+    // 7. Busca a primeira fatura gerada para pegar o link e o ID
+    log('INFO', 'PAGAMENTO', 'Aguardando fatura do Asaas...', { assinatura_id: assinatura.id }, user.name);
+    
+    let pagamentos = await listarPagamentosAssinatura(assinatura.id);
+    let primeiraFatura = pagamentos.data?.[0];
+
+    // ✅ NOVO: Retry loop para esperar o Asaas gerar a fatura (evita devolver null)
+    let attempts = 0;
+    while (!primeiraFatura && attempts < 3) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      pagamentos = await listarPagamentosAssinatura(assinatura.id);
+      primeiraFatura = pagamentos.data?.[0];
+      attempts++;
+    }
 
     if (!primeiraFatura) {
-      log('WARN', 'PAGAMENTO', 'Assinatura criada, mas sem fatura gerada imediatamente', { empresa_id: empresa.id }, user.name);
+      log('WARN', 'PAGAMENTO', 'Assinatura criada, mas fatura não gerada', { empresa_id: empresa.id }, user.name);
       return NextResponse.json({
         success: true,
-        message: 'Assinatura criada, mas o link de pagamento ainda não foi gerado. Tente novamente em instantes.',
+        message: 'Assinatura criada, mas a fatura ainda está sendo gerada. Tente novamente em instantes.',
         invoiceUrl: null,
+        paymentId: null,
       });
     }
 
-    log('INFO', 'PAGAMENTO', 'Link de assinatura gerado com sucesso', { 
+    log('INFO', 'PAGAMENTO', 'Fatura PIX gerada com sucesso', { 
       empresa_id: empresa.id, 
       assinatura_id: assinatura.id,
       fatura_id: primeiraFatura.id
     }, user.name);
 
-    // 8. Retorna o link para o frontend redirecionar o usuário
+    // 8. Retorna o ID e o link para o frontend
     return NextResponse.json({
       success: true,
+      paymentId: primeiraFatura.id, // ✅ NOVO: Retorna o ID para a nossa página de Checkout
       invoiceUrl: primeiraFatura.invoiceUrl,
       subscriptionId: assinatura.id,
     });
