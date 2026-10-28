@@ -6,11 +6,10 @@ import DiagnosticsOverlay from '@/components/DiagnosticsOverlay';
 import { BRANDING } from '@/lib/branding';
 import OnboardingTour from '@/components/OnboardingTour';
 import IaSupportWidget from '@/components/IaSupportWidget';
-import { UpgradeModalHost } from '@/components/UpgradeModal'; // ✅ IMPORT ADICIONADO
+import { UpgradeModalHost } from '@/components/UpgradeModal';
+import BlockedScreen from '@/components/BlockedScreen'; // ✅ IMPORT ADICIONADO
 import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
-import { ShieldAlert } from 'lucide-react';
-import Link from 'next/link';
 import LayoutWrapper from '@/components/LayoutWrapper';
 
 export const metadata: Metadata = {
@@ -63,26 +62,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     }
   }
 
-  // 1. Tela de Bloqueio
+  // 1. Tela de Bloqueio (com opções de assinatura)
   if (isBlocked) {
     return (
       <html lang="pt-BR" className="dark">
-        <body className="bg-zinc-950 text-zinc-200 antialiased flex items-center justify-center min-h-screen p-4">
-          <div className="max-w-md w-full bg-zinc-900 border border-red-500/30 rounded-3xl p-8 text-center space-y-6 shadow-2xl">
-            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
-              <ShieldAlert className="w-10 h-10 text-red-500" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-white uppercase tracking-tight">Acesso Bloqueado</h1>
-              <p className="text-sm text-zinc-400 mt-2">
-                O período de testes da sua oficina expirou ou a conta está com pagamento pendente. 
-                Entre em contato com o suporte para regularizar a situação.
-              </p>
-            </div>
-            <Link href="/login" className="block w-full py-4 bg-zinc-950 border border-zinc-800 hover:bg-zinc-800 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition">
-              Voltar para o Login
-            </Link>
-          </div>
+        <body className="bg-zinc-950 text-zinc-200 antialiased">
+          <BlockedScreen /> {/* ✅ USA O NOVO COMPONENTE */}
         </body>
       </html>
     );
@@ -111,8 +96,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </LayoutWrapper>
         
         <IaSupportWidget />
-        
-        {/* ✅ MODAL DE UPGRADE ADICIONADO AQUI */}
         <UpgradeModalHost />
         
         <Toaster theme="dark" position="top-right" richColors />
