@@ -49,8 +49,9 @@ export default async function LandingPage() {
             <Link href="/login" className="text-xs font-bold text-zinc-300 hover:text-white transition-colors hidden sm:block">
               Entrar
             </Link>
+            {/* ✅ CORRIGIDO: /login?mode=register */}
             <Link 
-              href="/register-page" 
+              href="/login?mode=register" 
               className="bg-white text-zinc-950 hover:bg-zinc-200 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-95"
             >
               Teste Grátis
@@ -83,8 +84,9 @@ export default async function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6 w-full">
+            {/* ✅ CORRIGIDO: /login?mode=register */}
             <Link 
-              href="/register-page" 
+              href="/login?mode=register" 
               className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white px-10 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-[0_0_30px_rgba(249,115,22,0.3)] active:scale-95 flex items-center justify-center gap-2 group"
             >
               Começar 7 Dias Grátis 
@@ -277,7 +279,8 @@ export default async function LandingPage() {
                 ))}
               </ul>
 
-              <Link href="/register-page" className="w-full py-4 text-center border border-white/10 hover:bg-white/5 rounded-xl text-xs font-black uppercase tracking-widest transition-colors text-white">
+              {/* ✅ CORRIGIDO: /login?mode=register */}
+              <Link href="/login?mode=register" className="w-full py-4 text-center border border-white/10 hover:bg-white/5 rounded-xl text-xs font-black uppercase tracking-widest transition-colors text-white">
                 Começar Teste
               </Link>
             </div>
@@ -305,7 +308,8 @@ export default async function LandingPage() {
                 ))}
               </ul>
 
-              <Link href="/register-page" className="w-full py-4 text-center bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/30 active:scale-95">
+              {/* ✅ CORRIGIDO: /login?mode=register */}
+              <Link href="/login?mode=register" className="w-full py-4 text-center bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/30 active:scale-95">
                 Começar Teste Grátis
               </Link>
             </div>
