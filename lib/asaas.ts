@@ -7,6 +7,10 @@ const ASAAS_API_KEY = process.env.ASAAS_API_KEY!;
 const ASAAS_USER_AGENT = 'Vehlox-SaaS/1.0.0';
 
 async function asaasFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  if (!ASAAS_BASE_URL || !ASAAS_API_KEY) {
+    throw new Error('Asaas não configurado: verifique ASAAS_BASE_URL e ASAAS_API_KEY no .env');
+  }
+
   const res = await fetch(`${ASAAS_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -15,6 +19,8 @@ async function asaasFetch<T>(endpoint: string, options: RequestInit = {}): Promi
       'access_token': ASAAS_API_KEY,   // ✅ Autenticação do Asaas
       ...options.headers,
     },
+    // Evita cache agressivo do Next.js nas chamadas do Asaas
+    cache: 'no-store',
   });
 
   const data = await res.json();
@@ -46,7 +52,7 @@ export async function criarClienteAsaas(params: {
   });
 }
 
-// ✅ NOVO: Atualizar cliente (necessário para injetar o CNPJ antes da assinatura)
+// ✅ Atualizar cliente (necessário para injetar o CNPJ antes da assinatura)
 export async function atualizarClienteAsaas(
   customerId: string,
   params: { cpfCnpj?: string; name?: string; email?: string }
@@ -62,7 +68,7 @@ export async function atualizarClienteAsaas(
 // ============================================================
 export async function criarAssinaturaAsaas(params: {
   customer: string; // asaas_customer_id
-  billingType: 'BOLETO' | 'PIX' | 'CREDIT_CARD';
+  billingType: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
   value: number;
   nextDueDate: string; // "YYYY-MM-DD"
   cycle: 'MONTHLY' | 'YEARLY';
@@ -72,4 +78,21 @@ export async function criarAssinaturaAsaas(params: {
     method: 'POST',
     body: JSON.stringify(params),
   });
+}
+
+// ============================================================
+// PAYMENTS (Faturas geradas pela assinatura)
+// ============================================================
+export type AsaasPayment = {
+  id: string;
+  status: string;
+  value: number;
+  dueDate: string;
+  invoiceUrl: string;
+  bankSlipUrl?: string;
+  invoiceNumber?: string;
+};
+
+export async function listarPagamentosAssinatura(subscriptionId: string) {
+  return asaasFetch<{ data: AsaasPayment[] }>(`/subscriptions/${subscriptionId}/payments`);
 }
