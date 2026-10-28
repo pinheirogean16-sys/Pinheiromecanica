@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ShieldAlert, Zap, Lock, Loader2, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -25,7 +25,7 @@ export default function BlockedScreen() {
         toast.error('Erro ao gerar pagamento. Tente novamente.');
       }
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao gerar assinatura.');
+      toast.error(err.message || 'Erro ao gerar assinatura. Verifique seu CNPJ.');
     } finally {
       setLoadingPlano(null);
     }
@@ -42,7 +42,8 @@ export default function BlockedScreen() {
         <div className="space-y-2">
           <h1 className="text-3xl font-black text-white uppercase tracking-tight italic">Acesso Bloqueado</h1>
           <p className="text-sm text-zinc-400 max-w-lg mx-auto">
-            Seu período de testes expirou ou sua conta está pendente. Escolha um dos planos abaixo para desbloquear o acesso imediatamente.
+            Seu período de testes expirou ou sua conta está pendente. 
+            Escolha um dos planos abaixo para desbloquear o acesso imediatamente.
           </p>
         </div>
 
@@ -100,6 +101,3 @@ export default function BlockedScreen() {
     </div>
   );
 }
-
-// Ícone auxiliar (se não estiver importado)
-import { CheckCircle2 } from 'lucide-react';
