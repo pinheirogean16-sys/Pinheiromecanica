@@ -7,7 +7,7 @@ import { BRANDING } from '@/lib/branding';
 import OnboardingTour from '@/components/OnboardingTour';
 import IaSupportWidget from '@/components/IaSupportWidget';
 import { UpgradeModalHost } from '@/components/UpgradeModal';
-import BlockedScreen from '@/components/BlockedScreen'; // ✅ IMPORT ADICIONADO
+import BlockedScreen from '@/components/BlockedScreen';
 import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import LayoutWrapper from '@/components/LayoutWrapper';
@@ -42,14 +42,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           select: { 
             status: true,
             plano: true,
-            trial_ends_at: true
+            trial_ends_at: true,
+            asaas_status: true // ✅ Adicionado
           }
         });
         
         if (empresa) {
           const isTrialExpired = empresa.plano === 'TRIAL' && empresa.trial_ends_at && new Date(empresa.trial_ends_at) < new Date();
+          
+          // ✅ Se o pagamento estiver PENDING, libera o acesso (para ver o checkout)
+          const hasPendingPayment = empresa.asaas_status === 'PENDING';
 
-          if (empresa.status === 'BLOQUEADO' || isTrialExpired) {
+          if ((empresa.status === 'BLOQUEADO' || isTrialExpired) && !hasPendingPayment) {
             isBlocked = true;
           }
         } else {
@@ -62,12 +66,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     }
   }
 
-  // 1. Tela de Bloqueio (com opções de assinatura)
+  // 1. Tela de Bloqueio
   if (isBlocked) {
     return (
       <html lang="pt-BR" className="dark">
         <body className="bg-zinc-950 text-zinc-200 antialiased">
-          <BlockedScreen /> {/* ✅ USA O NOVO COMPONENTE */}
+          <BlockedScreen />
+          {/* ✅ TOASTER ADICIONADO NA TELA DE BLOQUEIO */}
+          <Toaster theme="dark" position="top-right" richColors />
         </body>
       </html>
     );
