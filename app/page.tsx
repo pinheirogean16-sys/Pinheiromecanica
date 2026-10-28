@@ -57,7 +57,6 @@ export default async function LandingPage() {
             <Link href="/login" className="text-sm font-bold text-zinc-300 hover:text-white transition-colors hidden sm:block">
               Entrar
             </Link>
-            {/* ✅ CORRIGIDO: /register-page */}
             <Link 
               href="/register-page" 
               className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-orange-950/20 active:scale-95"
@@ -90,12 +89,12 @@ export default async function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            {/* ✅ CORRIGIDO: /register-page */}
+            {/* ✅ CORRIGIDO: 14 DIAS PARA 7 DIAS */}
             <Link 
               href="/register-page" 
               className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-2xl text-sm font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-950/40 active:scale-95 flex items-center justify-center gap-2 group"
             >
-              Começar 14 Dias Grátis 
+              Começar 7 Dias Grátis 
               <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-2">
@@ -229,7 +228,6 @@ export default async function LandingPage() {
                 ))}
               </ul>
 
-              {/* ✅ CORRIGIDO: /register-page */}
               <Link href="/register-page" className="w-full py-4 text-center border border-zinc-700 hover:bg-zinc-800 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">
                 Começar Teste
               </Link>
@@ -257,7 +255,6 @@ export default async function LandingPage() {
                 ))}
               </ul>
 
-              {/* ✅ CORRIGIDO: /register-page */}
               <Link href="/register-page" className="w-full py-4 text-center bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
                 Começar Teste Grátis
               </Link>
