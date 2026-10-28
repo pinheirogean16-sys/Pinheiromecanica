@@ -1,8 +1,3 @@
-/**
- * Centralized API Fetch Utility with Deduplication, Telemetry, and Resilient Backoff Caching
- */
-
-import { toast } from 'sonner';
 import { requestManager } from './request-manager';
 import { showUpgradeModal } from '@/components/UpgradeModal';
 
@@ -56,54 +51,36 @@ export async function apiFetch<T = any>(
   const startTime = Date.now();
   try {
     const result = await requestManager.request<T>(path, options);
-
-    apiTelemetry.lastRequestsLog.unshift({
-      path,
-      timestamp: new Date().toLocaleTimeString(),
-      status: 200,
-      duration: Date.now() - startTime
-    });
-    if (apiTelemetry.lastRequestsLog.length > 50) {
-      apiTelemetry.lastRequestsLog.pop();
-    }
-
     return result;
   } catch (err: any) {
-    const status = err.status || 0;
     const payload = extractErrorPayload(err);
-
-    apiTelemetry.lastRequestsLog.unshift({
-      path,
-      timestamp: new Date().toLocaleTimeString(),
-      status,
-      duration: Date.now() - startTime
-    });
-    if (apiTelemetry.lastRequestsLog.length > 50) {
-      apiTelemetry.lastRequestsLog.pop();
-    }
+    // Garante que o status venha do erro ou do payload
+    const status = err.status || payload?.status || 0; 
 
     // ✅ UPGRADE: detecta 402, dispara o modal e lança um ApiError oficial
     if (
-      status === 402 &&
-      payload?.code === 'UPGRADE_REQUIRED' &&
+      (status === 402 || payload?.code === 'UPGRADE_REQUIRED' || err.message?.includes('UPGRADE_REQUIRED')) &&
       !options.silentError
     ) {
+      // ✅ Abre o modal imediatamente
       showUpgradeModal({
-        message: payload?.message,
+        message: payload?.message || err.message,
         planoAtual: payload?.planoAtual,
         limite: payload?.limite,
         total: payload?.total,
         feature: payload?.feature,
       });
       
-      // ✅ AQUI ESTÁ A CORREÇÃO: Lança o erro com as propriedades certas
-      throw new ApiError(payload?.message || 'UPGRADE_REQUIRED', 402, 'Payment Required', payload);
+      // Lança o erro com as propriedades corretas para o frontend ignorar o toast
+      throw new ApiError(
+        'UPGRADE_REQUIRED', // Força a mensagem padrão para o handleApiError reconhecer
+        402, 
+        'Payment Required', 
+        { ...payload, code: 'UPGRADE_REQUIRED' }
+      );
     }
 
-    if (err instanceof ApiError) {
-      throw err;
-    }
-    
+    if (err instanceof ApiError) throw err;
     throw new ApiError(err.message || 'Erro de rede ou API', status, err.statusText || 'Error', payload);
   }
 }
