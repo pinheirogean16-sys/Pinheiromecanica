@@ -3,11 +3,29 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  ChevronLeft, Plus, Trash2, Save, Loader2, ClipboardCheck,
-  ChevronDown, CheckCircle2
+  ArrowLeft, Plus, Trash2, Save, Loader2, ClipboardCheck,
+  ChevronDown, PenTool, FileText, CheckSquare, Image as ImageIcon, AlignLeft, Hash
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
+import { handleApiError } from '@/lib/handle-api-error';
+
+type ItemType = 'SIM_NAO' | 'FOTO' | 'TEXTO' | 'NUMERICO';
+
+interface ItemForm {
+  id: string;
+  descricao: string;
+  tipo: ItemType;
+  obrigatorio: boolean;
+}
+
+const TIPOS = [
+  { value: 'SIM_NAO', label: 'Múltipla Escolha (Ok/Médio/Ruim/Crítico)', icon: CheckSquare },
+  { value: 'FOTO', label: 'Registro Fotográfico', icon: ImageIcon },
+  { value: 'TEXTO', label: 'Texto Descritivo', icon: AlignLeft },
+  { value: 'NUMERICO', label: 'Valor Numérico (KM/Horas)', icon: Hash },
+];
 
 export default function NovoChecklistPage() {
   const router = useRouter();
@@ -17,13 +35,9 @@ export default function NovoChecklistPage() {
   const [descricao, setDescricao] = useState('');
   const [categoria, setCategoria] = useState('GERAL');
   const [ativo, setAtivo] = useState(true);
-  const [itens, setItens] = useState<any[]>([
-    {
-      id: crypto.randomUUID(),
-      descricao: '',
-      tipo: 'SIM_NAO',
-      obrigatorio: true,
-    },
+  
+  const [itens, setItens] = useState<ItemForm[]>([
+    { id: crypto.randomUUID(), descricao: '', tipo: 'SIM_NAO', obrigatorio: true }
   ]);
 
   const addItem = () => {
@@ -33,12 +47,7 @@ export default function NovoChecklistPage() {
     }
     setItens([
       ...itens,
-      {
-        id: crypto.randomUUID(),
-        descricao: '',
-        tipo: 'SIM_NAO',
-        obrigatorio: true,
-      },
+      { id: crypto.randomUUID(), descricao: '', tipo: 'SIM_NAO', obrigatorio: true },
     ]);
   };
 
@@ -50,12 +59,12 @@ export default function NovoChecklistPage() {
     setItens(itens.filter((i) => i.id !== id));
   };
 
-  const updateItem = (id: string, field: string, value: any) => {
+  const updateItem = (id: string, field: keyof ItemForm, value: any) => {
     setItens(itens.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!nome || nome.trim().length < 2) {
       toast.error('O nome do checklist é obrigatório (mínimo 2 caracteres)');
@@ -69,10 +78,9 @@ export default function NovoChecklistPage() {
 
     setSaving(true);
     try {
-      const res = await fetch('/api/checklist', {
+      await apiFetch('/api/checklist', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           nome: nome.trim(),
           descricao: descricao.trim() || null,
           categoria,
@@ -83,269 +91,206 @@ export default function NovoChecklistPage() {
             obrigatorio: item.obrigatorio,
             ordem: index,
           })),
-        }),
+        },
       });
 
-      if (res.ok) {
-        toast.success('Checklist criado com sucesso');
-        router.push('/checklist');
-      } else {
-        const error = await res.json().catch(() => ({ error: null }));
-        toast.error(error.error || 'Falha ao criar checklist');
-      }
-    } catch {
-      toast.error('Erro de conexão');
+      toast.success('Checklist criado com sucesso');
+      router.push('/checklist');
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Falha ao criar checklist' });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-8 pb-20 overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/checklist"
-            className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm"
-          >
-            <ChevronLeft size={20} />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter">
-              Novo Protocolo
-            </h1>
-            <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em] leading-none mt-1">
-              Criação de Processo
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={handleSubmit}
-          disabled={saving}
-          className="hidden sm:flex bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all shadow-2xl active:scale-95 items-center gap-3 italic disabled:opacity-50"
+    <div className="w-full max-w-[1000px] mx-auto px-4 sm:px-6 py-8 pb-32 text-white bg-zinc-950 min-h-screen overflow-hidden">
+      
+      {/* HEADER PADRONIZADO */}
+      <div className="flex items-center gap-4 mb-8">
+        <Link 
+          href="/checklist" 
+          className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition shadow-sm group"
         >
-          {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-          Criar Protocolo
-        </button>
+          <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+        </Link>
+        <div>
+          <h1 className="text-2xl font-black uppercase italic tracking-tighter">Novo Template</h1>
+          <p className="text-[10px] text-orange-500 font-black uppercase tracking-[0.3em] mt-0.5">Criação de Checklist</p>
+        </div>
       </div>
 
       <div className="space-y-8">
-        {/* Info Geral */}
-        <div className="w-full">
-          <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-6 sm:p-8 space-y-6 relative overflow-hidden shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="w-1.5 h-4 bg-orange-600 rounded-full" />
-              <h2 className="text-sm font-black text-white uppercase italic tracking-tight">
-                Definições Gerais
-              </h2>
+        
+        {/* INFO BÁSICAS PADRONIZADAS */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
+          <div className="flex items-center gap-2 border-b border-zinc-800 pb-4">
+            <ClipboardCheck className="text-orange-500" size={20} />
+            <h2 className="text-sm font-black uppercase tracking-widest">Informações Gerais</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="sm:col-span-2 space-y-2">
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Nome do Checklist</label>
+              <input
+                type="text"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                placeholder="EX: REVISÃO DE 10.000 KM"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
+              />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">
-                  Nome do Protocolo
-                </label>
-                <input
-                  type="text"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest shadow-inner placeholder:text-zinc-700"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="EX: INSPEÇÃO DE ENTRADA"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">
-                  Categoria
-                </label>
-                <div className="relative">
-                  <select
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest appearance-none cursor-pointer shadow-inner pr-10"
-                    value={categoria}
-                    onChange={(e) => setCategoria(e.target.value)}
-                  >
-                    <option value="GERAL">CATEGORIA: GERAL</option>
-                    <option value="OS">CATEGORIA: ORDEM DE SERVIÇO</option>
-                    <option value="VEICULO">CATEGORIA: VEÍCULO</option>
-                    <option value="ESTOQUE">CATEGORIA: ESTOQUE</option>
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">
-                  Status
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setAtivo(!ativo)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between hover:border-orange-500/50 transition"
+            
+            <div className="space-y-2">
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Categoria</label>
+              <div className="relative">
+                <select
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest appearance-none cursor-pointer shadow-inner pr-10"
                 >
-                  <span className="text-xs text-white font-black uppercase tracking-widest">
-                    {ativo ? 'Ativo' : 'Inativo'}
-                  </span>
-                  <div
-                    className={`w-14 h-8 rounded-full p-1 transition-all flex items-center ${
-                      ativo ? 'bg-orange-600 justify-end' : 'bg-zinc-800 justify-start'
-                    }`}
-                  >
-                    <div className="w-6 h-6 bg-white rounded-full shadow-lg" />
-                  </div>
-                </button>
-              </div>
-
-              <div className="space-y-2 col-span-full">
-                <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">
-                  Descrição
-                </label>
-                <textarea
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-xs text-white outline-none focus:border-orange-500 transition font-medium tracking-wide shadow-inner min-h-[140px] resize-y placeholder:text-zinc-700"
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  placeholder="Descreva o objetivo deste checklist..."
-                />
+                  <option value="GERAL">GERAL</option>
+                  <option value="MOTOR">MOTOR</option>
+                  <option value="SUSPENSAO">SUSPENSÃO</option>
+                  <option value="ELETRICA">ELÉTRICA</option>
+                  <option value="FREIOS">FREIOS</option>
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
               </div>
             </div>
-          </section>
-        </div>
 
-        {/* Itens do Checklist */}
-        <div className="w-full space-y-6">
-          <section className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden flex flex-col min-h-[500px] shadow-2xl">
-            <div className="p-6 sm:p-8 border-b border-zinc-800 bg-zinc-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-orange-500 shadow-inner">
-                  <ClipboardCheck size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white uppercase italic tracking-tighter">
-                    Itens do Protocolo
-                  </h3>
-                  <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none mt-1">
-                    Escopo de Verificação
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Descrição (Opcional)</label>
+              <input
+                type="text"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                placeholder="OBJETIVO DESTE CHECKLIST"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Status</label>
               <button
-                onClick={addItem}
-                className="flex items-center justify-center gap-2 px-6 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl transition shadow-lg active:scale-95 font-black text-[10px] uppercase tracking-widest"
+                type="button"
+                onClick={() => setAtivo(!ativo)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 flex items-center justify-between hover:border-orange-500/50 transition"
               >
-                <Plus size={16} />
-                Adicionar Item
+                <span className="text-[10px] text-white font-black uppercase tracking-widest">
+                  {ativo ? 'Ativo' : 'Inativo'}
+                </span>
+                <div className={`w-10 h-5 rounded-full relative transition-colors ${ativo ? 'bg-orange-500' : 'bg-zinc-700'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${ativo ? 'left-5.5' : 'left-0.5'}`} />
+                </div>
               </button>
             </div>
+          </div>
+        </section>
 
-            <div className="p-6 sm:p-8 space-y-4 max-h-[700px] overflow-y-auto custom-scrollbar flex-1">
-              {itens.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 opacity-40 space-y-4">
-                  <ClipboardCheck size={48} className="text-zinc-600" />
-                  <p className="text-xs font-black uppercase tracking-widest text-zinc-500 italic">Nenhum item adicionado</p>
-                  <button
-                    onClick={addItem}
-                    className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition"
+        {/* ITENS DO CHECKLIST PADRONIZADOS */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between pb-2">
+            <h2 className="text-sm font-black uppercase tracking-widest text-zinc-400">Itens de Inspeção ({itens.length})</h2>
+            <button 
+              onClick={addItem} 
+              className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-orange-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition shadow-sm"
+            >
+              <Plus size={14} className="text-orange-500" /> Adicionar Item
+            </button>
+          </div>
+
+          {itens.map((item, index) => {
+            const IconeTipo = TIPOS.find(t => t.value === item.tipo)?.icon || AlignLeft;
+            
+            return (
+              <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:p-6 space-y-5 shadow-lg relative group transition-colors hover:border-zinc-700">
+                
+                {/* Header do Item */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
+                      <span className="text-[10px] font-black text-zinc-500 font-mono">{(index + 1).toString().padStart(2, '0')}</span>
+                    </div>
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Configuração do Item</span>
+                  </div>
+                  <button 
+                    onClick={() => removeItem(item.id)} 
+                    disabled={itens.length === 1} 
+                    className="p-2 text-zinc-600 hover:text-red-500 transition disabled:opacity-30" 
+                    title="Remover Item"
                   >
-                    Adicionar Primeiro Item
+                    <Trash2 size={18} />
                   </button>
                 </div>
-              ) : (
-                itens.map((item, index) => (
-                  <div
-                    key={item.id}
-                    className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 group relative grid grid-cols-1 md:grid-cols-12 gap-6 items-end hover:border-orange-500/20 transition-all border-l-4 border-l-orange-600/10 hover:border-l-orange-600"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      className="absolute -top-3 -right-3 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all shadow-xl z-10"
-                    >
-                      <Trash2 size={14} />
-                    </button>
 
-                    <div className="md:col-span-1 flex items-center justify-center h-full">
-                      <span className="text-2xl font-black text-zinc-800 font-mono italic">
-                        {(index + 1).toString().padStart(2, '0')}
-                      </span>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:pl-11">
+                  {/* Descrição */}
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Descrição do Item</label>
+                    <input
+                      type="text"
+                      value={item.descricao}
+                      onChange={(e) => updateItem(item.id, 'descricao', e.target.value)}
+                      placeholder="EX: NÍVEL DO ÓLEO DO MOTOR"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest placeholder:text-zinc-700 shadow-inner"
+                    />
+                  </div>
 
-                    <div className="md:col-span-6 space-y-2">
-                      <label className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-1">
-                        Descrição
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-5 text-[11px] text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-700"
-                        value={item.descricao}
-                        onChange={(e) => updateItem(item.id, 'descricao', e.target.value)}
-                        placeholder="EX: VERIFICAR NÍVEL DE ÓLEO"
-                      />
-                    </div>
-
-                    <div className="md:col-span-3 space-y-2">
-                      <label className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-1 text-center block">
-                        Tipo
-                      </label>
-                      <div className="relative">
-                        <select
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-5 text-[10px] text-white outline-none focus:border-orange-500 font-black uppercase tracking-widest transition shadow-inner appearance-none cursor-pointer pr-10"
-                          value={item.tipo}
-                          onChange={(e) => updateItem(item.id, 'tipo', e.target.value)}
-                        >
-                          <option value="SIM_NAO">OPÇÃO: SIM/NÃO</option>
-                          <option value="TEXTO">OPÇÃO: TEXTO LIVRE</option>
-                          <option value="NUMERO">OPÇÃO: VALOR NUMÉRICO</option>
-                          <option value="FOTO">OPÇÃO: REGISTRO FOTO</option>
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
-                      </div>
-                    </div>
-
-                    <div className="md:col-span-2 flex flex-col items-center justify-center gap-2">
-                      <label className="text-[8px] font-black text-zinc-700 uppercase tracking-[0.2em] leading-none">
-                        Obrigatório
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => updateItem(item.id, 'obrigatorio', !item.obrigatorio)}
-                        className={`w-14 h-8 rounded-full p-1 transition-all flex items-center ${
-                          item.obrigatorio ? 'bg-orange-600 justify-end' : 'bg-zinc-800 justify-start'
-                        }`}
+                  {/* Tipo */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Tipo de Resposta</label>
+                    <div className="relative">
+                      <select
+                        value={item.tipo}
+                        onChange={(e) => updateItem(item.id, 'tipo', e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 pl-11 text-xs text-white outline-none focus:border-orange-500 transition font-black uppercase tracking-widest appearance-none cursor-pointer shadow-inner"
                       >
-                        <div className="w-6 h-6 bg-white rounded-full shadow-lg" />
-                      </button>
+                        {TIPOS.map((t) => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </select>
+                      <IconeTipo className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
                     </div>
                   </div>
-                ))
-              )}
-            </div>
 
-            <div className="p-6 sm:p-8 border-t border-zinc-800 bg-zinc-950/20 text-center">
-              <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.5em] italic">
-                Total de {itens.length} Procedimentos
-              </p>
-            </div>
-          </section>
-        </div>
+                  {/* Obrigatório */}
+                  <div className="space-y-2 flex flex-col justify-end">
+                    <label className="text-[10px] text-zinc-500 uppercase font-black tracking-widest px-1">Regra de Preenchimento</label>
+                    <button
+                      type="button"
+                      onClick={() => updateItem(item.id, 'obrigatorio', !item.obrigatorio)}
+                      className={`w-full flex items-center justify-between p-4 rounded-xl border transition ${item.obrigatorio ? 'bg-orange-500/10 border-orange-500/30' : 'bg-zinc-950 border-zinc-800'}`}
+                    >
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${item.obrigatorio ? 'text-orange-500' : 'text-zinc-600'}`}>
+                        {item.obrigatorio ? 'Obrigatório' : 'Opcional'}
+                      </span>
+                      <div className={`w-10 h-5 rounded-full relative transition-colors ${item.obrigatorio ? 'bg-orange-500' : 'bg-zinc-700'}`}>
+                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${item.obrigatorio ? 'left-5.5' : 'left-0.5'}`} />
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            );
+          })}
+        </section>
       </div>
 
-      {/* Mobile Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-zinc-950/95 border-t border-zinc-800 p-4 flex gap-3 z-40 backdrop-blur-md">
-        <Link
-          href="/checklist"
-          className="flex-1 min-h-[48px] bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1"
-        >
-          <ChevronLeft size={16} /> Voltar
-        </Link>
+      {/* BOTÃO FIXO DE SALVAR (Padrão) */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 z-50 flex justify-center">
         <button
           onClick={handleSubmit}
           disabled={saving}
-          className="flex-[2] min-h-[48px] bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2 shadow-lg"
+          className="w-full max-w-[800px] bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-[0_0_30px_rgba(249,115,22,0.3)] active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          Criar Protocolo
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+          {saving ? 'Criando Template...' : 'Salvar Template'}
         </button>
       </div>
+
     </div>
   );
 }
