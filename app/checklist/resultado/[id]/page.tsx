@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, use, Component, ReactNode, ErrorInfo } from 'react';
+import { useState, useEffect, use, useCallback, Component, ReactNode, ErrorInfo } from 'react';
 import { 
   ArrowLeft, Printer, Trash2, CheckCircle2, XCircle, 
   Camera, FileText, Hash, User, Calendar, ClipboardCheck,
   Loader2, AlertCircle, ExternalLink, Hash as HashIcon,
-  AlertTriangle, XOctagon, ChevronRight, Maximize2
+  AlertTriangle, XOctagon, ChevronRight, Maximize2, RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -152,71 +152,121 @@ function ChecklistResultadoContent({ id }: { id: string }) {
   const [execucao, setExecucao] = useState<Execucao | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // ✅ Função de fetch isolada para permitir retry manual e automático
+  const fetchExecucao = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      else setRefreshing(true);
+
+      // ✅ cache: 'no-store' é OBRIGATÓRIO — sem isso o Next.js devolve a resposta em cache
+      const response = await fetch(`/api/checklist/execucao/${id}`, { 
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData || 'Erro no servidor');
+        if (!silent) toast.error('Laudo não encontrado ou erro no servidor.');
+        return null;
+      }
+
+      const data = await response.json();
+
+      const checklistObj = data.checklist || data.Checklist;
+      const osObj = data.os || data.OrdemServico;
+      const fotosObj = data.fotos || data.ChecklistFoto || [];
+
+      let parsedRespostas = data.respostas;
+      if (typeof data.respostas === 'string') {
+        try {
+          parsedRespostas = JSON.parse(data.respostas);
+        } catch {
+          parsedRespostas = {};
+        }
+      }
+
+      const normalized: Execucao = {
+        ...data,
+        respostas: parsedRespostas || {},
+        checklist: checklistObj
+          ? {
+              nome: checklistObj.nome || 'Checklist sem nome',
+              itens: checklistObj.itens || checklistObj.ChecklistItem || [],
+            }
+          : { nome: 'Checklist sem nome', itens: [] },
+        os: osObj
+          ? {
+              id: osObj.id,
+              numero: osObj.numero,
+              cliente: osObj.cliente || osObj.Cliente || { nome: 'Cliente não identificado' },
+              veiculo: osObj.veiculo || osObj.Veiculo || { placa: '—', modelo: '—' },
+            }
+          : undefined,
+        fotos: Array.isArray(fotosObj) ? fotosObj : [],
+      };
+
+      setExecucao(normalized);
+      return normalized;
+    } catch (err: any) {
+      setError(err);
+      if (!silent) toast.error('Falha de comunicação com o sistema.');
+      return null;
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [id]);
 
   useEffect(() => {
     let active = true;
-    const fetchExecucao = async () => {
-      try {
-        const response = await fetch(`/api/checklist/execucao/${id}`, { credentials: 'include' });
+    (async () => {
+      const data = await fetchExecucao(false);
+      if (!active) return;
 
-        if (response.ok && active) {
-          const data = await response.json();
+      // ✅ Auto-retry: se existem itens FOTO mas nenhuma foto foi retornada,
+      // aguarda 2s e tenta novamente (Cloudinary pode demorar para salvar)
+      if (data) {
+        const temItemFoto = data.checklist.itens.some((i) => i.tipo === 'FOTO');
+        const temFotos = (data.fotos?.length || 0) > 0;
 
-          const checklistObj = data.checklist || data.Checklist;
-          const osObj = data.os || data.OrdemServico;
-          const fotosObj = data.fotos || data.ChecklistFoto || [];
-
-          let parsedRespostas = data.respostas;
-          if (typeof data.respostas === 'string') {
-            try {
-              parsedRespostas = JSON.parse(data.respostas);
-            } catch {
-              parsedRespostas = {};
+        if (temItemFoto && !temFotos) {
+          let attempt = 0;
+          const interval = setInterval(async () => {
+            attempt++;
+            const updated = await fetchExecucao(true);
+            const nowHasPhotos = (updated?.fotos?.length || 0) > 0;
+            if (nowHasPhotos || attempt >= 3) {
+              clearInterval(interval);
+              if (nowHasPhotos) {
+                toast.success('Fotos sincronizadas com sucesso!');
+              }
             }
-          }
-
-          const normalized: Execucao = {
-            ...data,
-            respostas: parsedRespostas || {},
-            checklist: checklistObj
-              ? {
-                  nome: checklistObj.nome || 'Checklist sem nome',
-                  itens: checklistObj.itens || checklistObj.ChecklistItem || [],
-                }
-              : { nome: 'Checklist sem nome', itens: [] },
-            os: osObj
-              ? {
-                  id: osObj.id,
-                  numero: osObj.numero,
-                  cliente: osObj.cliente || osObj.Cliente || { nome: 'Cliente não identificado' },
-                  veiculo: osObj.veiculo || osObj.Veiculo || { placa: '—', modelo: '—' },
-                }
-              : undefined,
-            fotos: Array.isArray(fotosObj) ? fotosObj : [],
-          };
-
-          setExecucao(normalized);
-        } else if (!response.ok && active) {
-          const errData = await response.json().catch(() => ({}));
-          setError(errData || 'Erro no servidor');
-          toast.error('Laudo não encontrado ou erro no servidor.');
+          }, 2000);
         }
-      } catch (err: any) {
-        if (active) {
-          setError(err);
-          toast.error('Falha de comunicação com o sistema.');
-        }
-      } finally {
-        if (active) setLoading(false);
       }
-    };
-    fetchExecucao();
+    })();
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [fetchExecucao]);
+
+  const handleRefresh = async () => {
+    toast.loading('Atualizando laudo...', { id: 'refresh-toast' });
+    const data = await fetchExecucao(true);
+    const temFotos = (data?.fotos?.length || 0) > 0;
+    if (temFotos) {
+      toast.success('Laudo atualizado!', { id: 'refresh-toast' });
+    } else {
+      toast.warning('Nenhuma foto nova encontrada. Verifique se o upload terminou.', { id: 'refresh-toast' });
+    }
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -277,6 +327,15 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex gap-3">
+          {/* ✅ BOTÃO DE ATUALIZAR */}
+          <button 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Buscar fotos atualizadas"
+            className="p-4 bg-zinc-900 border border-zinc-800 text-zinc-600 hover:text-orange-500 hover:bg-orange-500/10 rounded-2xl transition disabled:opacity-50"
+          >
+            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+          </button>
           <button 
             onClick={() => window.print()}
             className="flex-1 md:flex-none bg-zinc-900 border border-zinc-800 hover:border-orange-500 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shadow-xl flex items-center justify-center gap-3 italic"
@@ -427,33 +486,34 @@ function ChecklistResultadoContent({ id }: { id: string }) {
                     ) : item.tipo === 'FOTO' ? (
                        <div className="flex flex-wrap gap-3">
                           {fotosDoItem.length > 0 ? (
-                             fotosDoItem.map((foto: any, idx: number) => (
-                                <div 
-                                  key={idx} 
-                                  className="relative group cursor-pointer" 
-                                  onClick={() => {
-                                    const url = typeof foto === 'string' ? foto : foto?.url;
-                                    if (url) window.open(url, '_blank');
-                                  }}
-                                >
-                                  <img 
-                                    src={typeof foto === 'string' ? foto : foto?.url} 
-                                    alt={`Foto ${idx + 1}`} 
-                                    className="w-28 h-24 object-cover flex-shrink-0 rounded-2xl border border-zinc-800 hover:scale-105 transition-transform" 
-                                  />
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-2xl">
-                                    <Maximize2 size={20} className="text-white" />
+                             fotosDoItem.map((foto: any, idx: number) => {
+                                const fotoUrl = typeof foto === 'string' ? foto : foto?.url;
+                                if (!fotoUrl) return null;
+                                return (
+                                  <div 
+                                    key={idx} 
+                                    className="relative group/img cursor-pointer" 
+                                    onClick={() => window.open(fotoUrl, '_blank')}
+                                  >
+                                    <img 
+                                      src={fotoUrl}
+                                      alt={`Foto ${idx + 1}`} 
+                                      className="w-28 h-24 object-cover flex-shrink-0 rounded-2xl border border-zinc-800 hover:scale-105 transition-transform" 
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/img:opacity-100 transition rounded-2xl">
+                                      <Maximize2 size={20} className="text-white" />
+                                    </div>
+                                    {foto?.legenda && <p className="text-[8px] text-zinc-500 mt-1 text-center font-black uppercase tracking-widest">{foto.legenda}</p>}
                                   </div>
-                                  {foto.legenda && <p className="text-[8px] text-zinc-500 mt-1 text-center font-black uppercase tracking-widest">{foto.legenda}</p>}
-                                </div>
-                              ))
+                                );
+                             })
                           ) : (
                             <div className="flex items-center gap-2 text-zinc-700 font-black uppercase italic text-[9px] tracking-widest justify-center md:justify-end">
                                <Camera size={14} /> NENHUM REGISTRO
                             </div>
                           )}
                        </div>
-                    ) : item.tipo === 'NUMERICO' ? (
+                    ) : item.tipo === 'NUMERICO' || item.tipo === 'NUMERO' ? (
                        <div className="flex flex-col items-end">
                           <span className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-1">Valor Medido</span>
                           <div className="flex items-center gap-3">
