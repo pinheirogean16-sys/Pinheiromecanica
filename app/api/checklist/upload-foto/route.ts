@@ -6,7 +6,11 @@ import { log } from '@/lib/logger';
 import { apiError } from '@/lib/api-error';
 import { v2 as cloudinary } from 'cloudinary';
 
-// Configura o Cloudinary com as variáveis de ambiente
+// ✅ VALIDAÇÃO: Garante que as variáveis do Cloudinary estão configuradas
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  console.error('CREDENCIAIS DO CLOUDINARY AUSENTES NO .ENV');
+}
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -14,35 +18,26 @@ cloudinary.config({
   secure: true,
 });
 
-// C04: validação por magic bytes (não confia no header enviado pelo cliente)
 function detectImageType(buffer: Buffer): { ext: 'jpg' | 'png' | 'webp'; mime: string } | null {
   if (buffer.length < 12) return null;
-
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return { ext: 'jpg', mime: 'image/jpeg' };
-  }
-
-  if (
-    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
-    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
-  ) {
-    return { ext: 'png', mime: 'image/png' };
-  }
-
-  if (
-    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
-    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
-  ) {
-    return { ext: 'webp', mime: 'image/webp' };
-  }
-
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return { ext: 'jpg', mime: 'image/jpeg' };
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return { ext: 'png', mime: 'image/png' };
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) return { ext: 'webp', mime: 'image/webp' };
   return null;
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export async function POST(request: Request) {
   try {
+    // ✅ TRAVA DE SEGURANÇA: Se não tem as chaves, avisa na hora
+    if (!process.env.CLOUDINARY_CLOUD_NAME) {
+      return NextResponse.json(
+        { error: 'Serviço de armazenamento (Cloudinary) não configurado no servidor.' },
+        { status: 500 }
+      );
+    }
+
     const { error, user } = await requireAuth();
     if (error) return error;
 
@@ -56,66 +51,36 @@ export async function POST(request: Request) {
     const itemId = (formData.get('item_id') as string) || null;
     const legenda = (formData.get('legenda') as string) || null;
 
-    if (!file) {
-      return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 });
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'Arquivo muito grande. Máximo 10MB.' }, { status: 400 });
-    }
-
-    if (file.size === 0) {
-      return NextResponse.json({ error: 'Arquivo vazio' }, { status: 400 });
-    }
+    if (!file) return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 });
+    if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'Arquivo muito grande. Máximo 10MB.' }, { status: 400 });
+    if (file.size === 0) return NextResponse.json({ error: 'Arquivo vazio' }, { status: 400 });
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     const detected = detectImageType(buffer);
-    if (!detected) {
-      return NextResponse.json(
-        { error: 'Formato não suportado. Use JPG, PNG ou WEBP (validado pelo conteúdo do arquivo).' },
-        { status: 400 }
-      );
-    }
+    if (!detected) return NextResponse.json({ error: 'Formato não suportado. Use JPG, PNG ou WEBP.' }, { status: 400 });
 
-    // M09: valida que a execução pertence à empresa do usuário (se for execução real)
     if (execucaoId && execucaoId !== 'temp') {
       const execucao = await prisma.checklistExecucao.findFirst({
         where: { id: execucaoId, empresa_id: user.empresa_id },
         select: { id: true, checklist_id: true },
       });
 
-      if (!execucao) {
-        return NextResponse.json(
-          { error: 'Execução de checklist não encontrada nesta empresa' },
-          { status: 400 }
-        );
-      }
+      if (!execucao) return NextResponse.json({ error: 'Execução não encontrada nesta empresa' }, { status: 400 });
 
       if (itemId) {
         const itemPertence = await prisma.checklistItem.findFirst({
           where: { id: itemId, checklist_id: execucao.checklist_id },
           select: { id: true },
         });
-        if (!itemPertence) {
-          return NextResponse.json(
-            { error: 'Item não pertence ao checklist desta execução' },
-            { status: 400 }
-          );
-        }
+        if (!itemPertence) return NextResponse.json({ error: 'Item não pertence ao checklist desta execução' }, { status: 400 });
       }
     }
 
-    // ✅ UPLOAD PARA O CLOUDINARY
     const uploadResult = await new Promise<any>((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'vehlox/checklists',
-          resource_type: 'image',
-          // Opcional: otimiza a imagem automaticamente
-          transformation: [{ quality: 'auto', fetch_format: 'auto' }]
-        },
+        { folder: 'vehlox/checklists', resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }] },
         (error, result) => {
           if (error) reject(error);
           else resolve(result);
@@ -124,7 +89,6 @@ export async function POST(request: Request) {
       uploadStream.end(buffer);
     });
 
-    // Pega a URL segura gerada pelo Cloudinary
     const url = uploadResult.secure_url;
 
     let foto = null;
@@ -140,19 +104,7 @@ export async function POST(request: Request) {
       });
     }
 
-    log(
-      'INFO',
-      'CHECKLIST',
-      'Foto de checklist enviada para o Cloudinary',
-      { execucaoId, size: file.size, tipo: detected.mime, url },
-      user.name
-    );
-
-    return NextResponse.json({
-      success: true,
-      url,
-      foto,
-    });
+    return NextResponse.json({ success: true, url, foto });
   } catch (error: any) {
     log('ERROR', 'CHECKLIST', 'Erro no upload Cloudinary', { error: error.message }, 'SISTEMA');
     return apiError(error, 'CHECKLIST', 'Erro ao processar upload da foto.');
