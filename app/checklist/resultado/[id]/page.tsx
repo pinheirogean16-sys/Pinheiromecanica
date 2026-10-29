@@ -155,7 +155,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
 
   const { checklist, os, respostas, observacoes, executado_por, created_at, fotos } = execucao;
   
-  // Busca metadados salvos
   const metaTipoVeiculo = respostas['__meta_tipo_veiculo'] || 'NÃO INFORMADO';
   const metaVeredito = respostas['__meta_veredito_laudo'] || 'CONFORME';
   const metaAssinatura = respostas['__meta_assinatura_digital'];
@@ -178,9 +177,15 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           <button onClick={() => { setRefreshing(true); fetchExecucao(true).then(() => setRefreshing(false)); }} disabled={refreshing} className="p-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-orange-500 rounded-xl transition">
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          <button onClick={() => window.print()} className="flex-1 sm:flex-none bg-orange-600 hover:bg-orange-500 text-white px-6 py-3.5 rounded-xl font-black uppercase tracking-widest text-[10px] transition shadow-lg flex items-center justify-center gap-2">
+          
+          {/* ✅ BOTÃO ATUALIZADO PARA ABRIR A NOVA PÁGINA DE IMPRESSÃO */}
+          <button 
+            onClick={() => window.open(`/checklist/resultado/${id}/imprimir`, '_blank')} 
+            className="flex-1 sm:flex-none bg-orange-600 hover:bg-orange-500 text-white px-6 py-3.5 rounded-xl font-black uppercase tracking-widest text-[10px] transition shadow-lg flex items-center justify-center gap-2"
+          >
             <Printer size={16} /> Imprimir / PDF
           </button>
+
           <button onClick={() => setShowDeleteModal(true)} className="p-3 bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-red-500 rounded-xl transition">
             <Trash2 size={18} />
           </button>
@@ -256,7 +261,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           const resposta = getResposta(item.id, respostas);
           const fotosDoItem = fotos?.filter(f => f.item_id === item.id) || [];
           
-          // Cor da borda baseada na resposta
           let borderColor = 'border-l-zinc-600';
           if (resposta === 'OK' || resposta === true) borderColor = 'border-l-green-500';
           else if (resposta === 'MEDIO') borderColor = 'border-l-yellow-500';
