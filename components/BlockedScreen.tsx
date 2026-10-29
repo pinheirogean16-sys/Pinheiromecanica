@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ShieldAlert, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Loader2, CheckCircle2, AlertTriangle, Settings } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -19,7 +19,7 @@ export default function BlockedScreen() {
       const res = await apiFetch<{ paymentId: string }>('/api/pagamento/assinar', {
         method: 'POST',
         body: { plano },
-        silentError: true, // Vamos controlar o erro na tela
+        silentError: true,
       });
 
       if (res.paymentId) {
@@ -28,9 +28,8 @@ export default function BlockedScreen() {
         setError('Erro ao gerar pagamento. Tente novamente.');
       }
     } catch (err: any) {
-      const msg = err.message || 'Erro ao gerar assinatura. Verifique seu CNPJ.';
+      const msg = err.message || 'Erro ao gerar assinatura.';
       setError(msg);
-      toast.error(msg);
     } finally {
       setLoadingPlano(null);
     }
@@ -53,9 +52,15 @@ export default function BlockedScreen() {
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3 text-left">
-            <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
-            <p className="text-xs text-red-400 font-bold">{error}</p>
+          <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 text-left">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
+              <p className="text-xs text-red-400 font-bold">{error}</p>
+            </div>
+            {/* ✅ Link de ajuda caso o erro seja de CNPJ */}
+            <Link href="/configuracoes/empresa" className="px-4 py-2 bg-red-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest whitespace-nowrap flex items-center gap-2">
+              <Settings size={14} /> Ajustar Dados
+            </Link>
           </div>
         )}
 
