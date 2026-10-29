@@ -8,8 +8,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/api'; // ✅ Adicionado apiFetch
-import { handleApiError } from '@/lib/handle-api-error'; // ✅ Adicionado
+import { apiFetch } from '@/lib/api'; 
+import { handleApiError } from '@/lib/handle-api-error'; 
 
 interface ChecklistItem {
   id: string;
@@ -29,7 +29,6 @@ interface Checklist {
 }
 
 function normalizarChecklist(raw: any): Checklist {
-  // ✅ CORRIGIDO: Pega os itens de todas as formas possíveis que a API pode retornar
   const itensBrutos = raw?.itens ?? raw?.ChecklistItem ?? raw?.itensChecklist ?? [];
   const itens = Array.isArray(itensBrutos) ? itensBrutos : [];
 
@@ -61,10 +60,7 @@ export default function ChecklistPage() {
     setLoading(true);
     setError(false);
     try {
-      // ✅ Usando apiFetch com skipCache para garantir dados frescos
       const data = await apiFetch<any>('/api/checklist', { skipCache: true });
-      
-      // ✅ CORRIGIDO: Lida com array puro ou com objeto paginado { items: [] }
       const lista = Array.isArray(data) ? data : (data.items || []);
       setChecklists(lista.map(normalizarChecklist));
     } catch (err: any) {
@@ -146,58 +142,58 @@ export default function ChecklistPage() {
           <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.4em] leading-none ml-5">FORMULÁRIOS DE CONTROLE E QUALIDADE TÉCNICA</p>
         </div>
 
-        <Link href="/checklist/novo" className="group">
-          <div className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-orange-950/20">
+        <Link href="/checklist/novo" className="group w-full lg:w-auto">
+          <div className="flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-orange-950/20">
             <Plus className="w-4 h-4" />
             NOVO TEMPLATE
-            <ChevronRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+            <ChevronRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all hidden sm:block" />
           </div>
         </Link>
       </div>
 
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl">
-          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
-            <ClipboardCheck size={12} className="text-orange-500" /> Total de Modelos
+      {/* STATS (Compactado para celular) */}
+      <div className="grid grid-cols-3 gap-3 sm:gap-6">
+        <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-8 rounded-2xl space-y-2 sm:space-y-3 relative overflow-hidden group shadow-xl">
+          <p className="text-[8px] sm:text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
+            <ClipboardCheck size={12} className="text-orange-500 shrink-0" /> <span className="truncate">Total</span>
           </p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-black text-white tracking-tighter italic">{stats.total}</p>
-            <span className="text-[10px] text-zinc-500 font-mono font-bold uppercase tracking-widest leading-none">Catalogados</span>
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+            <p className="text-3xl sm:text-5xl font-black text-white tracking-tighter italic">{stats.total}</p>
+            <span className="text-[8px] sm:text-[10px] text-zinc-500 font-mono font-bold uppercase tracking-widest leading-none">Modelos</span>
           </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl">
-          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
-            <CheckCircle2 size={12} className="text-green-500" /> Modelos Ativos
+        <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-8 rounded-2xl space-y-2 sm:space-y-3 relative overflow-hidden group shadow-xl">
+          <p className="text-[8px] sm:text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
+            <CheckCircle2 size={12} className="text-green-500 shrink-0" /> <span className="truncate">Ativos</span>
           </p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-black text-white tracking-tighter italic">{stats.ativos}</p>
-            <span className="text-[10px] text-green-500 font-mono font-bold uppercase tracking-widest leading-none">Operacionais</span>
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+            <p className="text-3xl sm:text-5xl font-black text-white tracking-tighter italic">{stats.ativos}</p>
+            <span className="text-[8px] sm:text-[10px] text-green-500 font-mono font-bold uppercase tracking-widest leading-none">Operantes</span>
           </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl space-y-3 relative overflow-hidden group shadow-xl border-l-4 border-l-orange-600/30">
-          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
-            <History size={12} className="text-orange-500" /> Total Execuções
+        <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-8 rounded-2xl space-y-2 sm:space-y-3 relative overflow-hidden group shadow-xl border-l-4 border-l-orange-600/30">
+          <p className="text-[8px] sm:text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] flex items-center gap-2">
+            <History size={12} className="text-orange-500 shrink-0" /> <span className="truncate">Execuções</span>
           </p>
-          <div className="flex items-baseline gap-2">
-            <p className="text-5xl font-black text-white tracking-tighter italic">{stats.totalExecucoes}</p>
-            <span className="text-[10px] text-zinc-500 font-mono font-bold uppercase tracking-widest leading-none">Realizadas</span>
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+            <p className="text-3xl sm:text-5xl font-black text-white tracking-tighter italic">{stats.totalExecucoes}</p>
+            <span className="text-[8px] sm:text-[10px] text-zinc-500 font-mono font-bold uppercase tracking-widest leading-none">Laudos</span>
           </div>
         </div>
       </div>
 
       {/* FILTROS */}
-      <div className="flex flex-col md:flex-row gap-4 items-center bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl">
+      <div className="flex flex-col md:flex-row gap-4 items-center bg-zinc-900 border border-zinc-800 p-3 sm:p-4 rounded-2xl shadow-2xl">
         <div className="relative flex-1 group w-full">
-          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={18} />
+          <Search className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={18} />
           <input 
             type="text" 
             placeholder="BUSCAR POR NOME DO CHECKLIST..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-4 pl-16 pr-6 text-xs text-white outline-none focus:border-orange-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-700"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3.5 pl-12 sm:pl-16 pr-6 text-xs text-white outline-none focus:border-orange-500/50 font-black uppercase tracking-widest transition shadow-inner placeholder:text-zinc-700"
           />
         </div>
       </div>
@@ -434,9 +430,10 @@ export default function ChecklistPage() {
               </div>
 
               <div className="space-y-2 pt-2">
+                {/* ✅ PADRONIZADO PARA LARANJA */}
                 <Link 
                   href={`/checklist/executar/${checklist.id}`}
-                  className="w-full min-h-[48px] flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-black text-xs uppercase tracking-wider transition active:scale-[0.98] shadow-lg shadow-green-950/25"
+                  className="w-full min-h-[48px] flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-wider transition active:scale-[0.98] shadow-lg shadow-orange-950/25"
                 >
                   <Play className="w-4 h-4 fill-white" />
                   EXECUTAR INSPEÇÃO
