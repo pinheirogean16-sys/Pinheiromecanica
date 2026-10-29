@@ -85,6 +85,7 @@ export default function EstoquePage() {
   const [activeSection, setActiveSection] = useState<'inventario' | 'analise'>('inventario');
   const [analiseData, setAnaliseData] = useState<any>(null);
   const [analiseLoading, setAnaliseLoading] = useState(false);
+  const [analiseError, setAnaliseError] = useState(false); // ✅ NOVO ESTADO DE ERRO
   
   const [data, setData] = useState<{ items: Peca[], total: number, totalPages: number }>({ items: [], total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
@@ -104,11 +105,17 @@ export default function EstoquePage() {
 
   const fetchAnalise = useCallback(async () => {
     setAnaliseLoading(true);
+    setAnaliseError(false);
     try {
       const d = await apiFetch('/api/estoque/analise');
+      // ✅ TRAVA DE SEGURANÇA: Se não for um objeto válido, joga erro para a tela amigável
+      if (!d || typeof d !== 'object' || !d.meta || !d.rows) {
+        throw new Error('Dados de análise inválidos');
+      }
       setAnaliseData(d);
     } catch (e) {
-      // silencioso
+      setAnaliseError(true);
+      setAnaliseData(null);
     } finally {
       setAnaliseLoading(false);
     }
@@ -542,8 +549,21 @@ export default function EstoquePage() {
               <div className="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
               <p className="text-[10px] font-black uppercase tracking-[0.5em] text-zinc-500 italic">Processando Inteligência de Ativos...</p>
             </div>
-          ) : !analiseData ? (
-            <div className="text-center py-32 text-zinc-600 text-xs tracking-widest uppercase bg-zinc-900/30 rounded-2xl border border-zinc-800">Falha ao processar análise técnica do almoxarifado</div>
+          ) : analiseError || !analiseData ? (
+            /* ✅ TELA DE ERRO AMIGÁVEL */
+            <div className="flex flex-col items-center justify-center py-32 space-y-6 bg-zinc-900/30 rounded-2xl border border-zinc-800">
+              <AlertTriangle size={48} className="text-red-500" />
+              <h2 className="text-lg font-black text-white uppercase italic tracking-tighter">Falha ao processar análise técnica</h2>
+              <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest max-w-md text-center">
+                Não foi possível carregar os dados de Curva ABC e Giro. Verifique se a rota `/api/estoque/analise` está funcionando corretamente.
+              </p>
+              <button 
+                onClick={fetchAnalise}
+                className="px-6 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-[10px] font-black text-zinc-400 hover:text-white uppercase tracking-widest transition"
+              >
+                Tentar Novamente
+              </button>
+            </div>
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
