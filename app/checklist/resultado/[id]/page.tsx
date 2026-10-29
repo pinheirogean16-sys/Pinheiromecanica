@@ -5,7 +5,8 @@ import {
   ArrowLeft, Printer, Trash2, CheckCircle2, XCircle, 
   Camera, FileText, Hash, User, Calendar, ClipboardCheck,
   Loader2, AlertCircle, ExternalLink, Hash as HashIcon,
-  AlertTriangle, XOctagon, ChevronRight, Maximize2, RefreshCw
+  AlertTriangle, XOctagon, ChevronRight, Maximize2, RefreshCw,
+  ChevronLeft, X, ChevronRight as ChevronRightIcon
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -70,7 +71,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-// Função universal compatível com múltiplos formatos (objeto/array/JSON string)
 function getResposta(itemId: string, respostas: any): any {
   if (!respostas) return null;
 
@@ -155,15 +155,18 @@ function ChecklistResultadoContent({ id }: { id: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
 
-  // ✅ Função de fetch isolada para permitir retry manual e automático
+  // ✅ ESTADO DO LIGHTBOX DE FOTO
+  const [galeria, setGaleria] = useState<{
+    fotos: { url: string; legenda?: string }[];
+    indice: number;
+  } | null>(null);
+
   const fetchExecucao = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       else setRefreshing(true);
 
-      // ✅ cache: 'no-store' é OBRIGATÓRIO — sem isso o Next.js devolve a resposta em cache
       const response = await fetch(`/api/checklist/execucao/${id}`, { 
         credentials: 'include',
         cache: 'no-store',
@@ -230,8 +233,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
       const data = await fetchExecucao(false);
       if (!active) return;
 
-      // ✅ Auto-retry: se existem itens FOTO mas nenhuma foto foi retornada,
-      // aguarda 2s e tenta novamente (Cloudinary pode demorar para salvar)
       if (data) {
         const temItemFoto = data.checklist.itens.some((i) => i.tipo === 'FOTO');
         const temFotos = (data.fotos?.length || 0) > 0;
@@ -264,7 +265,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
     if (temFotos) {
       toast.success('Laudo atualizado!', { id: 'refresh-toast' });
     } else {
-      toast.warning('Nenhuma foto nova encontrada. Verifique se o upload terminou.', { id: 'refresh-toast' });
+      toast.warning('Nenhuma foto nova encontrada.', { id: 'refresh-toast' });
     }
   };
 
@@ -289,6 +290,27 @@ function ChecklistResultadoContent({ id }: { id: string }) {
       setShowDeleteModal(false);
     }
   };
+
+  // ✅ NAVEGAÇÃO DO LIGHTBOX
+  const navegarFoto = (direcao: 1 | -1) => {
+    if (!galeria) return;
+    const novoIndice = galeria.indice + direcao;
+    if (novoIndice < 0) return;
+    if (novoIndice >= galeria.fotos.length) return;
+    setGaleria({ ...galeria, indice: novoIndice });
+  };
+
+  // ✅ ATALHOS DO TECLADO NO LIGHTBOX
+  useEffect(() => {
+    if (!galeria) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGaleria(null);
+      if (e.key === 'ArrowRight') navegarFoto(1);
+      if (e.key === 'ArrowLeft') navegarFoto(-1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [galeria]);
 
   if (loading) {
     return (
@@ -327,7 +349,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex gap-3">
-          {/* ✅ BOTÃO DE ATUALIZAR */}
           <button 
             onClick={handleRefresh}
             disabled={refreshing}
@@ -368,7 +389,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
 
       {/* INFO BLOCKS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* CLIENTE / OS */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden print:bg-gray-50 print:border-gray-200 print:text-black">
           <div className="flex items-center gap-3 relative mb-6">
             <div className="w-1.5 h-4 bg-orange-600 rounded-full" />
@@ -404,7 +424,6 @@ function ChecklistResultadoContent({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* EXECUÇÃO */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden print:bg-gray-50 print:border-gray-200 print:text-black">
           <div className="flex items-center gap-3 relative mb-6">
             <div className="w-1.5 h-4 bg-blue-600 rounded-full" />
@@ -493,7 +512,16 @@ function ChecklistResultadoContent({ id }: { id: string }) {
                                   <div 
                                     key={idx} 
                                     className="relative group/img cursor-pointer" 
-                                    onClick={() => window.open(fotoUrl, '_blank')}
+                                    // ✅ ABRE O LIGHTBOX INTERNO EM VEZ DE NOVA ABA
+                                    onClick={() => {
+                                      const fotosParaGaleria = fotosDoItem
+                                        .map((f: any) => ({
+                                          url: typeof f === 'string' ? f : f?.url,
+                                          legenda: f?.legenda,
+                                        }))
+                                        .filter((f: any) => !!f.url);
+                                      setGaleria({ fotos: fotosParaGaleria, indice: idx });
+                                    }}
                                   >
                                     <img 
                                       src={fotoUrl}
@@ -560,6 +588,78 @@ function ChecklistResultadoContent({ id }: { id: string }) {
               <p className="text-[8px] text-zinc-500 mt-1">Data: {new Date().toLocaleDateString('pt-BR')}</p>
           </div>
       </div>
+
+      {/* ✅ LIGHTBOX DE FOTO (MODAL INTERNO) */}
+      {galeria && galeria.fotos[galeria.indice] && (
+        <div 
+          className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 print:hidden"
+          onClick={() => setGaleria(null)}
+        >
+          {/* Botão fechar */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setGaleria(null); }}
+            className="absolute top-6 right-6 p-3 bg-zinc-900 border border-zinc-700 text-white rounded-2xl hover:bg-red-600 hover:border-red-500 transition z-10"
+            aria-label="Fechar"
+          >
+            <X size={24} />
+          </button>
+
+          {/* Contador */}
+          {galeria.fotos.length > 1 && (
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-full text-white text-xs font-black uppercase tracking-widest">
+              {galeria.indice + 1} / {galeria.fotos.length}
+            </div>
+          )}
+
+          {/* Seta esquerda */}
+          {galeria.indice > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); navegarFoto(-1); }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 p-4 bg-zinc-900/80 border border-zinc-700 text-white rounded-2xl hover:bg-orange-600 hover:border-orange-500 transition z-10"
+              aria-label="Foto anterior"
+            >
+              <ChevronLeft size={28} />
+            </button>
+          )}
+
+          {/* Seta direita */}
+          {galeria.indice < galeria.fotos.length - 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); navegarFoto(1); }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-4 bg-zinc-900/80 border border-zinc-700 text-white rounded-2xl hover:bg-orange-600 hover:border-orange-500 transition z-10"
+              aria-label="Próxima foto"
+            >
+              <ChevronRightIcon size={28} />
+            </button>
+          )}
+
+          {/* Imagem */}
+          <div 
+            className="max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={galeria.fotos[galeria.indice].url}
+              alt={`Foto ${galeria.indice + 1}`}
+              className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl"
+            />
+            {galeria.fotos[galeria.indice].legenda && (
+              <p className="text-white font-black uppercase tracking-widest text-xs text-center px-4">
+                {galeria.fotos[galeria.indice].legenda}
+              </p>
+            )}
+            <a
+              href={galeria.fotos[galeria.indice].url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={14} /> Baixar imagem original
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE EXCLUSÃO */}
       {showDeleteModal && (
