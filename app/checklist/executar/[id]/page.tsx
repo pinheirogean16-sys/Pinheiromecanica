@@ -55,6 +55,62 @@ function isTipoNumerico(tipo: string): boolean {
   return tipo === 'NUMERO' || tipo === 'NUMERICO';
 }
 
+// ✅ COMPRESSÃO DE IMAGEM NO CLIENTE (antes de enviar para o Cloudinary)
+// Reduz de ~5MB para ~200-300KB, deixando o upload 10x mais rápido
+async function compressImage(file: File, maxWidth = 1280, quality = 0.8): Promise<File> {
+  // Se já é pequena, não comprime
+  if (file.size <= 500 * 1024) return file;
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(file);
+
+          // Fundo branco (para PNGs com transparência viraram JPEG corretamente)
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) return resolve(file);
+              const novoNome = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+              const compressed = new File([blob], novoNome, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressed);
+            },
+            'image/jpeg',
+            quality
+          );
+        } catch {
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ExecutarFormPage() {
   const router = useRouter();
   const params = useParams();
@@ -65,6 +121,7 @@ export default function ExecutarFormPage() {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
 
   const [respostas, setRespostas] = useState<Record<string, any>>({});
   const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
@@ -94,7 +151,6 @@ export default function ExecutarFormPage() {
     if (!id) return;
     setLoading(true);
     try {
-      // ✅ CORREÇÃO: Evita cache agressivo do Next.js
       const res = await fetch(`/api/checklist/${id}`, { 
         credentials: 'include',
         cache: 'no-store',
@@ -105,13 +161,13 @@ export default function ExecutarFormPage() {
         const normalizado = normalizarChecklist(raw);
         if (!normalizado) {
           toast.error('Protocolo de inspeção inválido.');
-          router.push('/checklist/executar');
+          router.push('/checklist');
           return;
         }
         setChecklist(normalizado);
       } else {
         toast.error('Erro ao carregar protocolo de inspeção.');
-        router.push('/checklist/executar');
+        router.push('/checklist');
       }
     } catch {
       toast.error('Falha de comunicação com o servidor.');
@@ -137,7 +193,7 @@ export default function ExecutarFormPage() {
           if (parsed.laudoVeredito) setLaudoVeredito(parsed.laudoVeredito);
           toast.success('Rascunho de inspeção recuperado.');
         } catch {
-          // ignora rascunho corrompido
+          // ignora
         }
       }
     }
@@ -157,9 +213,7 @@ export default function ExecutarFormPage() {
               laudoVeredito,
             })
           );
-        } catch {
-          // sessionStorage pode estar indisponível
-        }
+        } catch {}
       }, 4000);
       return () => clearInterval(interval);
     }
@@ -168,11 +222,7 @@ export default function ExecutarFormPage() {
   const handleRespostaChange = (itemId: string, valor: any) => {
     const oldVal = respostas[itemId];
     if (oldVal && typeof oldVal === 'string' && oldVal.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(oldVal);
-      } catch {
-        // ignora
-      }
+      try { URL.revokeObjectURL(oldVal); } catch {}
     }
     setRespostas((prev) => ({ ...prev, [itemId]: valor }));
   };
@@ -267,7 +317,10 @@ export default function ExecutarFormPage() {
     }
 
     setSaving(true);
+    setUploadProgress('');
+
     try {
+      // 1) Salva a execução
       const finalRespostas = {
         ...respostas,
         __meta_tipo_veiculo: tipoVeiculo,
@@ -296,15 +349,23 @@ export default function ExecutarFormPage() {
       const data = await res.json();
       const newExecucaoId = data.id;
 
+      // 2) Faz upload das fotos (COMPRIMINDO ANTES)
       const pendingItemIds = Object.keys(pendingFiles);
       if (pendingItemIds.length > 0) {
-        toast.loading('Sincronizando evidências fotográficas...', { id: 'upload-toast' });
+        toast.loading(`Comprimindo e enviando ${pendingItemIds.length} foto(s)...`, { id: 'upload-toast' });
 
-        // ✅ CORREÇÃO: Verifica se cada upload deu certo
-        const uploadPromises = pendingItemIds.map(async (itemId) => {
+        const uploadPromises = pendingItemIds.map(async (itemId, idx) => {
           const file = pendingFiles[itemId];
+
+          setUploadProgress(`${idx + 1}/${pendingItemIds.length} - comprimindo...`);
+
+          // ✅ COMPRESSÃO ANTES DE ENVIAR
+          const compressedFile = await compressImage(file);
+
+          setUploadProgress(`${idx + 1}/${pendingItemIds.length} - enviando...`);
+
           const formData = new FormData();
-          formData.append('foto', file);
+          formData.append('foto', compressedFile);
           formData.append('execucao_id', newExecucaoId);
           formData.append('item_id', itemId);
 
@@ -324,10 +385,10 @@ export default function ExecutarFormPage() {
           await Promise.all(uploadPromises);
           toast.success('Fotos enviadas com sucesso!', { id: 'upload-toast' });
         } catch (uploadErr: any) {
-          // Se der erro, avisa e não redireciona, para o usuário poder tentar de novo
           toast.error(`Erro no envio das fotos: ${uploadErr.message}`, { id: 'upload-toast', duration: 10000 });
           setSaving(false);
-          return; 
+          setUploadProgress('');
+          return;
         }
       }
 
@@ -341,6 +402,7 @@ export default function ExecutarFormPage() {
       toast.error(err.message || 'Erro ao processar finalização.');
     } finally {
       setSaving(false);
+      setUploadProgress('');
     }
   };
 
@@ -359,11 +421,11 @@ export default function ExecutarFormPage() {
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-10 pb-20 py-4 sm:py-8 overflow-hidden text-white min-h-screen">
-      {/* ... (O RESTANTE DO SEU JSX CONTINUA EXATAMENTE IGUAL) ... */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <Link
-            href="/checklist/executar"
+            href="/checklist"
             className="p-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition shadow-sm group"
           >
             <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
@@ -384,7 +446,7 @@ export default function ExecutarFormPage() {
           className="hidden md:flex bg-orange-600 hover:bg-orange-500 text-white px-10 py-5 rounded-[2rem] font-black uppercase tracking-widest text-xs transition-all shadow-2xl active:scale-95 disabled:opacity-50 items-center justify-center gap-3 italic shadow-orange-950/20 shrink-0"
         >
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save size={20} />}
-          FINALIZAR E PUBLICAR LAUDO
+          {saving && uploadProgress ? uploadProgress : 'FINALIZAR E PUBLICAR LAUDO'}
         </button>
       </div>
 
@@ -553,9 +615,6 @@ export default function ExecutarFormPage() {
               <p className="text-sm font-black text-white uppercase tracking-widest italic">
                 Este checklist não tem itens cadastrados
               </p>
-              <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-2">
-                Edite o template e adicione itens antes de executar.
-              </p>
             </div>
           )}
 
@@ -657,6 +716,9 @@ export default function ExecutarFormPage() {
                       <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest text-center">
                         {respostas[item.id] ? 'Trocar Imagem' : 'Capturar / Selecionar Foto'}
                       </p>
+                      <p className="text-[8px] text-zinc-700 font-bold uppercase tracking-wider mt-1 text-center">
+                        A imagem será otimizada automaticamente
+                      </p>
                       <input
                         type="file"
                         accept="image/*"
@@ -716,12 +778,25 @@ export default function ExecutarFormPage() {
                   <Save size={32} className="text-orange-500 group-hover:text-white transition" />
                 )}
                 <div className="text-center">
-                  <p className="text-[10px] text-orange-500 group-hover:text-white font-black uppercase tracking-[0.4em] transition">
-                    Inspeção completa e validada
-                  </p>
-                  <p className="text-2xl font-black text-white uppercase italic tracking-tighter">
-                    FINALIZAR E GERAR LAUDO
-                  </p>
+                  {saving && uploadProgress ? (
+                    <>
+                      <p className="text-[10px] text-orange-500 group-hover:text-white font-black uppercase tracking-[0.4em] transition">
+                        Processando fotos
+                      </p>
+                      <p className="text-xl font-black text-white uppercase italic tracking-tighter">
+                        {uploadProgress}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[10px] text-orange-500 group-hover:text-white font-black uppercase tracking-[0.4em] transition">
+                        Inspeção completa e validada
+                      </p>
+                      <p className="text-2xl font-black text-white uppercase italic tracking-tighter">
+                        FINALIZAR E GERAR LAUDO
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </button>
