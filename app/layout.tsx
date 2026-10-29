@@ -7,7 +7,6 @@ import { BRANDING } from '@/lib/branding';
 import OnboardingTour from '@/components/OnboardingTour';
 import IaSupportWidget from '@/components/IaSupportWidget';
 import { UpgradeModalHost } from '@/components/UpgradeModal';
-import BlockedScreen from '@/components/BlockedScreen';
 import { prisma } from '@/lib/prisma';
 import { verifyTokenEdge } from '@/lib/auth-edge';
 import LayoutWrapper from '@/components/LayoutWrapper';
@@ -42,18 +41,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           select: { 
             status: true,
             plano: true,
-            trial_ends_at: true,
-            asaas_status: true // ✅ Adicionado
+            trial_ends_at: true
           }
         });
         
         if (empresa) {
           const isTrialExpired = empresa.plano === 'TRIAL' && empresa.trial_ends_at && new Date(empresa.trial_ends_at) < new Date();
-          
-          // ✅ Se o pagamento estiver PENDING, libera o acesso (para ver o checkout)
-          const hasPendingPayment = empresa.asaas_status === 'PENDING';
 
-          if ((empresa.status === 'BLOQUEADO' || isTrialExpired) && !hasPendingPayment) {
+          if (empresa.status === 'BLOQUEADO' || isTrialExpired) {
             isBlocked = true;
           }
         } else {
@@ -66,20 +61,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     }
   }
 
-  // 1. Tela de Bloqueio
-  if (isBlocked) {
-    return (
-      <html lang="pt-BR" className="dark">
-        <body className="bg-zinc-950 text-zinc-200 antialiased">
-          <BlockedScreen />
-          {/* ✅ TOASTER ADICIONADO NA TELA DE BLOQUEIO */}
-          <Toaster theme="dark" position="top-right" richColors />
-        </body>
-      </html>
-    );
-  }
-
-  // 2. Se NÃO estiver autenticado
+  // 1. Se NÃO estiver autenticado (Tela de Login)
   if (!isAuthenticated) {
     return (
       <html lang="pt-BR" className="dark">
@@ -91,18 +73,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     );
   }
 
-  // 3. Autenticado
+  // 2. Autenticado (Passa o isBlocked para o LayoutWrapper decidir a tela)
   return (
     <html lang="pt-BR" className="dark">
       <body className="bg-zinc-950 text-zinc-200 antialiased overflow-x-hidden print:bg-white print:text-black">
-        <OnboardingTour /> 
+        {/* Só mostra o tour se não estiver bloqueado */}
+        {!isBlocked && <OnboardingTour />} 
         <DiagnosticsOverlay />
-        <LayoutWrapper>
+        
+        <LayoutWrapper isBlocked={isBlocked}>
           {children}
         </LayoutWrapper>
         
-        <IaSupportWidget />
-        <UpgradeModalHost />
+        {!isBlocked && <IaSupportWidget />}
+        {!isBlocked && <UpgradeModalHost />}
         
         <Toaster theme="dark" position="top-right" richColors />
       </body>
