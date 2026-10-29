@@ -94,7 +94,12 @@ export default function ExecutarFormPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/checklist/${id}`, { credentials: 'include' });
+      // ✅ CORREÇÃO: Evita cache agressivo do Next.js
+      const res = await fetch(`/api/checklist/${id}`, { 
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       if (res.ok) {
         const raw = await res.json();
         const normalizado = normalizarChecklist(raw);
@@ -295,6 +300,7 @@ export default function ExecutarFormPage() {
       if (pendingItemIds.length > 0) {
         toast.loading('Sincronizando evidências fotográficas...', { id: 'upload-toast' });
 
+        // ✅ CORREÇÃO: Verifica se cada upload deu certo
         const uploadPromises = pendingItemIds.map(async (itemId) => {
           const file = pendingFiles[itemId];
           const formData = new FormData();
@@ -302,15 +308,27 @@ export default function ExecutarFormPage() {
           formData.append('execucao_id', newExecucaoId);
           formData.append('item_id', itemId);
 
-          await fetch('/api/checklist/upload-foto', {
+          const uploadRes = await fetch('/api/checklist/upload-foto', {
             method: 'POST',
             body: formData,
             credentials: 'include',
           });
+
+          if (!uploadRes.ok) {
+            const errData = await uploadRes.json().catch(() => ({}));
+            throw new Error(errData.error || 'Falha ao enviar uma das fotos.');
+          }
         });
 
-        await Promise.all(uploadPromises);
-        toast.success('Fotos enviadas com sucesso!', { id: 'upload-toast' });
+        try {
+          await Promise.all(uploadPromises);
+          toast.success('Fotos enviadas com sucesso!', { id: 'upload-toast' });
+        } catch (uploadErr: any) {
+          // Se der erro, avisa e não redireciona, para o usuário poder tentar de novo
+          toast.error(`Erro no envio das fotos: ${uploadErr.message}`, { id: 'upload-toast', duration: 10000 });
+          setSaving(false);
+          return; 
+        }
       }
 
       try {
@@ -341,7 +359,7 @@ export default function ExecutarFormPage() {
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 space-y-10 pb-20 py-4 sm:py-8 overflow-hidden text-white min-h-screen">
-      {/* HEADER */}
+      {/* ... (O RESTANTE DO SEU JSX CONTINUA EXATAMENTE IGUAL) ... */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <Link
