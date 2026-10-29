@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api'; // ✅ Adicionado apiFetch
+import { handleApiError } from '@/lib/handle-api-error'; // ✅ Adicionado
 
 interface ChecklistItem {
   id: string;
@@ -27,11 +29,13 @@ interface Checklist {
 }
 
 function normalizarChecklist(raw: any): Checklist {
-  const itensBrutos = raw?.itens ?? raw?.ChecklistItem ?? [];
+  // ✅ CORRIGIDO: Pega os itens de todas as formas possíveis que a API pode retornar
+  const itensBrutos = raw?.itens ?? raw?.ChecklistItem ?? raw?.itensChecklist ?? [];
   const itens = Array.isArray(itensBrutos) ? itensBrutos : [];
 
   const totalExecucoes =
     raw?._count?.execucoes ??
+    raw?._count?.ChecklistExecucao ??
     (Array.isArray(raw?.ChecklistExecucao) ? raw.ChecklistExecucao.length : 0);
 
   return {
@@ -57,22 +61,17 @@ export default function ChecklistPage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch('/api/checklist', {
-        headers: { 'Cache-Control': 'no-cache' },
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const lista = Array.isArray(data) ? data : [];
-        setChecklists(lista.map(normalizarChecklist));
-      } else {
-        setError(true);
-        setChecklists([]);
-      }
-    } catch {
+      // ✅ Usando apiFetch com skipCache para garantir dados frescos
+      const data = await apiFetch<any>('/api/checklist', { skipCache: true });
+      
+      // ✅ CORRIGIDO: Lida com array puro ou com objeto paginado { items: [] }
+      const lista = Array.isArray(data) ? data : (data.items || []);
+      setChecklists(lista.map(normalizarChecklist));
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(true);
       setChecklists([]);
-      toast.error('Ocorreu uma falha ao sincronizar o banco de dados.');
+      handleApiError(err, { defaultMessage: 'Ocorreu uma falha ao sincronizar o banco de dados.' });
     } finally {
       setLoading(false);
     }
@@ -95,21 +94,13 @@ export default function ChecklistPage() {
     if (!deletingChecklist) return;
 
     try {
-      const res = await fetch(`/api/checklist/${deletingChecklist.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        toast.success('Template de checklist removido.');
-        fetchChecklists();
-        setShowDeleteModal(false);
-        setDeletingChecklist(null);
-      } else {
-        const errorData = await res.json().catch(() => ({ error: null }));
-        toast.error(errorData.error || 'Não foi possível excluir o checklist.');
-      }
-    } catch {
-      toast.error('Erro ao conectar com a API');
+      await apiFetch(`/api/checklist/${deletingChecklist.id}`, { method: 'DELETE' });
+      toast.success('Template de checklist removido.');
+      fetchChecklists();
+      setShowDeleteModal(false);
+      setDeletingChecklist(null);
+    } catch (err: any) {
+      handleApiError(err, { defaultMessage: 'Não foi possível excluir o checklist.' });
     }
   };
 
