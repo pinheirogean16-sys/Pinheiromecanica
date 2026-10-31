@@ -10,6 +10,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { isSafePhotoUrl } from '@/lib/safe-url'; // ✅ IMPORT DE SEGURANÇA ADICIONADO
 
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error?: Error; }
@@ -323,7 +324,12 @@ function ChecklistResultadoContent({ id }: { id: string }) {
                           }}
                           className="relative group cursor-pointer print:hidden"
                         >
-                          <img src={foto.url} alt="Foto" className="w-16 h-12 sm:w-20 sm:h-16 object-cover rounded-lg border border-zinc-700 group-hover:scale-105 transition" />
+                          {/* ✅ TRAVA DE SEGURANÇA NA IMAGEM */}
+                          <img 
+                            src={isSafePhotoUrl(foto.url) ? foto.url : undefined} 
+                            alt="Foto" 
+                            className="w-16 h-12 sm:w-20 sm:h-16 object-cover rounded-lg border border-zinc-700 group-hover:scale-105 transition" 
+                          />
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition rounded-lg flex items-center justify-center">
                             <Maximize2 size={16} className="text-white" />
                           </div>
@@ -413,8 +419,24 @@ function ChecklistResultadoContent({ id }: { id: string }) {
             <button onClick={(e) => { e.stopPropagation(); setGaleria({ ...galeria, indice: galeria.indice + 1 }); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-4 bg-zinc-900/80 border border-zinc-700 text-white rounded-2xl hover:bg-orange-600 transition"><ChevronRight size={28} /></button>
           )}
           <div className="max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
-            <img src={galeria.fotos[galeria.indice].url} alt="Foto" className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" />
-            <a href={galeria.fotos[galeria.indice].url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition" onClick={(e) => e.stopPropagation()}><ExternalLink size={14} /> Baixar Original</a>
+            
+            {/* ✅ TRAVA DE SEGURANÇA NA IMAGEM DO LIGHTBOX */}
+            <img 
+              src={isSafePhotoUrl(galeria.fotos[galeria.indice].url) ? galeria.fotos[galeria.indice].url : undefined} 
+              alt="Foto" 
+              className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" 
+            />
+            
+            {/* ✅ TRAVA DE SEGURANÇA NO LINK DE DOWNLOAD */}
+            <a 
+              href={isSafePhotoUrl(galeria.fotos[galeria.indice].url) ? galeria.fotos[galeria.indice].url : '#'} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="flex items-center gap-2 px-6 py-3 bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition" 
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={14} /> Baixar Original
+            </a>
           </div>
         </div>
       )}
