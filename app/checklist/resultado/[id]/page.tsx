@@ -179,6 +179,7 @@ function ChecklistResultadoContent({ id }: { id: string }) {
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
           
+          {/* ✅ BOTÃO ATUALIZADO PARA ABRIR A NOVA PÁGINA DE IMPRESSÃO */}
           <button 
             onClick={() => window.open(`/checklist/resultado/${id}/imprimir`, '_blank')} 
             className="flex-1 sm:flex-none bg-orange-600 hover:bg-orange-500 text-white px-6 py-3.5 rounded-xl font-black uppercase tracking-widest text-[10px] transition shadow-lg flex items-center justify-center gap-2"
