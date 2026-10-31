@@ -1,0 +1,44 @@
+name: Build Next.js
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Build do Next.js
+        run: npm run build
+        env:
+          DATABASE_URL: "mysql://user:pass@localhost:3306/db"
+          JWT_SECRET: "build-secret"
+          NEXT_PUBLIC_APP_URL: "https://login.pinheiromecanica.com"
+          OPENAI_API_KEY: "sk-dummy-key-for-build"
+          GROQ_API_KEY: "gsk_dummy_key_for_build"
+          CLOUDINARY_URL: "cloudinary://123:abc@dummy"
+
+      - name: Salvar Build no GitHub
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f .next
+          git commit -m "chore: build compilado [skip ci]" || echo "Nada para commitar"
+          git push
