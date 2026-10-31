@@ -1,0 +1,10 @@
+    - name: Build do Next.js
+      run: npm run build
+      env:
+        DATABASE_URL: "mysql://user:pass@localhost:3306/db"
+        JWT_SECRET: "build-secret"
+        NEXT_PUBLIC_APP_URL: "https://login.pinheiromecanica.com"
+        # Variáveis fictícias apenas para o GitHub Actions conseguir compilar:
+        OPENAI_API_KEY: "sk-dummy-key-for-build"
+        GROQ_API_KEY: "gsk_dummy_key_for_build"
+        CLOUDINARY_URL: "cloudinary://123:abc@dummy"
