@@ -1,0 +1,1195 @@
+diff --git a/.env.example b/.env.example
+index 6716603..60d6f84 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,3 +1,15 @@
+ DATABASE_URL=
+ JWT_SECRET=
+-NEXT_PUBLIC_APP_URL=
+\ No newline at end of file
++NEXT_PUBLIC_APP_URL=
++# --- Obrigatórias para produção ---
++# Super admin (painel /master-admin). Use o ID do usuário, NÃO o e-mail:
++#   SELECT id FROM User WHERE email = '...' AND empresa_id = '...';
++SUPER_ADMIN_USER_ID=
++# (alternativa de compatibilidade: exige os DOIS)
++# SUPER_ADMIN_EMAIL=
++# SUPER_ADMIN_EMPRESA_ID=
++# Quantidade de proxies confiáveis à frente do app (Apache/.htaccess = 1). Define o IP real no rate limit.
++TRUSTED_PROXY_HOPS=1
++# Segredo dos crons — enviado SOMENTE por cabeçalho (Authorization: Bearer ... ou x-cron-secret)
++CRON_SECRET=
++REGISTER_INVITE_TOKEN=
+diff --git a/.htaccess b/.htaccess
+index 8f0f023..d40e4d1 100644
+--- a/.htaccess
++++ b/.htaccess
+@@ -1,4 +1,31 @@
+ RewriteEngine On
++
++# ------------------------------------------------------------------
++# S1 — Bloqueio de arquivos do projeto.
++# A regra de proxy abaixo só encaminha ao Node o que NÃO existe como arquivo
++# (!-f). Se o docroot for a raiz do projeto, arquivos existentes seriam
++# servidos direto pelo Apache. Estas regras negam o acesso a eles (403).
++# Recomendado também: apontar o docroot para fora da pasta do projeto.
++# ------------------------------------------------------------------
++# dotfiles (.env, .git, .htaccess...), exceto /.well-known
++RewriteRule (^|/)\.(?!well-known(/|$)) - [F,L]
++# extensões de código/segredos/backups/dumps
++RewriteRule \.(env|sql|bak|log|md|map|prisma|tsbuildinfo|lock|ts|tsx|mts|cts)$ - [F,L]
++# arquivos de configuração e resultados na raiz
++RewriteRule ^(package(-lock)?|tsconfig|test-results|metadata|components)\.json$ - [F,L]
++RewriteRule ^(next|vitest|postcss|tailwind|eslint)\.config\.[a-z]+$ - [F,L]
++RewriteRule ^(database\.sql|Dockerfile|README.*)$ - [F,L]
++# scripts soltos na raiz (menos o service worker, se for reativado)
++RewriteCond %{REQUEST_URI} !^/sw\.js$
++RewriteRule ^[^/]+\.(js|mjs|cjs)$ - [F,L]
++# pastas internas
++RewriteRule ^(prisma|tests|node_modules|scripts|docs|\.next/(?!static))(/|$) - [F,L]
++
++# ------------------------------------------------------------------
++# Proxy para o Next.js (comportamento original)
++# O mod_proxy acrescenta o IP do cliente ao FINAL de X-Forwarded-For;
++# por isso TRUSTED_PROXY_HOPS=1 (ver .env.example e lib/rate-limit.ts).
++# ------------------------------------------------------------------
+ RewriteCond %{REQUEST_FILENAME} !-f
+ RewriteCond %{REQUEST_FILENAME} !-d
+ RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
+diff --git a/app/api/auth/login/route.ts b/app/api/auth/login/route.ts
+index 2a30c88..f77ef3c 100644
+--- a/app/api/auth/login/route.ts
++++ b/app/api/auth/login/route.ts
+@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
+ import bcrypt from 'bcryptjs';
+ import { signToken } from '@/lib/auth';
+ import { log } from '@/lib/logger';
+-import { isRateLimited, resetRateLimit } from '@/lib/rate-limit';
++import { isRateLimited, resetRateLimit, getClientIp } from '@/lib/rate-limit';
+ import { z } from 'zod';
+ 
+ const MAX_ATTEMPTS = 5;
+@@ -15,10 +15,9 @@ const loginSchema = z.object({
+   password: z.string().min(1, 'Senha obrigatória'),
+ });
+ 
++// C3: IP contado do fim do X-Forwarded-For (ver getClientIp) — o primeiro valor é forjável.
+ function extrairIp(request: NextRequest): string {
+-  const forwarded = request.headers.get('x-forwarded-for');
+-  if (forwarded) return forwarded.split(',')[0].trim();
+-  return request.headers.get('x-real-ip') || 'unknown';
++  return getClientIp(request.headers);
+ }
+ 
+ export async function POST(request: NextRequest) {
+@@ -33,7 +32,24 @@ export async function POST(request: NextRequest) {
+ 
+     // Rate limit por email + ip
+     const rateLimitKey = `login:${emailNormalizado}:${ip}`;
+-    const rateCheck = await isRateLimited(rateLimitKey, MAX_ATTEMPTS, WINDOW_MS);
++    // C3: três baldes — por e-mail+IP (como antes), por e-mail (qualquer IP) e por IP
++    // (qualquer e-mail). O balde por IP impede varrer muitos e-mails; o por e-mail
++    // limita ataque distribuído contra uma conta.
++    const FIFTEEN_MIN = 15 * 60 * 1000;
++    const baldes: Array<[string, number, number]> = [
++      [rateLimitKey, MAX_ATTEMPTS, WINDOW_MS],
++      [`login-email:${emailNormalizado}`, 20, FIFTEEN_MIN],
++    ];
++    if (ip !== 'unknown') baldes.push([`login-ip:${ip}`, 30, FIFTEEN_MIN]);
++
++    let rateCheck = { limited: false, count: 0, reset: 0 };
++    for (const [chave, limite, janela] of baldes) {
++      const r = await isRateLimited(chave, limite, janela);
++      if (r.limited) {
++        rateCheck = r;
++        break;
++      }
++    }
+ 
+     if (rateCheck.limited) {
+       const msLeft = Math.max(0, rateCheck.reset - Date.now());
+@@ -105,6 +121,7 @@ export async function POST(request: NextRequest) {
+ 
+     // Reset do rate limit após login bem-sucedido
+     await resetRateLimit(rateLimitKey);
++    await resetRateLimit(`login-email:${emailNormalizado}`);
+ 
+     // Gera o token JWT
+     const token = await signToken({
+diff --git a/app/api/auth/logout/route.ts b/app/api/auth/logout/route.ts
+index ce6ee07..0e1c0f3 100644
+--- a/app/api/auth/logout/route.ts
++++ b/app/api/auth/logout/route.ts
+@@ -6,7 +6,7 @@ import { createAuditLog } from '@/lib/audit';
+ 
+ export async function POST() {
+   try {
+-    const { error, user } = await requireAuth();
++    const { error, user } = await requireAuth({ allowBlockedEmpresa: true });
+     if (error) return error;
+ 
+     // Incrementa o token_version do usuário.
+diff --git a/app/api/auth/recuperar-senha/route.ts b/app/api/auth/recuperar-senha/route.ts
+index dd067fc..fec6e69 100644
+--- a/app/api/auth/recuperar-senha/route.ts
++++ b/app/api/auth/recuperar-senha/route.ts
+@@ -4,7 +4,7 @@ import { sendEmail } from '@/lib/email';
+ import crypto from 'crypto';
+ import { z } from 'zod';
+ import { log } from '@/lib/logger';
+-import { isRateLimited } from '@/lib/rate-limit';
++import { isRateLimited, getClientIp } from '@/lib/rate-limit';
+ import { apiError } from '@/lib/api-error';
+ 
+ // ============================================================
+@@ -26,8 +26,14 @@ export async function POST(request: Request) {
+     // Rate limit para evitar abuso (5 tentativas por 15 minutos por e-mail)
+     const rateLimitKey = `recuperar-senha:${email}`;
+     const rateCheck = await isRateLimited(rateLimitKey, 5, 15 * 60 * 1000);
++    // C3/C6: também por IP, para não depender só do e-mail informado
++    const ipRecuperar = getClientIp(request.headers);
++    const rateCheckIp =
++      ipRecuperar !== 'unknown'
++        ? await isRateLimited(`recuperar-senha-ip:${ipRecuperar}`, 10, 15 * 60 * 1000)
++        : { limited: false, count: 0, reset: 0 };
+     
+-    if (rateCheck.limited) {
++    if (rateCheck.limited || rateCheckIp.limited) {
+       log('WARN', 'AUTH', 'Rate limit bloqueou solicitação de recuperação', { email }, 'SISTEMA');
+       return NextResponse.json(
+         { error: 'Muitas solicitações. Tente novamente em alguns minutos.' },
+diff --git a/app/api/auth/redefinir-senha/route.ts b/app/api/auth/redefinir-senha/route.ts
+index 6def67e..9427e0b 100644
+--- a/app/api/auth/redefinir-senha/route.ts
++++ b/app/api/auth/redefinir-senha/route.ts
+@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
+ import { z } from 'zod';
+ import { log } from '@/lib/logger';
+ import { createAuditLog } from '@/lib/audit';
++import { isRateLimited, getClientIp } from '@/lib/rate-limit';
+ 
+ const redefinirSchema = z.object({
+   token: z.string().min(1, 'Token obrigatório'),
+@@ -12,6 +13,18 @@ const redefinirSchema = z.object({
+ 
+ export async function POST(request: Request) {
+   try {
++    // C3: limite por IP (antes esta rota não tinha nenhum)
++    const ip = getClientIp(request.headers);
++    if (ip !== 'unknown') {
++      const rc = await isRateLimited(`redefinir-senha-ip:${ip}`, 10, 15 * 60 * 1000);
++      if (rc.limited) {
++        return NextResponse.json(
++          { error: 'Muitas tentativas. Tente novamente em alguns minutos.' },
++          { status: 429 }
++        );
++      }
++    }
++
+     const body = await request.json();
+     const parsed = redefinirSchema.parse(body);
+     const { token, novaSenha } = parsed;
+@@ -23,7 +36,7 @@ export async function POST(request: Request) {
+ 
+     // Verifica se o token existe e não expirou
+     if (!user || !user.reset_token_expires || user.reset_token_expires < new Date()) {
+-      log('WARN', 'AUTH', 'Tentativa de redefinição com token inválido/expirado', { token });
++      log('WARN', 'AUTH', 'Tentativa de redefinição com token inválido/expirado', { ip });
+       return NextResponse.json({ error: 'Token inválido ou expirado.' }, { status: 400 });
+     }
+ 
+diff --git a/app/api/checklist/executar/route.ts b/app/api/checklist/executar/route.ts
+index aba8ed9..2f86247 100644
+--- a/app/api/checklist/executar/route.ts
++++ b/app/api/checklist/executar/route.ts
+@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+ import { requireAuth } from '@/lib/api-auth';
+ import { z } from 'zod';
++import { isSafePhotoUrl } from '@/lib/safe-url';
+ import { checkPermission } from '@/lib/rbac';
+ import { log } from '@/lib/logger';
+ import { createAuditLog } from '@/lib/audit';
+@@ -17,8 +18,12 @@ const execucaoSchema = z.object({
+   fotos: z
+     .array(
+       z.object({
+-        // Aceita URLs absolutas ou caminhos relativos (ex: /uploads/foto.jpg)
+-        url: z.string().min(1, 'URL da foto é obrigatória'),
++        // F1: só https://, /uploads/... (gerado pelo sistema) ou data:image raster.
++        // `javascript:` e demais esquemas são rejeitados.
++        url: z
++          .string()
++          .min(1, 'URL da foto é obrigatória')
++          .refine(isSafePhotoUrl, 'URL da foto inválida'),
+         item_id: z.string().optional().nullable(),
+         legenda: z.string().max(500).optional().nullable(),
+       })
+diff --git a/app/api/configuracoes/empresa/route.ts b/app/api/configuracoes/empresa/route.ts
+index 27af15e..056af17 100644
+--- a/app/api/configuracoes/empresa/route.ts
++++ b/app/api/configuracoes/empresa/route.ts
+@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
+ import { requireAuth } from '@/lib/api-auth';
+ import { checkPermission } from '@/lib/rbac';
+ import { z } from 'zod';
++import { isSafeLogoUrl } from '@/lib/safe-url';
+ import { log } from '@/lib/logger';
+ import { createAuditLog } from '@/lib/audit';
+ import { apiError } from '@/lib/api-error';
+@@ -28,7 +29,11 @@ const configEmpresaSchema = z.object({
+   regime_tributario: z.string().optional().nullable(),
+   rodape_personalizado: z.string().optional().nullable(),
+   token_nfse: z.string().optional().nullable(),
+-  logo_url: z.string().optional().nullable(),
++  logo_url: z
++    .string()
++    .refine((v) => v === '' || isSafeLogoUrl(v), 'URL do logo inválida')
++    .optional()
++    .nullable(),
+   pix: z.string().optional().nullable(),
+   banco: z.string().optional().nullable(),
+   agencia: z.string().optional().nullable(),
+diff --git a/app/api/cron/verificar-trials/route.ts b/app/api/cron/verificar-trials/route.ts
+index 21be125..8f27847 100644
+--- a/app/api/cron/verificar-trials/route.ts
++++ b/app/api/cron/verificar-trials/route.ts
+@@ -1,23 +1,12 @@
+ import { NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+ import { log } from '@/lib/logger';
++import { validarCronSecret } from '@/lib/cron-auth';
+ 
+ export async function GET(request: Request) {
+-  // 1. Medida de segurança: aceita o segredo via URL ou via Header
+-  const { searchParams } = new URL(request.url);
+-  const secretViaUrl = searchParams.get('secret');
+-  const authHeader = request.headers.get('authorization');
+-  const headerCron = request.headers.get('x-cron-secret');
+-  
+-  const cronSecret = process.env.CRON_SECRET;
+-
+-  // 🚨 TRAVA DE SEGURANÇA: Se a senha não bater, bloqueia o acesso
+-  const isAuthorized = 
+-    (secretViaUrl && secretViaUrl === cronSecret) ||
+-    (authHeader === `Bearer ${cronSecret}`) || 
+-    (headerCron === cronSecret);
+-
+-  if (!cronSecret || !isAuthorized) {
++  // 🚨 TRAVA DE SEGURANÇA: segredo só por cabeçalho (Authorization: Bearer / x-cron-secret),
++  // comparado em tempo constante. Segredo na URL não é mais aceito.
++  if (!validarCronSecret(request.headers)) {
+     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+   }
+ 
+diff --git a/app/api/financeiro/alertas/verificar/route.ts b/app/api/financeiro/alertas/verificar/route.ts
+index 9ae1ffb..0b558a0 100644
+--- a/app/api/financeiro/alertas/verificar/route.ts
++++ b/app/api/financeiro/alertas/verificar/route.ts
+@@ -2,31 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+ import { log } from '@/lib/logger';
+ import { apiError } from '@/lib/api-error';
++import { validarCronSecret as validarCronSecretHeaders } from '@/lib/cron-auth';
+ import { verificarContasAtrasadas, verificarContasAVencer } from '@/lib/notificacoes-financeiras';
+ 
+ // ============================================================
+ // TRAVA DE SEGURANÇA: valida o CRON_SECRET
+ // ============================================================
+ function validarCronSecret(req: NextRequest): boolean {
+-  const secret = process.env.CRON_SECRET;
+-
+-  if (!secret) {
++  if (!process.env.CRON_SECRET) {
+     log('ERROR', 'FINANCEIRO_CRON', 'CRON_SECRET não configurado no ambiente', {}, 'sistema');
+     return false;
+   }
+-
+-  const authHeader = req.headers.get('authorization');
+-  const cronHeader = req.headers.get('x-cron-secret');
+-
+-  if (authHeader?.startsWith('Bearer ')) {
+-    return authHeader.slice(7) === secret;
+-  }
+-
+-  if (cronHeader) {
+-    return cronHeader === secret;
+-  }
+-
+-  return false;
++  return validarCronSecretHeaders(req.headers);
+ }
+ 
+ // ============================================================
+diff --git a/app/api/master-admin/route.ts b/app/api/master-admin/route.ts
+index 5bd0405..cb5c051 100644
+--- a/app/api/master-admin/route.ts
++++ b/app/api/master-admin/route.ts
+@@ -1,3 +1,5 @@
++import { isSuperAdmin } from '@/lib/super-admin';
++import { invalidateEmpresaStatusCache } from '@/lib/empresa-status';
+ import { NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+ import { requireAuth } from '@/lib/api-auth';
+@@ -37,14 +39,7 @@ const getMasterQuerySchema = z.object({
+ // ============================================================
+ // HELPERS
+ // ============================================================
+-function isSuperAdmin(email: string): boolean {
+-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+-  if (!superAdminEmail) {
+-    log('ERROR', 'MASTER', 'SUPER_ADMIN_EMAIL não configurado no ambiente', {}, 'sistema');
+-    return false;
+-  }
+-  return email === superAdminEmail;
+-}
++// Identificação do super admin por ID (lib/super-admin.ts) — não mais por e-mail.
+ 
+ function calcularFimTrial(): Date {
+   return new Date(Date.now() + DIAS_TRIAL * 24 * 60 * 60 * 1000);
+@@ -62,7 +57,7 @@ export async function GET(request: Request) {
+     const { error, user } = await requireAuth();
+     if (error) return error;
+ 
+-    if (!isSuperAdmin(user.email)) {
++    if (!isSuperAdmin(user)) {
+       return NextResponse.json({ error: 'Acesso negado. Área restrita.' }, { status: 403 });
+     }
+ 
+@@ -137,7 +132,7 @@ export async function PATCH(request: Request) {
+     const { error, user } = await requireAuth();
+     if (error) return error;
+ 
+-    if (!isSuperAdmin(user.email)) {
++    if (!isSuperAdmin(user)) {
+       return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
+     }
+ 
+@@ -189,6 +184,7 @@ export async function PATCH(request: Request) {
+       where: { id: empresa_id },
+       data: updateData,
+     });
++    invalidateEmpresaStatusCache(empresa_id); // C2: bloqueio vale já na próxima requisição
+ 
+     // ============================================================
+     // INTEGRAÇÃO ASAAS — CRIA ASSINATURA NA CONVERSÃO DE PLANO
+diff --git a/app/api/notificacoes/route.ts b/app/api/notificacoes/route.ts
+index 42e53e5..b3f6238 100644
+--- a/app/api/notificacoes/route.ts
++++ b/app/api/notificacoes/route.ts
+@@ -1,3 +1,4 @@
++import { getClientIp } from '@/lib/rate-limit';
+ import { NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+ import { requireAuth } from '@/lib/api-auth';
+@@ -57,7 +58,7 @@ const listarQuerySchema = z.object({
+ export async function GET(request: Request) {
+   try {
+     // ✅ NOVO: Verifica o Rate Limit antes de processar qualquer coisa
+-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
++    const ip = getClientIp(request.headers);
+     
+     if (!checkRateLimit(ip)) {
+       // Retorna 429 silenciosamente para o frontend (sem gerar log de erro no servidor)
+diff --git a/app/api/preventivas/[id]/route.ts b/app/api/preventivas/[id]/route.ts
+index 97d8cb9..1307e33 100644
+--- a/app/api/preventivas/[id]/route.ts
++++ b/app/api/preventivas/[id]/route.ts
+@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
+ import { requireAuth } from '@/lib/api-auth';
+ import { checkPermission } from '@/lib/rbac';
+ import { z } from 'zod';
++import { isSafePhotoUrl } from '@/lib/safe-url';
+ import { log } from '@/lib/logger';
+ import { apiError } from '@/lib/api-error';
+ import { createAuditLog } from '@/lib/audit';
+@@ -33,7 +34,7 @@ const editPreventivaSchema = z.object({
+   observacoes: z.string().max(2000).optional().nullable(),
+   
+   // ✅ MUDANÇA: Agora aceita um array de strings
+-  fotos: z.array(z.string()).optional(),
++  fotos: z.array(z.string().refine(isSafePhotoUrl, 'URL da foto inválida')).optional(),
+ 
+   tipo_controle: z.preprocess(
+     (val) => (val === 'COMBINADO' ? 'MISTO' : val),
+diff --git a/app/api/preventivas/route.ts b/app/api/preventivas/route.ts
+index 191f33d..6a31789 100644
+--- a/app/api/preventivas/route.ts
++++ b/app/api/preventivas/route.ts
+@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
+ import { requireAuth } from '@/lib/api-auth';
+ import { checkPermission } from '@/lib/rbac';
+ import { z } from 'zod';
++import { isSafePhotoUrl } from '@/lib/safe-url';
+ import { log } from '@/lib/logger';
+ import { apiError } from '@/lib/api-error';
+ import { createAuditLog } from '@/lib/audit';
+@@ -26,7 +27,7 @@ const preventivaSchema = z.object({
+   observacoes: z.string().max(2000).optional().nullable().default(''),
+   
+   // ✅ Aceita array de strings para as fotos
+-  fotos: z.array(z.string()).optional().default([]),
++  fotos: z.array(z.string().refine(isSafePhotoUrl, 'URL da foto inválida')).optional().default([]),
+ 
+   tipo_controle: z.preprocess(
+     (val) => (val === 'COMBINADO' ? 'MISTO' : val),
+diff --git a/app/api/register/route.ts b/app/api/register/route.ts
+index 08fc197..723b707 100644
+--- a/app/api/register/route.ts
++++ b/app/api/register/route.ts
+@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
+ import crypto from 'crypto';
+ import { z } from 'zod';
+ import { criarClienteAsaas } from '@/lib/asaas';
++import { isRateLimited, getClientIp } from '@/lib/rate-limit';
+ 
+ // ============================================================
+ // CONFIGURAÇÃO DO TRIAL
+@@ -85,6 +86,18 @@ const registerSchema = z.object({
+ // ============================================================
+ export async function POST(request: Request) {
+   try {
++    // C3: limite por IP (antes /api/register não tinha nenhum — o convite podia ser tentado à vontade)
++    const ipRegistro = getClientIp(request.headers);
++    if (ipRegistro !== 'unknown') {
++      const rc = await isRateLimited(`register-ip:${ipRegistro}`, 10, 60 * 60 * 1000);
++      if (rc.limited) {
++        return NextResponse.json(
++          { error: 'Muitas tentativas. Tente novamente mais tarde.' },
++          { status: 429 }
++        );
++      }
++    }
++
+     const inviteTokenEsperado = process.env.REGISTER_INVITE_TOKEN;
+ 
+     if (!inviteTokenEsperado) {
+diff --git a/app/checklist/resultado/[id]/page.tsx b/app/checklist/resultado/[id]/page.tsx
+index 6fb6615..23acbd5 100644
+--- a/app/checklist/resultado/[id]/page.tsx
++++ b/app/checklist/resultado/[id]/page.tsx
+@@ -10,6 +10,7 @@ import {
+ import Link from 'next/link';
+ import { useRouter } from 'next/navigation';
+ import { toast } from 'sonner';
++import { openPhotoSafely, isSafePhotoUrl } from '@/lib/safe-url';
+ 
+ interface ErrorBoundaryProps {
+   children?: ReactNode;
+@@ -433,11 +434,11 @@ function ChecklistResultadoContent({ id }: { id: string }) {
+                                   className="relative group cursor-pointer" 
+                                   onClick={() => {
+                                     const url = typeof foto === 'string' ? foto : foto?.url;
+-                                    if (url) window.open(url, '_blank');
++                                    if (url) openPhotoSafely(url); // F1: só abre URL segura
+                                   }}
+                                 >
+                                   <img 
+-                                    src={typeof foto === 'string' ? foto : foto?.url} 
++                                    src={(() => { const u = typeof foto === 'string' ? foto : foto?.url; return isSafePhotoUrl(u) ? u : undefined; })()}
+                                     alt={`Foto ${idx + 1}`} 
+                                     className="w-28 h-24 object-cover flex-shrink-0 rounded-2xl border border-zinc-800 hover:scale-105 transition-transform" 
+                                   />
+diff --git a/app/master-admin/layout.tsx b/app/master-admin/layout.tsx
+index 939bf86..6cb0ca5 100644
+--- a/app/master-admin/layout.tsx
++++ b/app/master-admin/layout.tsx
+@@ -1,5 +1,6 @@
+ import { redirect } from 'next/navigation';
+ import { getSession } from '@/lib/auth';
++import { isSuperAdmin } from '@/lib/super-admin';
+ 
+ export default async function MasterAdminLayout({
+   children,
+@@ -7,12 +8,10 @@ export default async function MasterAdminLayout({
+   children: React.ReactNode;
+ }) {
+   const session = await getSession();
+-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+-
+   // 🚨 TRAVA DE SEGURANÇA NO SERVIDOR:
+-  // Se não estiver logado, ou o e-mail não for o do Super Admin, 
++  // Se não estiver logado, ou não for o Super Admin (por ID), 
+   // redireciona para o dashboard antes de carregar a tela.
+-  if (!session || !superAdminEmail || session.email !== superAdminEmail) {
++  if (!session || !isSuperAdmin(session)) {
+     redirect('/dashboard');
+   }
+ 
+diff --git a/lib/api-auth.ts b/lib/api-auth.ts
+index 34c6fad..7291941 100644
+--- a/lib/api-auth.ts
++++ b/lib/api-auth.ts
+@@ -2,6 +2,8 @@ import { cookies } from 'next/headers';
+ import { NextResponse } from 'next/server';
+ import { verifySession } from './auth';
+ import { checkPermission, type Modulo, type Acao } from './rbac';
++import { empresaEstaBloqueada } from './empresa-status';
++import { isSuperAdmin } from './super-admin';
+ 
+ // ============================================================
+ // requireAuth — verifica se está autenticado E se o usuário
+@@ -10,7 +12,7 @@ import { checkPermission, type Modulo, type Acao } from './rbac';
+ //  - ativo = true
+ //  - token_version do JWT bate com o do banco
+ // ============================================================
+-async function requireAuth() {
++async function requireAuth(options?: { allowBlockedEmpresa?: boolean }) {
+   const cookieStore = await cookies();
+   const token = cookieStore.get('auth-token')?.value;
+ 
+@@ -36,6 +38,21 @@ async function requireAuth() {
+     };
+   }
+ 
++  // C2: bloqueio de empresa / trial vencido também na API (antes só na UI).
++  // O super admin e o logout são isentos para não ficarem trancados.
++  if (!options?.allowBlockedEmpresa && !isSuperAdmin(payload)) {
++    const bloqueada = await empresaEstaBloqueada(payload.empresa_id);
++    if (bloqueada) {
++      return {
++        error: NextResponse.json(
++          { error: 'Acesso bloqueado. Regularize a assinatura ou fale com o suporte.' },
++          { status: 403 }
++        ),
++        user: null,
++      };
++    }
++  }
++
+   return { error: null, user: payload };
+ }
+ 
+diff --git a/lib/cron-auth.ts b/lib/cron-auth.ts
+new file mode 100644
+index 0000000..df97401
+--- /dev/null
++++ b/lib/cron-auth.ts
+@@ -0,0 +1,23 @@
++import { timingSafeEqual, createHash } from 'node:crypto';
++
++// Comparação em tempo constante (hash evita vazar o tamanho do segredo).
++function safeEqual(a: string, b: string): boolean {
++  const ha = createHash('sha256').update(a).digest();
++  const hb = createHash('sha256').update(b).digest();
++  return timingSafeEqual(ha, hb);
++}
++
++// Aceita o segredo APENAS por cabeçalho (Authorization: Bearer ... ou x-cron-secret).
++// Segredo em query string não é mais aceito (vai para logs de acesso).
++export function validarCronSecret(headers: Headers): boolean {
++  const secret = process.env.CRON_SECRET;
++  if (!secret) return false;
++
++  const auth = headers.get('authorization');
++  if (auth?.startsWith('Bearer ') && safeEqual(auth.slice(7), secret)) return true;
++
++  const cron = headers.get('x-cron-secret');
++  if (cron && safeEqual(cron, secret)) return true;
++
++  return false;
++}
+diff --git a/lib/empresa-status-core.ts b/lib/empresa-status-core.ts
+new file mode 100644
+index 0000000..78d0969
+--- /dev/null
++++ b/lib/empresa-status-core.ts
+@@ -0,0 +1,21 @@
++// Regra pura de bloqueio da empresa (sem dependências — testável e segura para Edge).
++// Mesma regra do app/layout.tsx: BLOQUEADO, trial vencido ou empresa inexistente.
++
++export interface EmpresaStatusInfo {
++  status: string;
++  plano: string;
++  trial_ends_at: Date | null;
++}
++
++export function isEmpresaBloqueada(
++  empresa: EmpresaStatusInfo | null | undefined,
++  agora: Date = new Date()
++): boolean {
++  if (!empresa) return true;
++  if (empresa.status === 'BLOQUEADO') return true;
++  const trialVencido =
++    empresa.plano === 'TRIAL' &&
++    !!empresa.trial_ends_at &&
++    new Date(empresa.trial_ends_at) < agora;
++  return trialVencido;
++}
+diff --git a/lib/empresa-status.ts b/lib/empresa-status.ts
+new file mode 100644
+index 0000000..c46857c
+--- /dev/null
++++ b/lib/empresa-status.ts
+@@ -0,0 +1,41 @@
++import { prisma } from './prisma';
++import { isEmpresaBloqueada } from './empresa-status-core';
++
++export { isEmpresaBloqueada } from './empresa-status-core';
++export type { EmpresaStatusInfo } from './empresa-status-core';
++
++// ============================================================
++// Status da empresa aplicado na API (não só na interface).
++// Mesma regra do app/layout.tsx: BLOQUEADO, trial vencido
++// ou empresa inexistente → acesso negado.
++// Cache curto em memória para não consultar a cada requisição.
++// ============================================================
++
++const TTL_MS = 15_000;
++const MAX_ENTRIES = 5_000;
++const cache = new Map<string, { bloqueada: boolean; expiresAt: number }>();
++
++export function invalidateEmpresaStatusCache(empresaId?: string) {
++  if (empresaId) cache.delete(empresaId);
++  else cache.clear();
++}
++
++export async function empresaEstaBloqueada(empresaId: string): Promise<boolean> {
++  const now = Date.now();
++  const hit = cache.get(empresaId);
++  if (hit && hit.expiresAt > now) return hit.bloqueada;
++
++  const empresa = await prisma.empresa.findUnique({
++    where: { id: empresaId },
++    select: { status: true, plano: true, trial_ends_at: true },
++  });
++  const bloqueada = isEmpresaBloqueada(empresa);
++
++  if (cache.size >= MAX_ENTRIES) {
++    // descarta a entrada mais antiga (sem apagar todo mundo)
++    const oldest = cache.keys().next().value;
++    if (oldest !== undefined) cache.delete(oldest);
++  }
++  cache.set(empresaId, { bloqueada, expiresAt: now + TTL_MS });
++  return bloqueada;
++}
+diff --git a/lib/rate-limit.ts b/lib/rate-limit.ts
+index a38f0c2..a34d228 100644
+--- a/lib/rate-limit.ts
++++ b/lib/rate-limit.ts
+@@ -19,7 +19,9 @@ interface RateLimitEntry {
+ const rateLimitMap = new Map<string, RateLimitEntry>();
+ 
+ // Limites de segurança do Map (evita OOM em produção)
+-const MAX_TRACKED_KEYS = 2000;
++// C3: antes era 2000 e, ao estourar, o Map INTEIRO era apagado — bastava enviar
++// tentativas com e-mails diferentes para zerar o limite de todo mundo.
++const MAX_TRACKED_KEYS = 20000;
+ 
+ // Telemetria
+ export const rateLimitTelemetry = {
+@@ -66,10 +68,15 @@ export function isRateLimited(
+   if (rateLimitMap.size > MAX_TRACKED_KEYS) {
+     cleanupExpired(now, windowMs);
+ 
+-    // Fallback: se ainda estourou, limpa tudo (self-healing)
++    // Fallback: remove só as chaves mais antigas (ordem de inserção do Map),
++    // nunca limpa tudo de uma vez.
+     if (rateLimitMap.size > MAX_TRACKED_KEYS) {
+-      rateLimitMap.clear();
+-      rateLimitTelemetry.totalCleared += rateLimitMap.size;
++      const alvo = Math.floor(MAX_TRACKED_KEYS * 0.9);
++      for (const k of rateLimitMap.keys()) {
++        if (rateLimitMap.size <= alvo) break;
++        rateLimitMap.delete(k);
++        rateLimitTelemetry.totalCleared++;
++      }
+     }
+   }
+ 
+@@ -106,6 +113,29 @@ export function isRateLimited(
+   return { limited: false, count, reset: entry.resetTime };
+ }
+ 
++// ============================================================
++// getClientIp — IP do cliente atrás de proxy reverso
++//
++// X-Forwarded-For é preenchido pelo cliente e cada proxy ACRESCENTA o IP que
++// viu ao FINAL. Por isso o primeiro valor é forjável; o confiável é o contado
++// a partir do fim, conforme o número de proxies confiáveis à frente do app
++// (TRUSTED_PROXY_HOPS, padrão 1 = o Apache/.htaccess).
++// ============================================================
++export function getClientIp(headers: Headers): string {
++  const hops = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? '1', 10) || 0);
++  const xff = headers.get('x-forwarded-for');
++
++  if (xff && hops > 0) {
++    const parts = xff.split(',').map((p) => p.trim()).filter(Boolean);
++    if (parts.length > 0) {
++      const idx = parts.length - hops;
++      return parts[idx >= 0 ? idx : 0];
++    }
++  }
++
++  return headers.get('x-real-ip')?.trim() || 'unknown';
++}
++
+ // ============================================================
+ // peekRateLimit — consulta sem incrementar (útil para debug)
+ // ============================================================
+diff --git a/lib/safe-url.ts b/lib/safe-url.ts
+new file mode 100644
+index 0000000..311b682
+--- /dev/null
++++ b/lib/safe-url.ts
+@@ -0,0 +1,57 @@
++// ============================================================
++// Validação de URLs de mídia (fotos, logo) — sem dependências,
++// usável no servidor (zod) e no cliente (antes de window.open).
++//
++// Motivo (F1): URLs vindas do banco eram aceitas sem checagem de esquema
++// e abertas com window.open(), o que permite `javascript:` (XSS armazenado).
++// ============================================================
++
++const MAX_URL_LENGTH = 2048;
++const DATA_IMAGE_RE = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
++
++function hasControlOrBackslash(v: string): boolean {
++  // eslint-disable-next-line no-control-regex
++  return /[\u0000-\u001F\u007F\\]/.test(v);
++}
++
++function isHttpsUrl(v: string): boolean {
++  if (v.length > MAX_URL_LENGTH) return false;
++  try {
++    const u = new URL(v);
++    return u.protocol === 'https:' && !!u.hostname && !u.username && !u.password;
++  } catch {
++    return false;
++  }
++}
++
++function isSafeRelativePath(v: string, prefix?: string): boolean {
++  if (v.length > MAX_URL_LENGTH) return false;
++  if (!v.startsWith('/') || v.startsWith('//')) return false; // bloqueia //host (protocol-relative)
++  if (v.includes('..')) return false;
++  if (prefix && !v.startsWith(prefix)) return false;
++  return true;
++}
++
++/** Foto: https://..., /uploads/... (gerado pelo sistema) ou data:image raster (png/jpeg/webp/gif). */
++export function isSafePhotoUrl(value: unknown): value is string {
++  if (typeof value !== 'string') return false;
++  const v = value.trim();
++  if (!v || hasControlOrBackslash(v)) return false;
++  if (DATA_IMAGE_RE.test(v)) return true; // svg e html ficam de fora
++  return isHttpsUrl(v) || isSafeRelativePath(v, '/uploads/');
++}
++
++/** Logo: https://... ou caminho relativo do próprio site. */
++export function isSafeLogoUrl(value: unknown): value is string {
++  if (typeof value !== 'string') return false;
++  const v = value.trim();
++  if (!v || hasControlOrBackslash(v)) return false;
++  return isHttpsUrl(v) || isSafeRelativePath(v);
++}
++
++/** Abre uma foto em nova aba somente se a URL for segura. */
++export function openPhotoSafely(value: unknown): boolean {
++  if (typeof window === 'undefined' || !isSafePhotoUrl(value)) return false;
++  window.open(value.trim(), '_blank', 'noopener,noreferrer');
++  return true;
++}
+diff --git a/lib/super-admin.ts b/lib/super-admin.ts
+new file mode 100644
+index 0000000..85c787a
+--- /dev/null
++++ b/lib/super-admin.ts
+@@ -0,0 +1,45 @@
++// ============================================================
++// Identificação do Super Admin (plataforma)
++//
++// ANTES: o acesso era concedido a quem tivesse o e-mail igual a
++// SUPER_ADMIN_EMAIL. Como o e-mail só é único DENTRO de cada empresa,
++// um usuário de qualquer outra empresa podia ter o mesmo e-mail.
++//
++// AGORA (sem dependências — seguro para Edge/middleware):
++//  1) SUPER_ADMIN_USER_ID  → compara o ID do usuário (preferido).
++//  2) SUPER_ADMIN_EMAIL + SUPER_ADMIN_EMPRESA_ID → exige os DOIS
++//     (e-mail e a empresa da plataforma). Compatibilidade.
++//  Qualquer outra configuração → ninguém é super admin (fail-closed).
++// ============================================================
++
++export interface SuperAdminCandidate {
++  id?: string | null;
++  email?: string | null;
++  empresa_id?: string | null;
++}
++
++let warned = false;
++
++export function isSuperAdmin(user: SuperAdminCandidate | null | undefined): boolean {
++  if (!user) return false;
++
++  const superId = process.env.SUPER_ADMIN_USER_ID?.trim();
++  if (superId) {
++    return !!user.id && user.id === superId;
++  }
++
++  const email = process.env.SUPER_ADMIN_EMAIL?.trim();
++  const empresaId = process.env.SUPER_ADMIN_EMPRESA_ID?.trim();
++  if (email && empresaId) {
++    return !!user.email && !!user.empresa_id && user.email === email && user.empresa_id === empresaId;
++  }
++
++  if (!warned) {
++    warned = true;
++    console.error(
++      '[super-admin] Defina SUPER_ADMIN_USER_ID (ou SUPER_ADMIN_EMAIL + SUPER_ADMIN_EMPRESA_ID). ' +
++        'Sem isso, o painel master fica inacessível.'
++    );
++  }
++  return false;
++}
+diff --git a/middleware.ts b/middleware.ts
+index 21cf2f0..a98fef1 100644
+--- a/middleware.ts
++++ b/middleware.ts
+@@ -1,5 +1,6 @@
+ import { NextResponse, type NextRequest } from 'next/server';
+ import { verifyTokenEdge } from '@/lib/auth-edge';
++import { isSuperAdmin } from '@/lib/super-admin';
+ 
+ const PUBLIC_ROUTES = [
+   '/login',
+@@ -16,6 +17,10 @@ const PUBLIC_ROUTES = [
+   '/api/auth/refresh',
+   '/api/portal',
+   '/api/webhooks/asaas', // ✅ NOVO: webhook do Asaas (segurança via token no header)
++  // Crons: chamados por agendador externo, sem cookie. A autenticação é feita
++  // no handler por CRON_SECRET (lib/cron-auth.ts), em tempo constante.
++  '/api/cron',
++  '/api/financeiro/alertas/verificar',
+   '/manifest.json',
+   '/favicon.ico',
+   '/robots.txt',
+@@ -61,9 +66,7 @@ export async function middleware(request: NextRequest) {
+ 
+   // 4. 🔒 PROTEÇÃO DO PAINEL SUPER ADMIN
+   if (pathname.startsWith('/master-admin') || pathname.startsWith('/api/master-admin')) {
+-    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+-
+-    if (!superAdminEmail || payload.email !== superAdminEmail) {
++    if (!isSuperAdmin(payload)) {
+       if (pathname.startsWith('/api/')) {
+         return NextResponse.json({ error: 'Acesso negado. Área restrita.' }, { status: 403 });
+       }
+diff --git a/next.config.ts b/next.config.ts
+index c8e959c..d07f2f8 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -30,6 +30,8 @@ const nextConfig: NextConfig = {
+         headers: [
+           { key: 'X-Frame-Options', value: 'DENY' },
+           { key: 'X-Content-Type-Options', value: 'nosniff' },
++          // HSTS: força HTTPS por 1 ano (sem includeSubDomains de propósito).
++          { key: 'Strict-Transport-Security', value: 'max-age=31536000' },
+           {
+             key: 'Referrer-Policy',
+             value: 'strict-origin-when-cross-origin',
+diff --git a/package-lock.json b/package-lock.json
+index 18098df..b1003e3 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -21,12 +21,12 @@
+         "date-fns": "^3.6.0",
+         "eslint": "9.14.0",
+         "eslint-config-next": "15.0.3",
+-        "fast-xml-parser": "^4.5.0",
++        "fast-xml-parser": "^4.5.7",
+         "framer-motion": "^11.11.17",
+         "jose": "^5.9.6",
+         "lucide-react": "^0.454.0",
+         "mysql2": "^3.11.3",
+-        "next": "^15.0.3",
++        "next": "^15.5.28",
+         "postcss": "^8.4.47",
+         "prisma": "^6.19.3",
+         "react": "^19.0.0",
+diff --git a/package.json b/package.json
+index be753d4..0a189bd 100644
+--- a/package.json
++++ b/package.json
+@@ -33,12 +33,12 @@
+     "date-fns": "^3.6.0",
+     "eslint": "9.14.0",
+     "eslint-config-next": "15.0.3",
+-    "fast-xml-parser": "5.7.2",
++    "fast-xml-parser": "^4.5.7",
+     "framer-motion": "^11.11.17",
+     "jose": "^5.9.6",
+     "lucide-react": "^0.454.0",
+     "mysql2": "^3.11.3",
+-    "next": "^15.0.3",
++    "next": "^15.5.28",
+     "next-cloudinary": "^6.16.0",
+     "prisma": "^6.19.3",
+     "react": "^19.0.0",
+diff --git a/tests/cron-auth.test.ts b/tests/cron-auth.test.ts
+new file mode 100644
+index 0000000..6c3a005
+--- /dev/null
++++ b/tests/cron-auth.test.ts
+@@ -0,0 +1,33 @@
++import { describe, it, expect, beforeEach, afterEach } from 'vitest';
++import { validarCronSecret } from '../lib/cron-auth';
++
++let backup: string | undefined;
++beforeEach(() => {
++  backup = process.env.CRON_SECRET;
++});
++afterEach(() => {
++  if (backup === undefined) delete process.env.CRON_SECRET;
++  else process.env.CRON_SECRET = backup;
++});
++
++describe('C2/C11 — validarCronSecret', () => {
++  it('sem CRON_SECRET configurado, nunca autoriza', () => {
++    delete process.env.CRON_SECRET;
++    expect(validarCronSecret(new Headers({ authorization: 'Bearer undefined' }))).toBe(false);
++    expect(validarCronSecret(new Headers({ 'x-cron-secret': '' }))).toBe(false);
++  });
++
++  it('aceita Authorization: Bearer e x-cron-secret corretos', () => {
++    process.env.CRON_SECRET = 'segredo-forte-123';
++    expect(validarCronSecret(new Headers({ authorization: 'Bearer segredo-forte-123' }))).toBe(true);
++    expect(validarCronSecret(new Headers({ 'x-cron-secret': 'segredo-forte-123' }))).toBe(true);
++  });
++
++  it('rejeita segredo errado, de tamanho diferente ou ausente', () => {
++    process.env.CRON_SECRET = 'segredo-forte-123';
++    expect(validarCronSecret(new Headers({ authorization: 'Bearer errado' }))).toBe(false);
++    expect(validarCronSecret(new Headers({ authorization: 'Bearer segredo-forte-1234567' }))).toBe(false);
++    expect(validarCronSecret(new Headers({ 'x-cron-secret': 'x' }))).toBe(false);
++    expect(validarCronSecret(new Headers())).toBe(false);
++  });
++});
+diff --git a/tests/empresa-status.test.ts b/tests/empresa-status.test.ts
+new file mode 100644
+index 0000000..dec3e78
+--- /dev/null
++++ b/tests/empresa-status.test.ts
+@@ -0,0 +1,26 @@
++import { describe, it, expect } from 'vitest';
++import { isEmpresaBloqueada } from '../lib/empresa-status-core';
++
++const agora = new Date('2026-10-29T12:00:00Z');
++const ontem = new Date('2026-10-28T12:00:00Z');
++const amanha = new Date('2026-10-30T12:00:00Z');
++
++describe('C2 — isEmpresaBloqueada', () => {
++  it('empresa inexistente é bloqueada', () => {
++    expect(isEmpresaBloqueada(null, agora)).toBe(true);
++    expect(isEmpresaBloqueada(undefined, agora)).toBe(true);
++  });
++  it('status BLOQUEADO bloqueia, mesmo com plano pago', () => {
++    expect(isEmpresaBloqueada({ status: 'BLOQUEADO', plano: 'PRO', trial_ends_at: null }, agora)).toBe(true);
++  });
++  it('trial vencido bloqueia', () => {
++    expect(isEmpresaBloqueada({ status: 'ATIVO', plano: 'TRIAL', trial_ends_at: ontem }, agora)).toBe(true);
++  });
++  it('trial vigente não bloqueia', () => {
++    expect(isEmpresaBloqueada({ status: 'ATIVO', plano: 'TRIAL', trial_ends_at: amanha }, agora)).toBe(false);
++  });
++  it('plano pago com trial_ends_at antigo não bloqueia', () => {
++    expect(isEmpresaBloqueada({ status: 'ATIVO', plano: 'PRO', trial_ends_at: ontem }, agora)).toBe(false);
++    expect(isEmpresaBloqueada({ status: 'ATIVO', plano: 'BASICO', trial_ends_at: ontem }, agora)).toBe(false);
++  });
++});
+diff --git a/tests/rate-limit.test.ts b/tests/rate-limit.test.ts
+new file mode 100644
+index 0000000..1b72c9b
+--- /dev/null
++++ b/tests/rate-limit.test.ts
+@@ -0,0 +1,63 @@
++import { describe, it, expect, beforeEach, afterEach } from 'vitest';
++import { isRateLimited, getClientIp } from '../lib/rate-limit';
++
++describe('C3 — getClientIp', () => {
++  let backup: string | undefined;
++  beforeEach(() => {
++    backup = process.env.TRUSTED_PROXY_HOPS;
++    delete process.env.TRUSTED_PROXY_HOPS; // padrão: 1 proxy
++  });
++  afterEach(() => {
++    if (backup === undefined) delete process.env.TRUSTED_PROXY_HOPS;
++    else process.env.TRUSTED_PROXY_HOPS = backup;
++  });
++
++  it('ATAQUE C3: IP forjado no início do X-Forwarded-For é ignorado', () => {
++    // O cliente envia "1.1.1.1"; o proxy acrescenta o IP real ao final.
++    const h = new Headers({ 'x-forwarded-for': '1.1.1.1, 203.0.113.9' });
++    expect(getClientIp(h)).toBe('203.0.113.9');
++  });
++
++  it('cada tentativa com IP forjado diferente cai no mesmo balde (IP real)', () => {
++    const a = getClientIp(new Headers({ 'x-forwarded-for': '10.0.0.1, 203.0.113.9' }));
++    const b = getClientIp(new Headers({ 'x-forwarded-for': '10.0.0.2, 203.0.113.9' }));
++    expect(a).toBe(b);
++  });
++
++  it('respeita TRUSTED_PROXY_HOPS=2', () => {
++    process.env.TRUSTED_PROXY_HOPS = '2';
++    const h = new Headers({ 'x-forwarded-for': '1.1.1.1, 203.0.113.9, 10.0.0.5' });
++    expect(getClientIp(h)).toBe('203.0.113.9');
++  });
++
++  it('TRUSTED_PROXY_HOPS=0 ignora X-Forwarded-For', () => {
++    process.env.TRUSTED_PROXY_HOPS = '0';
++    const h = new Headers({ 'x-forwarded-for': '1.1.1.1', 'x-real-ip': '198.51.100.7' });
++    expect(getClientIp(h)).toBe('198.51.100.7');
++  });
++
++  it('um único valor e sem cabeçalhos', () => {
++    expect(getClientIp(new Headers({ 'x-forwarded-for': '203.0.113.9' }))).toBe('203.0.113.9');
++    expect(getClientIp(new Headers())).toBe('unknown');
++  });
++});
++
++describe('C3 — limitador não é zerado por inundação de chaves', () => {
++  it('chave bloqueada continua bloqueada após estourar o limite de chaves rastreadas', () => {
++    const janela = 60_000;
++
++    // Enche o mapa com chaves distintas (como um atacante variando o e-mail)
++    for (let i = 0; i < 19_990; i++) isRateLimited(`inundacao:${i}`, 5, janela);
++
++    // Vítima recente: 6 tentativas com limite 5 => bloqueada
++    let r = { limited: false, count: 0, reset: 0 };
++    for (let i = 0; i < 6; i++) r = isRateLimited('login:vitima@x.com:203.0.113.9', 5, janela);
++    expect(r.limited).toBe(true);
++
++    // Estoura o limite de chaves: o código antigo apagava TUDO aqui
++    for (let i = 0; i < 100; i++) isRateLimited(`inundacao-extra:${i}`, 5, janela);
++
++    const depois = isRateLimited('login:vitima@x.com:203.0.113.9', 5, janela);
++    expect(depois.limited).toBe(true);
++  });
++});
+diff --git a/tests/safe-url.test.ts b/tests/safe-url.test.ts
+new file mode 100644
+index 0000000..e689f25
+--- /dev/null
++++ b/tests/safe-url.test.ts
+@@ -0,0 +1,62 @@
++import { describe, it, expect } from 'vitest';
++import { isSafePhotoUrl, isSafeLogoUrl } from '../lib/safe-url';
++
++describe('F1 — isSafePhotoUrl', () => {
++  const permitidas = [
++    'https://res.cloudinary.com/demo/image/upload/v1/foto.jpg',
++    '/uploads/checklist/3f2c9a1e-aaaa-bbbb-cccc-1234567890ab.jpg',
++    'data:image/png;base64,iVBORw0KGgo=',
++    'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
++  ];
++  for (const url of permitidas) {
++    it(`aceita ${url.slice(0, 40)}`, () => {
++      expect(isSafePhotoUrl(url)).toBe(true);
++    });
++  }
++
++  const bloqueadas = [
++    'javascript:alert(document.domain)',
++    'JaVaScRiPt:alert(1)',
++    '  javascript:alert(1)',
++    'java\nscript:alert(1)',
++    'vbscript:msgbox(1)',
++    'data:text/html,<script>alert(1)</script>',
++    'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
++    'data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+',
++    'http://exemplo.com/foto.jpg',
++    '//evil.example/x.png',
++    '/etc/passwd',
++    '/uploads/../../etc/passwd',
++    '/outra-pasta/foto.jpg',
++    'https://user:senha@host.com/x.jpg',
++    'file:///etc/passwd',
++    '',
++    '   ',
++    'https://exemplo.com/' + 'a'.repeat(3000),
++    '\\\\servidor\\share\\x.png',
++  ];
++  for (const url of bloqueadas) {
++    it(`bloqueia ${JSON.stringify(url.slice(0, 40))}`, () => {
++      expect(isSafePhotoUrl(url)).toBe(false);
++    });
++  }
++
++  it('bloqueia valores que não são string', () => {
++    expect(isSafePhotoUrl(undefined)).toBe(false);
++    expect(isSafePhotoUrl(null)).toBe(false);
++    expect(isSafePhotoUrl({ url: 'https://x.com/a.jpg' })).toBe(false);
++  });
++});
++
++describe('F1 — isSafeLogoUrl', () => {
++  it('aceita https e caminho relativo do próprio site', () => {
++    expect(isSafeLogoUrl('https://res.cloudinary.com/x/logo.png')).toBe(true);
++    expect(isSafeLogoUrl('/logo.png')).toBe(true);
++  });
++  it('bloqueia esquemas perigosos e URLs protocol-relative', () => {
++    expect(isSafeLogoUrl('javascript:alert(1)')).toBe(false);
++    expect(isSafeLogoUrl('data:image/png;base64,AAAA')).toBe(false);
++    expect(isSafeLogoUrl('//evil.example/logo.png')).toBe(false);
++    expect(isSafeLogoUrl('http://exemplo.com/logo.png')).toBe(false);
++  });
++});
+diff --git a/tests/super-admin.test.ts b/tests/super-admin.test.ts
+new file mode 100644
+index 0000000..12b1a58
+--- /dev/null
++++ b/tests/super-admin.test.ts
+@@ -0,0 +1,54 @@
++import { describe, it, expect, beforeEach, afterEach } from 'vitest';
++import { isSuperAdmin } from '../lib/super-admin';
++
++const KEYS = ['SUPER_ADMIN_USER_ID', 'SUPER_ADMIN_EMAIL', 'SUPER_ADMIN_EMPRESA_ID'] as const;
++let backup: Record<string, string | undefined> = {};
++
++beforeEach(() => {
++  backup = {};
++  for (const k of KEYS) {
++    backup[k] = process.env[k];
++    delete process.env[k];
++  }
++});
++afterEach(() => {
++  for (const k of KEYS) {
++    if (backup[k] === undefined) delete process.env[k];
++    else process.env[k] = backup[k];
++  }
++});
++
++describe('C1 — isSuperAdmin', () => {
++  it('por ID: só o usuário com o ID configurado', () => {
++    process.env.SUPER_ADMIN_USER_ID = 'user-dono';
++    expect(isSuperAdmin({ id: 'user-dono', email: 'a@a.com', empresa_id: 'e1' })).toBe(true);
++    expect(isSuperAdmin({ id: 'outro', email: 'a@a.com', empresa_id: 'e1' })).toBe(false);
++  });
++
++  it('ATAQUE C1: mesmo e-mail em outra empresa NÃO vira super admin (modo ID)', () => {
++    process.env.SUPER_ADMIN_USER_ID = 'user-dono';
++    process.env.SUPER_ADMIN_EMAIL = 'dono@oficina.com'; // legado, ignorado quando há ID
++    const invasor = { id: 'user-invasor', email: 'dono@oficina.com', empresa_id: 'empresa-do-invasor' };
++    expect(isSuperAdmin(invasor)).toBe(false);
++  });
++
++  it('ATAQUE C1: modo compatibilidade exige e-mail E empresa', () => {
++    process.env.SUPER_ADMIN_EMAIL = 'dono@oficina.com';
++    process.env.SUPER_ADMIN_EMPRESA_ID = 'empresa-plataforma';
++    expect(isSuperAdmin({ id: 'x', email: 'dono@oficina.com', empresa_id: 'empresa-plataforma' })).toBe(true);
++    expect(isSuperAdmin({ id: 'y', email: 'dono@oficina.com', empresa_id: 'empresa-do-invasor' })).toBe(false);
++  });
++
++  it('fail-closed: só SUPER_ADMIN_EMAIL (configuração antiga) não dá acesso a ninguém', () => {
++    process.env.SUPER_ADMIN_EMAIL = 'dono@oficina.com';
++    expect(isSuperAdmin({ id: 'x', email: 'dono@oficina.com', empresa_id: 'e1' })).toBe(false);
++  });
++
++  it('fail-closed: sem configuração, ninguém; usuário nulo, ninguém', () => {
++    expect(isSuperAdmin({ id: 'x', email: 'a@a.com', empresa_id: 'e1' })).toBe(false);
++    process.env.SUPER_ADMIN_USER_ID = 'user-dono';
++    expect(isSuperAdmin(null)).toBe(false);
++    expect(isSuperAdmin(undefined)).toBe(false);
++    expect(isSuperAdmin({ email: 'a@a.com' })).toBe(false);
++  });
++});
